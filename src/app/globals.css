@@ -1,0 +1,36 @@
+@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .animate-pulse-slow {
+    animation: pulse-slow 12s ease-in-out infinite;
+  }
+
+  @keyframes pulse-slow {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.92;
+    }
+  }
+}
+
+@keyframes fadeInOutLoop {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.fade-video {
+  animation: fadeInOutLoop 8s ease-in-out infinite;
+}
+@keyframes softGlow {
+  0% { filter: drop-shadow(0 0 4px rgba(140, 124, 104, 0.4)); }
+  50% { filter: drop-shadow(0 0 10px rgba(140, 124, 104, 0.6)); }
+  100% { filter: drop-shadow(0 0 4px rgba(140, 124, 104, 0.4)); }
+}
+  
