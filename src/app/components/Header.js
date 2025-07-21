@@ -27,13 +27,13 @@ export default function Header() {
         {/* Navigation */}
         <nav className="mt-4 md:mt-0 flex items-center space-x-6 text-sm font-medium text-[#5a5955]">
           <Link
-            href="#about"
+            href="/about"
              className=" relative hover:text-[#8c7c68] transition duration-300 before:absolute before:left-0 before:bottom-[-4px] before:h-[2px] before:w-0 before:bg-[#8c7c68] hover:before:w-full before:transition-all before:duration-300"
              >
              Σχετικά
           </Link>
         <Link
-            href="#clinic"
+            href="/iatreio"
             className="relative hover:text-[#8c7c68] transition duration-300 before:absolute before:left-0 before:bottom-[-4px] before:h-[2px] before:w-0 before:bg-[#8c7c68] hover:before:w-full before:transition-all before:duration-300"
             >
             Ιατρείο
@@ -44,9 +44,15 @@ export default function Header() {
             >
             Παθήσεις
       </Link>
+       <Link
+            href="/contact"
+            className="relative hover:text-[#8c7c68] transition duration-300 before:absolute before:left-0 before:bottom-[-4px] before:h-[2px] before:w-0 before:bg-[#8c7c68] hover:before:w-full before:transition-all before:duration-300"
+            >
+            Επικοινωνία
+      </Link>
 
           <Link
-            href="/appointment"
+            href="/contact"
             className="ml-2 px-5 py-2 bg-[#8c7c68] text-white rounded-full shadow hover:bg-[#746856] transition duration-300"
           >
             Κλείστε Ραντεβού
