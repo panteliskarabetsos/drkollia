@@ -34,3 +34,7 @@
   100% { filter: drop-shadow(0 0 4px rgba(140, 124, 104, 0.4)); }
 }
   
+/* Ensure full height for html and body */
+html, body {
+  height: 100%;
+}

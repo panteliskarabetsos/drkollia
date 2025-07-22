@@ -19,7 +19,7 @@ export default function ClinicPage() {
         <div className="relative z-10 text-center px-6">
           <h1 className="text-4xl md:text-6xl font-bold mb-4">Το Ιατρείο</h1>
           <p className="text-lg md:text-xl max-w-2xl mx-auto text-[#f4f0e8]">
-            Ένας σύγχρονος και φιλόξενος χώρος για την ολιστική φροντίδα της υγείας σας.
+            Ένας σύγχρονος και φιλόξενος χώρος για την φροντίδα της υγείας σας.
           </p>
         </div>
       </section>

@@ -28,7 +28,7 @@ export default function ContactPage() {
             transition={{ delay: 0.3, duration: 0.8 }}
             className="text-lg md:text-xl max-w-2xl mx-auto text-[#f4f0e8]"
           >
-            Είμαστε εδώ για να σας ακούσουμε και να σας εξυπηρετήσουμε.
+          
           </motion.p>
         </div>
       </section>
