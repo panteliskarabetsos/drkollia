@@ -83,6 +83,12 @@ export default function Header() {
               </button>
               {menuOpen && (
                 <div className="absolute right-0 mt-2 w-32 bg-white shadow-md border border-[#e8e2d6] rounded-lg z-50">
+                    <button
+                    onClick={() => window.location.href = "/admin"}
+                    className="block w-full text-left px-4 py-2 text-sm text-[#3b3a36] hover:bg-[#f0ece4]"
+                  >
+                    Πίνακας Διαχείρισης
+                  </button>
                   <button
                     onClick={handleLogout}
                     className="block w-full text-left px-4 py-2 text-sm text-[#3b3a36] hover:bg-[#f0ece4]"
