@@ -1,5 +1,7 @@
 // /app/api/appointments/route.js
-import { supabase } from "@/lib/supabaseClient";
+// Fallback to relative path
+import { supabase } from "../../lib/supabaseClient";
+
 
 export async function POST(request) {
   const body = await request.json();
