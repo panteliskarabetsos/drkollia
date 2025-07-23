@@ -32,7 +32,7 @@ export default function PatientsPage() {
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState(false);
 
-
+  // ✅ Μόνο μία φορά θα γίνει έλεγχος και fetch
   useEffect(() => {
     const checkAuthAndFetch = async () => {
       const { data: { session } } = await supabase.auth.getSession();

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '../lib/supabaseClient'; // adjust path if needed
+import { supabase } from '../lib/supabaseClient';
 import Link from 'next/link';
+
 export default function AdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -11,7 +12,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     const checkSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
+      const { data } = await supabase.auth.getSession();
       const session = data?.session;
 
       if (!session) {
@@ -27,55 +28,55 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#fdfaf6] text-[#3b3a36]">
-        <p>Έλεγχος σύνδεσης...</p>
+      <main className="min-h-screen flex items-center justify-center bg-[#fafafa] text-[#333]">
+        <p className="text-sm text-gray-500">Έλεγχος σύνδεσης...</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#fdfaf6] text-[#3b3a36]">
+    <main className="min-h-screen bg-[#fafafa] text-[#333] font-sans">
+      <section className="py-16 px-4 max-w-6xl mx-auto">
+        <h1 className="text-3xl font-medium text-center mb-12 tracking-tight">Πίνακας Διαχείρισης</h1>
 
-    <section className="py-20 px-6 max-w-5xl mx-auto">
-      <h1 className="text-4xl font-bold mb-8 text-center">Πίνακας Διαχείρισης</h1>
-
-      <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3">
-        {/* Ραντεβού */}
-        <div className="p-6 rounded-xl border border-[#e0d8ca] bg-white shadow hover:shadow-md transition">
-          <h2 className="text-xl font-semibold mb-2">Ραντεβού</h2>
-          <p className="text-sm text-[#5a5955] mb-4">Δείτε και διαχειριστείτε τα ραντεβού.</p>
-          <Link href="/admin/appointments">
-            <button className="text-sm text-white bg-[#8c7c68] px-4 py-2 rounded hover:bg-[#6f6253]">
-              Διαχείριση
-            </button>
-          </Link>
+        <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3">
+          {[
+            {
+              title: 'Ραντεβού',
+              description: 'Διαχείριση προγραμματισμένων ραντεβού.',
+              href: '/admin/appointments',
+            },
+            {
+              title: 'Ασθενείς',
+              description: 'Προβολή και επεξεργασία αρχείου ασθενών.',
+              href: '/admin/patients',
+            },
+            {
+              title: 'Μηνύματα',
+              description: 'Μηνύματα από τη φόρμα επικοινωνίας.',
+              href: '/admin/messages',
+            },
+            {
+              title: 'Πρόσβαση',
+              description: 'Διαχείριση λογαριασμών διαχειριστών.',
+              href: '/admin/accounts',
+            },
+          ].map((item, idx) => (
+            <div
+              key={idx}
+              className="border border-gray-200 bg-white rounded-xl p-5 hover:border-gray-300 transition"
+            >
+              <h2 className="text-lg font-semibold mb-1">{item.title}</h2>
+              <p className="text-sm text-gray-500 mb-4 leading-relaxed">{item.description}</p>
+              <Link href={item.href}>
+                <button className="text-sm px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100 transition">
+                  Άνοιγμα
+                </button>
+              </Link>
+            </div>
+          ))}
         </div>
-
-        {/* Ασθενείς */}
-        <div className="p-6 rounded-xl border border-[#e0d8ca] bg-white shadow hover:shadow-md transition">
-          <h2 className="text-xl font-semibold mb-2">Ασθενείς</h2>
-          <p className="text-sm text-[#5a5955] mb-4">Δείτε το αρχείο ασθενών.</p>
-          <Link href="/admin/patients">
-            <button className="text-sm text-white bg-[#8c7c68] px-4 py-2 rounded hover:bg-[#6f6253]">
-              Διαχείριση
-            </button>
-          </Link>
-        </div>
-
-        {/* Μηνύματα */}
-        <div className="p-6 rounded-xl border border-[#e0d8ca] bg-white shadow hover:shadow-md transition">
-          <h2 className="text-xl font-semibold mb-2">Μηνύματα</h2>
-          <p className="text-sm text-[#5a5955] mb-4">Δείτε τα μηνύματα από τη φόρμα επικοινωνίας.</p>
-          <Link href="/admin/messages">
-            <button className="text-sm text-white bg-[#8c7c68] px-4 py-2 rounded hover:bg-[#6f6253]">
-              Προβολή
-            </button>
-          </Link>
-        </div>
-      </div>
-    </section>
-
-
+      </section>
     </main>
   );
 }

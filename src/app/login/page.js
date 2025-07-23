@@ -8,17 +8,18 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Redirect if already logged in
+  // Check if already logged in
   useEffect(() => {
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         router.replace("/admin");
       } else {
-        setLoading(false);
+        setCheckingAuth(false);
       }
     };
     checkUser();
@@ -27,7 +28,8 @@ export default function LoginPage() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setErrorMsg("");
-    setLoading(true);
+    setSubmitting(true);
+
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -35,9 +37,7 @@ export default function LoginPage() {
       });
 
       if (error) {
-        if (
-          error.message.toLowerCase().includes("invalid login credentials")
-        ) {
+        if (error.message.toLowerCase().includes("invalid login credentials")) {
           setErrorMsg("Λανθασμένα στοιχεία σύνδεσης.");
         } else {
           setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
@@ -49,11 +49,17 @@ export default function LoginPage() {
       console.error("Login failed:", err.message);
       setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  if (loading) return null; // Or a loading spinner
+  if (checkingAuth) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-[#fdfaf6]">
+        <p className="text-[#3b3a36] text-lg">Φόρτωση...</p>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#fdfaf6] flex items-center justify-center px-4">
@@ -70,7 +76,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              disabled={loading}
+              disabled={submitting}
             />
           </div>
           <div>
@@ -81,30 +87,23 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              disabled={loading}
+              disabled={submitting}
             />
           </div>
+
           {errorMsg && (
             <p className="text-red-600 text-sm font-medium">{errorMsg}</p>
           )}
+
           <button
             type="submit"
             className={`w-full bg-[#3b3a36] text-white py-2 rounded-lg transition ${
-              loading ? "opacity-70 cursor-not-allowed" : "hover:bg-[#2f2e2a]"
+              submitting ? "opacity-70 cursor-not-allowed" : "hover:bg-[#2f2e2a]"
             }`}
-            disabled={loading}
+            disabled={submitting}
           >
-            {loading ? "Σύνδεση..." : "Σύνδεση"}
+            {submitting ? "Σύνδεση..." : "Σύνδεση"}
           </button>
-           <div className="text-sm text-center mt-4">
-            Δεν έχετε λογαριασμό;{" "}
-            <a
-                href="/signup"
-                className="text-[#8c7c68] font-medium hover:underline transition"
-            >
-                Δημιουργία Λογαριασμού
-            </a>
-            </div>
         </form>
       </div>
     </main>
