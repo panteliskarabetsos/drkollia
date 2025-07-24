@@ -198,7 +198,7 @@ export default function EditPatientPage() {
           ['hereditary_history', 'Κληρονομικό Ιστορικό'],
           ['current_disease', 'Παρούσα Νόσος'],
           ['physical_exam', 'Αντικειμενική Εξέταση'],
-          ['preclinical_screening', 'Προκλινικός Έλεγχος'],
+          ['preclinical_screening', 'Πάρακλινικός Έλεγχος'],
           ['notes', 'Σημειώσεις'],
         ].map(([field, label]) => (
           <div key={field} className="md:col-span-2">

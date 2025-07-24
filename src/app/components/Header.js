@@ -107,7 +107,7 @@ export default function Header() {
           ))}
 
           <Link
-            href="/contact"
+            href="/appointments"
             className="px-6 py-2 text-base bg-[#8c7c68] text-white rounded-full shadow hover:bg-[#746856] transition whitespace-nowrap"
           >
             Κλείστε Ραντεβού
@@ -169,7 +169,7 @@ export default function Header() {
           <Link href="/about" className="hover:text-[#8c7c68] transition">Σχετικά</Link>
           <Link href="/iatreio" className="hover:text-[#8c7c68] transition">Ιατρείο</Link>
           <Link href="/contact" className="hover:text-[#8c7c68] transition">Επικοινωνία</Link>
-          <Link href="/contact" className="px-5 py-2 bg-[#8c7c68] text-white rounded-full shadow hover:bg-[#746856] transition text-center">
+          <Link href="/appointments" className="px-5 py-2 bg-[#8c7c68] text-white rounded-full shadow hover:bg-[#746856] transition text-center">
             Κλείστε Ραντεβού
           </Link>
         </div>

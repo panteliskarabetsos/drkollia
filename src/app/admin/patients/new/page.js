@@ -41,9 +41,13 @@ export default function NewPatientPage() {
       ...prev,
       [e.target.name]: e.target.value,
     }));
-    if (e.target.name === 'full_name' && e.target.value.trim() !== '') {
-      setFullNameError(false);
-    }
+   if (e.target.name === 'full_name') {
+        const capitalized = e.target.value.replace(/\b\w/g, l => l.toUpperCase());
+        setForm(prev => ({ ...prev, full_name: capitalized }));
+        setFullNameError(false);
+        return;
+        }
+
   };
 
   const handleSubmit = async (e) => {
@@ -91,12 +95,16 @@ export default function NewPatientPage() {
   return (
     <main className="min-h-screen bg-[#f2f5f4] py-12 px-4 text-[#3a3a38]">
       <div className="max-w-5xl mx-auto bg-white shadow-lg rounded-3xl p-10 border border-[#cfd8d6]">
-        <div className="flex justify-between items-center mb-8">
-          <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700">
-            <FaArrowLeft />
-          </button>
-        </div>
+        <div className="sticky top-0 bg-white z-10 flex justify-between items-center py-4 px-2 border-b mb-6">
+            <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700">
+                <FaArrowLeft />
+            </button>
+           <h1 className="text-2xl font-serif font-semibold tracking-tight text-[#2d2d2b]">
+            Νέος Ασθενής
+            </h1>
 
+            <div className="w-5" /> {/* empty space for alignment */}
+            </div>
         <h1 className="text-4xl font-bold text-center text-[#4a4a48] mb-10 tracking-tight">
           Καταχώρηση Νέου Ασθενούς
         </h1>
@@ -160,7 +168,7 @@ export default function NewPatientPage() {
               <TextAreaField name="hereditary_history" label="Κληρονομικό Ιστορικό" value={form.hereditary_history} onChange={handleChange} />
               <TextAreaField name="current_disease" label="Παρούσα Νόσος" value={form.current_disease} onChange={handleChange} />
               <TextAreaField name="physical_exam" label="Αντικειμενική Εξέταση" value={form.physical_exam} onChange={handleChange} />
-              <TextAreaField name="preclinical_screening" label="Προκλινικός Έλεγχος" value={form.preclinical_screening} onChange={handleChange} />
+              <TextAreaField name="preclinical_screening" label="Πάρακλινικός Έλεγχος" value={form.preclinical_screening} onChange={handleChange} />
               <TextAreaField name="notes" label="Σημειώσεις" value={form.notes} onChange={handleChange} />
               <SelectField
                 name="smoking"

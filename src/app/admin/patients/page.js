@@ -72,7 +72,8 @@ export default function PatientsPage() {
         if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
       }
 
-      const matchesAge = age !== null && age >= ageRange[0] && age <= ageRange[1];
+    const matchesAge = (age === null) || (age >= ageRange[0] && age <= ageRange[1]);
+
 
       return matchesSearch && matchesGender && matchesAge;
     });
@@ -321,7 +322,7 @@ const clearHold = (type) => {
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-[#f6f4f2] text-gray-700 uppercase tracking-wide text-xs">
                 <tr>
-                  {['Όνομα', 'ΑΜΚΑ', 'Ημ. Γέννησης', 'Ηλικία', 'Φύλο', 'Τηλέφωνο', 'Email', 'Ενέργειες'].map((h) => (
+                  {['Όνομα', 'ΑΜΚΑ', 'Ηλικία', 'Φύλο', 'Τηλέφωνο', 'Email', 'Ενέργειες'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -335,9 +336,6 @@ const clearHold = (type) => {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {highlightMatch(p.amka || '-', search)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {p.birth_date || '-'}
                     </td>
                     <td className="px-4 py-3 text-gray-500">
                       {p.birth_date ? calculateAge(p.birth_date) : '-'}
@@ -396,7 +394,7 @@ const clearHold = (type) => {
                 <p><strong>Κληρονομικό Ιστορικό:</strong> {selectedPatient.hereditary_history || '-'}</p>
                 <p><strong>Παρούσα Νόσος:</strong> {selectedPatient.current_disease || '-'}</p>
                 <p><strong>Αντικειμενική Εξέταση:</strong> {selectedPatient.physical_exam || '-'}</p>
-                <p><strong>Προκλινικός Έλεγχος:</strong> {selectedPatient.preclinical_screening || '-'}</p>
+                <p><strong>Πκλινικός Έλεγχος:</strong> {selectedPatient.preclinical_screening || '-'}</p>
               </div>
               <div className="mt-6 text-sm bg-gray-50 p-4 rounded">
                 <p><strong>Σημειώσεις:</strong></p>
