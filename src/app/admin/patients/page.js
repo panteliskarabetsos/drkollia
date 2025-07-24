@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { FaArrowLeft, FaEdit, FaTrash, FaStickyNote, FaFilter, FaSearch } from 'react-icons/fa';
+import { FaArrowLeft, FaEdit, FaTrash, FaStickyNote, FaFilter, FaSearch, FaMinus, FaPlus } from 'react-icons/fa';
 
 function removeDiacritics(str) {
   return str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
@@ -24,6 +24,8 @@ export default function PatientsPage() {
   const [patientToDelete, setPatientToDelete] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const minInterval = useRef(null);
+  const maxInterval = useRef(null);
 
   const highlightMatch = (text, query) => {
     if (!query || typeof text !== 'string') return text;
@@ -90,6 +92,8 @@ export default function PatientsPage() {
       results.sort((a, b) => getAge(a.birth_date) - getAge(b.birth_date));
     } else if (sortOption === 'amka') {
       results.sort((a, b) => (a.amka || '').localeCompare(b.amka || ''));
+    } else if (sortOption === 'updated_at') {
+        results.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
     }
     setFiltered(results);
   }, [search, genderFilter, ageRange, sortOption, patients]);
@@ -159,6 +163,25 @@ export default function PatientsPage() {
     }
   };
 
+  const handleHold = (type, operation) => {
+  const interval = setInterval(() => {
+    setAgeRange((prev) => {
+      const newMin = type === 'min' ? operation === 'inc' ? Math.min(prev[0] + 1, 100) : Math.max(prev[0] - 1, 0) : prev[0];
+      const newMax = type === 'max' ? operation === 'inc' ? Math.min(prev[1] + 1, 100) : Math.max(prev[1] - 1, 0) : prev[1];
+      if (newMin <= newMax) return [newMin, newMax];
+      return prev;
+    });
+  }, 100);
+  if (type === 'min') minInterval.current = interval;
+  else maxInterval.current = interval;
+};
+
+const clearHold = (type) => {
+  if (type === 'min' && minInterval.current) clearInterval(minInterval.current);
+  if (type === 'max' && maxInterval.current) clearInterval(maxInterval.current);
+};
+
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-[#fdfaf6] to-[#f4f1ec] text-[#3b3a36]">
       <section className="max-w-7xl mx-auto px-6 py-16">
@@ -196,8 +219,8 @@ export default function PatientsPage() {
           <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm" />
           <input
             type="text"
-            placeholder="Αναζήτηση..."
-            className="w-full pl-9 pr-3 py-1.5 border border-gray-200 rounded-full text-xs focus:outline-none focus:ring-1 focus:ring-[#8c7c68] bg-white/60 backdrop-blur placeholder:text-gray-400"
+            placeholder="Αναζήτηση ασθενή με όνομα, ΑΜΚΑ, τηλέφωνο, email"
+            className="w-full pl-2 pr-2 py-1.5 border border-gray-200 rounded-full text-xs focus:outline-none focus:ring-1 focus:ring-[#8c7c68] bg-white/60 backdrop-blur placeholder:text-gray-400"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -221,33 +244,46 @@ export default function PatientsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Ηλικία</label>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={ageRange[0]}
-                    onChange={(e) => {
-                      const newMin = +e.target.value;
-                      if (newMin <= ageRange[1]) setAgeRange([newMin, ageRange[1]]);
-                    }}
-                    className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs bg-white/80 backdrop-blur"
-                  />
-                  <span className="text-gray-400">–</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={ageRange[1]}
-                    onChange={(e) => {
-                      const newMax = +e.target.value;
-                      if (newMax >= ageRange[0]) setAgeRange([ageRange[0], newMax]);
-                    }}
-                    className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs bg-white/80 backdrop-blur"
-                  />
-                </div>
-              </div>
+  <label className="block text-xs text-gray-500 mb-1">Ηλικία</label>
+  <div className="flex items-center gap-1">
+    <button onMouseDown={() => handleHold('min', 'dec')} onMouseUp={() => clearHold('min')} onMouseLeave={() => clearHold('min')} className="px-2 py-1 bg-gray-200 rounded-full text-xs">
+      <FaMinus />
+    </button>
+    <input
+      type="number"
+      min="0"
+      max="100"
+      value={ageRange[0]}
+      onChange={(e) => {
+        const newMin = +e.target.value;
+        if (newMin <= ageRange[1]) setAgeRange([newMin, ageRange[1]]);
+      }}
+      className="w-14 px-2 py-1 border border-gray-300 rounded-md text-xs text-center"
+    />
+    <button onMouseDown={() => handleHold('min', 'inc')} onMouseUp={() => clearHold('min')} onMouseLeave={() => clearHold('min')} className="px-2 py-1 bg-gray-200 rounded-full text-xs">
+      <FaPlus />
+    </button>
+    <span className="text-gray-400">–</span>
+    <button onMouseDown={() => handleHold('max', 'dec')} onMouseUp={() => clearHold('max')} onMouseLeave={() => clearHold('max')} className="px-2 py-1 bg-gray-200 rounded-full text-xs">
+      <FaMinus />
+    </button>
+    <input
+      type="number"
+      min="0"
+      max="100"
+      value={ageRange[1]}
+      onChange={(e) => {
+        const newMax = +e.target.value;
+        if (newMax >= ageRange[0]) setAgeRange([ageRange[0], newMax]);
+      }}
+      className="w-14 px-2 py-1 border border-gray-300 rounded-md text-xs text-center"
+    />
+    <button onMouseDown={() => handleHold('max', 'inc')} onMouseUp={() => clearHold('max')} onMouseLeave={() => clearHold('max')} className="px-2 py-1 bg-gray-200 rounded-full text-xs">
+      <FaPlus />
+    </button>
+  </div>
+</div>
+
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Ταξινόμηση</label>
                 <select
@@ -259,6 +295,7 @@ export default function PatientsPage() {
                   <option value="name">Αλφαβητικά</option>
                   <option value="age">Κατά ηλικία</option>
                   <option value="amka">Κατά ΑΜΚΑ</option>
+                  <option value="updated_at">Τελευταία Επεξεργασία</option>
                 </select>
               </div>
             </div>
@@ -392,7 +429,7 @@ export default function PatientsPage() {
               Επιβεβαίωση Διαγραφής
             </h2>
             <p className="text-sm text-gray-600 text-center mb-6">
-              Είστε σίγουρος/η ότι θέλετε να διαγράψετε τον ασθενή{' '}
+              Είστε σίγουροι ότι θέλετε να διαγράψετε τον ασθενή{' '}
               <span className="font-medium text-red-600">{patientToDelete.full_name}</span>;
             </p>
             <div className="flex justify-end gap-4">
