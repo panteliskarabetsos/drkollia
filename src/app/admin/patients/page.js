@@ -4,10 +4,31 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import { FaArrowLeft, FaEdit, FaTrash, FaStickyNote, FaFilter, FaSearch, FaMinus, FaPlus } from 'react-icons/fa';
-
+import { FiX, FiPlus, FiMinus } from 'react-icons/fi';
+import { HiAdjustmentsHorizontal } from 'react-icons/hi2';
 function removeDiacritics(str) {
   return str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 }
+function formatDateTime(dateStr) {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}`;
+}
+function formatDate(dateStr) {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+
 
 export default function PatientsPage() {
   const router = useRouter();
@@ -184,59 +205,83 @@ const clearHold = (type) => {
 
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#fdfaf6] to-[#f4f1ec] text-[#3b3a36]">
+  <main className="min-h-screen bg-gradient-to-br from-[#f7f5f2] via-[#ece9e6] to-[#dcd8d3] text-[#3a3a38] font-sans">
+
       <section className="max-w-7xl mx-auto px-6 py-16">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-3">
-          <div className="flex gap-2 items-center">
+      {/* Header Actions */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6 mb-10">
+          {/* Left Buttons */}
+          <div className="flex gap-2 items-center flex-wrap">
             <button
               onClick={() => router.push('/admin')}
-              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-[#8c7c68] backdrop-blur-md bg-white/30 px-3 py-1.5 rounded-full shadow-sm"
+              className="inline-flex items-center gap-2 text-sm text-[#5f5d58] hover:text-[#8c7c68] bg-white/40 backdrop-blur-md px-4 py-2 rounded-2xl shadow-sm transition-all hover:shadow-md"
             >
-              <FaArrowLeft className="text-sm" />
-              <span>Dashboard</span>
+              <FaArrowLeft className="text-base" />
+              <span className="tracking-tight">Dashboard</span>
             </button>
+
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-[#8c7c68] px-2 py-1 rounded-full hover:bg-white/50 backdrop-blur"
+              className="inline-flex items-center gap-2 text-sm text-[#5f5d58] hover:text-[#8c7c68] bg-white/40 backdrop-blur-md px-4 py-2 rounded-2xl shadow-sm transition-all hover:shadow-md"
             >
-              <FaFilter className="text-sm" />
-              <span>Φίλτρα</span>
+              <FaFilter className="text-base" />
+              <span className="tracking-tight">Φίλτρα</span>
             </button>
           </div>
+
+          {/* Primary CTA */}
           <button
             onClick={() => router.push('/admin/patients/new')}
-            className="px-4 py-2 bg-[#8c7c68] text-white rounded-full hover:bg-[#6f6253] text-xs shadow-md"
+            className="inline-flex items-center gap-2 bg-[#8c7c68]/90 hover:bg-[#6f6253] text-white text-sm px-5 py-2 rounded-2xl shadow-md transition-all hover:shadow-lg backdrop-blur-md"
           >
-            + Νέος Ασθενής
+            <FaPlus className="text-base" />
+            <span className="tracking-tight">Προσθήκη Ασθενούς</span>
           </button>
         </div>
-        <div className="mb-4">
-        <div className="relative w-full max-w-xs">
-           {loading && (
-        <div className="fixed inset-0 flex items-center justify-center bg-white/60 backdrop-blur z-50">
-          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#8c7c68]"></div>
-        </div>
-      )}
-          <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm" />
+
+        {/* Search Input */}
+        <div className="relative w-full max-w-md mb-8">
+          {loading && (
+            <div className="fixed inset-0 flex items-center justify-center bg-white/60 backdrop-blur z-50">
+              <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#8c7c68]"></div>
+            </div>
+          )}
+
+          <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base" />
           <input
             type="text"
-            placeholder="Αναζήτηση ασθενή με όνομα, ΑΜΚΑ, τηλέφωνο, email"
-            className="w-full pl-2 pr-2 py-1.5 border border-gray-200 rounded-full text-xs focus:outline-none focus:ring-1 focus:ring-[#8c7c68] bg-white/60 backdrop-blur placeholder:text-gray-400"
+            placeholder="Αναζήτηση ασθενή με όνομα, ΑΜΚΑ, τηλέφωνο ή email"
+            className="w-full pl-11 pr-4 py-2 text-sm rounded-2xl bg-white/60 border border-gray-200 text-gray-700 placeholder:text-gray-400 shadow-inner backdrop-blur focus:outline-none focus:ring-2 focus:ring-[#8c7c68] transition-all"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-      </div>
-        {showFilters && (
-          <div className="bg-white/60 backdrop-blur-md border border-gray-100 rounded-xl p-4 mb-10 shadow-sm">
-            <h3 className="text-sm font-medium text-gray-700 mb-4">Φίλτρα</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Φύλο</label>
+          {showFilters && (
+          <div className="relative bg-white/70 backdrop-blur-md border border-[#e1dfda] rounded-2xl p-6 mb-10 shadow transition-all">
+            {/* X close button */}
+            <button
+              onClick={() => setShowFilters(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition"
+              title="Κλείσιμο φίλτρων"
+            >
+              <FiX className="w-5 h-5" />
+            </button>
+
+            {/* Header */}
+            <h3 className="text-base font-semibold text-[#4a4947] mb-8 tracking-tight flex items-center gap-2">
+              <HiAdjustmentsHorizontal className="text-[#8c7c68] w-5 h-5" />
+              Φίλτρα Αναζήτησης
+            </h3>
+
+            {/* Filter Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 items-center">
+              {/* Gender */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm text-gray-600">Φύλο</label>
                 <select
                   value={genderFilter}
                   onChange={(e) => setGenderFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#8c7c68] bg-white/80 backdrop-blur"
+                  className="w-full px-4 py-2 text-sm rounded-xl border border-gray-300 bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-[#8c7c68] transition"
                 >
                   <option value="">Όλα</option>
                   <option value="male">Άνδρας</option>
@@ -244,53 +289,90 @@ const clearHold = (type) => {
                   <option value="other">Άλλο</option>
                 </select>
               </div>
-              <div>
-  <label className="block text-xs text-gray-500 mb-1">Ηλικία</label>
-  <div className="flex items-center gap-1">
-    <button onMouseDown={() => handleHold('min', 'dec')} onMouseUp={() => clearHold('min')} onMouseLeave={() => clearHold('min')} className="px-2 py-1 bg-gray-200 rounded-full text-xs">
-      <FaMinus />
-    </button>
-    <input
-      type="number"
-      min="0"
-      max="100"
-      value={ageRange[0]}
-      onChange={(e) => {
-        const newMin = +e.target.value;
-        if (newMin <= ageRange[1]) setAgeRange([newMin, ageRange[1]]);
-      }}
-      className="w-14 px-2 py-1 border border-gray-300 rounded-md text-xs text-center"
-    />
-    <button onMouseDown={() => handleHold('min', 'inc')} onMouseUp={() => clearHold('min')} onMouseLeave={() => clearHold('min')} className="px-2 py-1 bg-gray-200 rounded-full text-xs">
-      <FaPlus />
-    </button>
-    <span className="text-gray-400">–</span>
-    <button onMouseDown={() => handleHold('max', 'dec')} onMouseUp={() => clearHold('max')} onMouseLeave={() => clearHold('max')} className="px-2 py-1 bg-gray-200 rounded-full text-xs">
-      <FaMinus />
-    </button>
-    <input
-      type="number"
-      min="0"
-      max="100"
-      value={ageRange[1]}
-      onChange={(e) => {
-        const newMax = +e.target.value;
-        if (newMax >= ageRange[0]) setAgeRange([ageRange[0], newMax]);
-      }}
-      className="w-14 px-2 py-1 border border-gray-300 rounded-md text-xs text-center"
-    />
-    <button onMouseDown={() => handleHold('max', 'inc')} onMouseUp={() => clearHold('max')} onMouseLeave={() => clearHold('max')} className="px-2 py-1 bg-gray-200 rounded-full text-xs">
-      <FaPlus />
-    </button>
-  </div>
-</div>
 
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Ταξινόμηση</label>
+              {/* Age Range */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm text-gray-600">Ηλικία</label>
+                    <div className="flex items-end gap-6">
+                      
+                      {/* Από */}
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="text-xs text-gray-500">Από</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onMouseDown={() => handleHold('min', 'dec')}
+                            onMouseUp={() => clearHold('min')}
+                            onMouseLeave={() => clearHold('min')}
+                            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
+                          >
+                            <FiMinus className="text-sm" />
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={ageRange[0]}
+                            onChange={(e) => {
+                              const newMin = +e.target.value;
+                              if (newMin <= ageRange[1]) setAgeRange([newMin, ageRange[1]]);
+                            }}
+                            className="w-14 px-2 py-1 text-center text-sm border border-gray-300 rounded-xl bg-white/70 backdrop-blur"
+                          />
+                          <button
+                            onMouseDown={() => handleHold('min', 'inc')}
+                            onMouseUp={() => clearHold('min')}
+                            onMouseLeave={() => clearHold('min')}
+                            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
+                          >
+                            <FiPlus className="text-sm" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Έως */}
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="text-xs text-gray-500">Έως</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onMouseDown={() => handleHold('max', 'dec')}
+                            onMouseUp={() => clearHold('max')}
+                            onMouseLeave={() => clearHold('max')}
+                            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
+                          >
+                            <FiMinus className="text-sm" />
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={ageRange[1]}
+                            onChange={(e) => {
+                              const newMax = +e.target.value;
+                              if (newMax >= ageRange[0]) setAgeRange([ageRange[0], newMax]);
+                            }}
+                            className="w-14 px-2 py-1 text-center text-sm border border-gray-300 rounded-xl bg-white/70 backdrop-blur"
+                          />
+                          <button
+                            onMouseDown={() => handleHold('max', 'inc')}
+                            onMouseUp={() => clearHold('max')}
+                            onMouseLeave={() => clearHold('max')}
+                            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
+                          >
+                            <FiPlus className="text-sm" />
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+
+              {/* Sort */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm text-gray-600">Ταξινόμηση</label>
                 <select
                   value={sortOption}
                   onChange={(e) => setSortOption(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#8c7c68] bg-white/80 backdrop-blur"
+                  className="w-full px-4 py-2 text-sm rounded-xl border border-gray-300 bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-[#8c7c68] transition"
                 >
                   <option value="">Καμία</option>
                   <option value="name">Αλφαβητικά</option>
@@ -300,36 +382,43 @@ const clearHold = (type) => {
                 </select>
               </div>
             </div>
-            <div className="mt-4 text-right">
+
+            {/* Reset Button */}
+            <div className="mt-8 text-right">
               <button
                 onClick={() => {
                   setGenderFilter('');
                   setAgeRange([0, 100]);
                   setSortOption('');
                 }}
-                className="text-xs px-4 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 border border-gray-300"
+                className="px-5 py-2 text-sm text-gray-600 border border-gray-300 bg-white rounded-xl hover:bg-gray-100 transition"
               >
                 Επαναφορά Φίλτρων
               </button>
             </div>
           </div>
+
           )}
+
 
         {loading ? (
           <p className="text-center text-gray-500 text-sm">Φόρτωση...</p>
         ) : (
           <div className="overflow-x-auto border border-gray-200 rounded-2xl shadow">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-[#f6f4f2] text-gray-700 uppercase tracking-wide text-xs">
+          <table className="min-w-full text-sm text-left text-gray-700">
+
+           <thead className="bg-[#f3f3f2] text-gray-600 uppercase text-xs tracking-wider shadow-sm">
+
                 <tr>
                   {['Όνομα', 'ΑΜΚΑ', 'Ηλικία', 'Φύλο', 'Τηλέφωνο', 'Email', 'Ενέργειες'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 bg-white">
+              <tbody className="bg-white divide-y divide-gray-100">
+
                 {filtered.map((p) => (
-                  <tr key={p.id} className="hover:bg-gray-50">
+                  <tr key={p.id}  className="hover:bg-[#f9f9f8] transition duration-200">
                     
                 <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
                       {highlightMatch(p.full_name, search)}
@@ -374,17 +463,21 @@ const clearHold = (type) => {
         {notesModalOpen && selectedPatient && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-y-auto py-10">
             <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-3xl mx-4">
-              <h2 className="text-xl font-semibold mb-4 text-center">Στοιχεία Ασθενούς</h2>
+              <h2 className="text-lg font-semibold text-center mb-4 flex items-center justify-center gap-2">
+                <FaStickyNote className="text-[#8c7c68]" />
+                Στοιχεία Ασθενούς
+              </h2>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
                 <p><strong>Ονοματεπώνυμο:</strong> {selectedPatient.full_name}</p>
                 <p><strong>ΑΜΚΑ:</strong> {selectedPatient.amka || '-'}</p>
                 <p><strong>Email:</strong> {selectedPatient.email || '-'}</p>
                 <p><strong>Τηλέφωνο:</strong> {selectedPatient.phone || '-'}</p>
-                <p><strong>Ημ. Γέννησης:</strong> {selectedPatient.birth_date || '-'}</p>
+                <p><strong>Ημ. Γέννησης:</strong> {formatDate(selectedPatient.birth_date) || '-'}</p>
                 <p><strong>Ηλικία:</strong> {calculateAge(selectedPatient.birth_date)}</p>
                 <p><strong>Φύλο:</strong> {selectedPatient.gender || '-'}</p>
                 <p><strong>Επάγγελμα:</strong> {selectedPatient.occupation || '-'}</p>
-                <p><strong>Ημ. Πρώτης Επίσκεψης:</strong> {selectedPatient.first_visit_date || '-'}</p>
+                <p><strong>Ημ. Πρώτης Επίσκεψης:</strong> {formatDate(selectedPatient.first_visit_date) || '-'}</p>
                 <p><strong>Οικογενειακή Κατάσταση:</strong> {selectedPatient.marital_status || '-'}</p>
                 <p><strong>Τέκνα:</strong> {selectedPatient.children || '-'}</p>
                 <p><strong>Κάπνισμα:</strong> {selectedPatient.smoking || '-'}</p>
@@ -400,9 +493,10 @@ const clearHold = (type) => {
                 <p><strong>Σημειώσεις:</strong></p>
                 <p className="whitespace-pre-wrap text-gray-600 mt-2">{selectedPatient.notes?.trim() || 'Δεν υπάρχουν σημειώσεις.'}</p>
               </div>
-              <p className="mt-4 text-xs text-gray-400 text-right">
-                Τελευταία ενημέρωση: {selectedPatient.updated_at ? new Date(selectedPatient.updated_at).toLocaleString('el-GR') : '-'}
-              </p>
+             <p className="mt-4 text-xs text-gray-400 text-right">
+                Τελευταία ενημέρωση: {formatDateTime(selectedPatient.updated_at) }
+             </p>
+
               <div className="flex justify-end gap-4 mt-6">
                 <button
                   onClick={() => setNotesModalOpen(false)}

@@ -69,7 +69,7 @@ export default function NewPatientPage() {
     };
     const preparedForm = {
       ...form,
-      gender: genderMap[form.gender] || null,
+
       smoking: form.smoking === 'Προσαρμογή' ? form.customSmoking : form.smoking,
       alcohol: form.alcohol === 'Προσαρμογή' ? form.customAlcohol : form.alcohol,
     };
@@ -116,8 +116,9 @@ export default function NewPatientPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-14">
-          <Section title="🧾 Στοιχεία Επικοινωνίας">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <Section title="🧾 Στοιχεία Ασθενούς">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 bg-white/60 backdrop-blur-md p-6 rounded-2xl shadow-md border border-gray-200">
+
               <InputField
                 name="full_name"
                 label="Ονοματεπώνυμο"
@@ -132,15 +133,15 @@ export default function NewPatientPage() {
               <InputField name="phone" label="Τηλέφωνο" placeholder="π.χ. 6981234567" value={form.phone} onChange={handleChange} />
               <InputField name="birth_date" label="Ημ. Γέννησης" type="date" value={form.birth_date} onChange={handleChange} />
               <SelectField
-                    name="gender"
-                    label="Φύλο"
-                    value={form.gender}
-                    onChange={handleChange}
-                    options={[
-                        { label: 'Άνδρας', value: 'male' },
-                        { label: 'Γυναίκα', value: 'female' },
-                        { label: 'Άλλο', value: 'other' }
-                    ]}
+                name="gender"
+                label="Φύλο"
+                value={form.gender}
+                onChange={handleChange}
+                options={[
+                  { label: 'Άνδρας', value: 'male' },
+                  { label: 'Γυναίκα', value: 'female' },
+                  { label: 'Άλλο', value: 'other' }
+                ]}
               />
               <InputField name="occupation" label="Επάγγελμα" value={form.occupation} onChange={handleChange} />
               <InputField name="first_visit_date" label="Ημ. Προσέλευσης" type="date" value={form.first_visit_date ?? ''} onChange={handleChange} />
@@ -151,17 +152,57 @@ export default function NewPatientPage() {
                 onChange={handleChange}
                 options={['Κανένα', '1 παιδί', '2 παιδιά', '3+ παιδιά']}
               />
-
               <SelectField
-                    name="marital_status"
-                    label="Οικογενειακή Κατάσταση"
-                    value={form.marital_status}
-                    onChange={handleChange}
-                    options={['Άγαμος/η', 'Έγγαμος/η', 'Διαζευγμένος/η', 'Χήρος/α']}
+                name="marital_status"
+                label="Οικογενειακή Κατάσταση"
+                value={form.marital_status}
+                onChange={handleChange}
+                options={['Άγαμος/η', 'Έγγαμος/η', 'Διαζευγμένος/η', 'Χήρος/α']}
               />
             </div>
-          </Section>
 
+            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 bg-white/60 backdrop-blur-md p-6 rounded-2xl shadow-md border border-gray-200">
+              <div className="space-y-4">
+                <SelectField
+                  name="smoking"
+                  label="Καπνιστής"
+                  value={form.smoking}
+                  onChange={handleChange}
+                  options={['Όχι', 'Περιστασιακά', 'Καθημερινά', 'Πρώην καπνιστής', 'Προσαρμογή']}
+                />
+                {form.smoking === 'Προσαρμογή' && (
+                  <InputField
+                    name="customSmoking"
+                    label="Προσαρμοσμένη Τιμή (Καπνιστής)"
+                    value={form.customSmoking}
+                    onChange={handleChange}
+                  />
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <SelectField
+                  name="alcohol"
+                  label="Κατανάλωση Αλκοόλ"
+                  value={form.alcohol}
+                  onChange={handleChange}
+                  options={['Όχι', 'Σπάνια', 'Συχνά', 'Καθημερινά', 'Προσαρμογή']}
+                />
+                {form.alcohol === 'Προσαρμογή' && (
+                  <InputField
+                    name="customAlcohol"
+                    label="Προσαρμοσμένη Τιμή (Αλκοόλ)"
+                    value={form.customAlcohol}
+                    onChange={handleChange}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 bg-white/60 backdrop-blur-md p-6 rounded-2xl shadow-md border border-gray-200">
+              <TextAreaField name="medications" label="Φάρμακα" value={form.medications} onChange={handleChange} />
+            </div>
+          </Section>
           <Section title="📋 Κλινικές Πληροφορίες">
             <div className="grid grid-cols-1 gap-6">
               <TextAreaField name="gynecological_history" label="Γυναικολογικό Ιστορικό" value={form.gynecological_history} onChange={handleChange} />
@@ -170,39 +211,6 @@ export default function NewPatientPage() {
               <TextAreaField name="physical_exam" label="Αντικειμενική Εξέταση" value={form.physical_exam} onChange={handleChange} />
               <TextAreaField name="preclinical_screening" label="Πάρακλινικός Έλεγχος" value={form.preclinical_screening} onChange={handleChange} />
               <TextAreaField name="notes" label="Σημειώσεις" value={form.notes} onChange={handleChange} />
-              <SelectField
-                name="smoking"
-                label="Καπνιστής"
-                value={form.smoking}
-                onChange={handleChange}
-                options={['Όχι', 'Περιστασιακά', 'Καθημερινά', 'Πρώην καπνιστής', 'Προσαρμογή']}
-                 />
-                {form.smoking === 'Προσαρμογή' && (
-                <InputField
-                    name="customSmoking"
-                    label="Προσαρμοσμένη Τιμή (Καπνιστής)"
-                    value={form.customSmoking}
-                    onChange={handleChange}
-                />
-              )}
-
-              <SelectField
-                name="alcohol"
-                label="Κατανάλωση Αλκοόλ"
-                value={form.alcohol}
-                onChange={handleChange}
-                options={['Όχι', 'Σπάνια', 'Συχνά', 'Καθημερινά', 'Προσαρμογή']}
-                />
-
-                {form.alcohol === 'Προσαρμογή' && (
-                <InputField
-                    name="customAlcohol"
-                    label="Προσαρμοσμένη Τιμή (Αλκοόλ)"
-                    value={form.customAlcohol}
-                    onChange={handleChange}
-                />
-                )}
-              <TextAreaField name="medications" label="Φάρμακα" value={form.medications} onChange={handleChange} />
             </div>
           </Section>
 

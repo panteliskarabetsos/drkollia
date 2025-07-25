@@ -171,9 +171,8 @@ const handleSubmit = async (e) => {
   }
 };
 
-
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#f9f9f9] px-4 py-12">
+    <main className="min-h-screen flex items-center justify-center bg-[#f9f9f9] px-14 py-12 ">
      <form onSubmit={handleSubmit} className="bg-white w-full max-w-2xl p-8 md:p-10 rounded-3xl shadow-lg border border-[#e4dfd4] transition-shadow hover:shadow-xl">
       <h2 className="text-3xl font-serif font-semibold mb-8 text-[#3b3a36] tracking-tight text-center">
           Καταχώρηση Ραντεβού
