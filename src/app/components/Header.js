@@ -82,7 +82,7 @@ export default function Header() {
           Γεωργία Κόλλια
         </h1>
         <p className="text-sm text-[#6f6d68] tracking-wide hidden sm:block">
-          Ενδοκρινολόγος - Διαβητολόγος
+          Ενδοκρινολογία - Διαβήτης - Μεταβολισμός
         </p>
       </Link>
 

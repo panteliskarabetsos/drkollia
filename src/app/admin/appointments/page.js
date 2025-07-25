@@ -28,6 +28,52 @@ export default function AdminAppointmentsPage() {
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const [viewMode, setViewMode] = useState('day'); // 'day', 'week', 'month'
   const [dateRange, setDateRange] = useState(undefined);
+    const filteredAppointments = appointments.filter((appt) => {
+      const apptDate = new Date(appt.appointment_time);
+
+      if (dateRange?.from && dateRange?.to) {
+        const from = new Date(dateRange.from);
+        from.setHours(0, 0, 0, 0);
+
+        const to = new Date(dateRange.to);
+        to.setHours(23, 59, 59, 999);
+
+        return apptDate >= from && apptDate <= to;
+      }
+
+      return isSameDay(apptDate, selectedDate);
+    });
+    const groupedAppointments = filteredAppointments.reduce((groups, appt) => {
+    const dateKey = new Date(appt.appointment_time).toLocaleDateString('el-GR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+
+    if (!groups[dateKey]) groups[dateKey] = [];
+    groups[dateKey].push(appt);
+    return groups;
+  }, {});
+
+const handleDeleteAppointment = async () => {
+  console.log('Deleting ID:', deleteTargetId);
+  const { data, error } = await supabase
+    .from('appointments')
+    .delete()
+    .eq('id', deleteTargetId);
+
+  if (error) {
+    console.error('Error deleting appointment:', error);
+    alert('Σφάλμα κατά τη διαγραφή.');
+  } else {
+    console.log('Appointment deleted:', data);
+    setAppointments(prev => prev.filter(a => a.id !== deleteTargetId));
+    setDeleteDialogOpen(false);
+    setDeleteTargetId(null);
+  }
+  
+};
+
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -94,6 +140,7 @@ export default function AdminAppointmentsPage() {
   if (loading) {
     return <main className="min-h-screen flex items-center justify-center">Φόρτωση...</main>;
   }
+  
 function calculateAge(birthDateStr) {
   if (!birthDateStr) return '-';
   const birthDate = new Date(birthDateStr);
@@ -187,115 +234,73 @@ function calculateAge(birthDateStr) {
     />
 
   </div>
-      {appointments.filter(appt => {
-        const apptDate = new Date(appt.appointment_time);
+  
+  {Object.keys(groupedAppointments).length === 0 ? (
+  <p className="text-center text-gray-500">
+    Δεν υπάρχουν ραντεβού για την επιλεγμένη {dateRange?.from && dateRange?.to ? 'περίοδο.' : 'ημερομηνία.'}
+  </p>
+) : (
+  Object.entries(groupedAppointments).map(([date, appts]) => (
+    <div key={date} className="mb-10">
+      <h2 className="text-lg font-semibold text-gray-700 mb-3">{date}</h2>
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm border-t border-gray-200">
+          <thead className="bg-gray-50 sticky top-0">
+            <tr className="text-left text-xs text-gray-500 uppercase tracking-wide">
+              <th className="px-4 py-3">Όνομα</th>
+              <th className="px-4 py-3">Τηλέφωνο</th>
+              <th className="px-4 py-3">ΑΜΚΑ</th>
+              <th className="px-4 py-3">Λόγος Επίσκεψης</th>
+              <th className="px-4 py-3">Ώρα</th>
+              <th className="px-4 py-3">Κατάσταση</th>
+              <th className="px-4 py-3 text-right">Ενέργειες</th>
+            </tr>
+          </thead>
+          <tbody>
+            {appts.map((appt, i) => {
+              const time = new Date(appt.appointment_time).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+              const statusColor = {
+                approved: 'bg-green-200 text-green-800',
+                rejected: 'bg-red-100 text-red-800',
+                scheduled: 'bg-yellow-100 text-yellow-800',
+              }[appt.status] || 'bg-gray-100 text-gray-700';
 
-        if (dateRange?.from && dateRange?.to) {
-          const from = new Date(dateRange.from);
-          from.setHours(0, 0, 0, 0);
-
-          const to = new Date(dateRange.to);
-          to.setHours(23, 59, 59, 999);
-
-          return apptDate >= from && apptDate <= to;
-        } else {
-          return isSameDay(apptDate, selectedDate);
-        }
-      }).length === 0 ? (
-        <p className="text-center text-gray-500">
-          Δεν υπάρχουν ραντεβού για την επιλεγμένη {dateRange?.from && dateRange?.to ? 'περίοδο.' : 'ημερομηνία.'}
-        </p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm border-t border-gray-200">
-            <thead className="bg-gray-50 sticky top-0">
-              <tr className="text-left text-xs text-gray-500 uppercase tracking-wide">
-                <th className="px-4 py-3">Όνομα</th>
-                <th className="px-4 py-3">Τηλέφωνο</th>
-                <th className="px-4 py-3">ΑΜΚΑ</th>
-                <th className="px-4 py-3">Λόγος Επίσκεψης</th>
-                <th className="px-4 py-3">Ημερομηνία</th>
-                <th className="px-4 py-3">Ώρα</th>
-                <th className="px-4 py-3">Κατάσταση</th>
-                <th className="px-4 py-3 text-right">Ενέργειες</th>
-              </tr>
-            </thead>
-            <tbody>
-          {appointments
-            .filter((appt) => {
-              const apptDate = new Date(appt.appointment_time);
-
-              if (dateRange?.from && dateRange?.to) {
-                const from = new Date(dateRange.from);
-                from.setHours(0, 0, 0, 0);
-
-                const to = new Date(dateRange.to);
-                to.setHours(23, 59, 59, 999);
-
-                return apptDate >= from && apptDate <= to;
-              }
-
-              return isSameDay(apptDate, selectedDate);
-            })
-            .sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time))
-            .map((appt, i) => {
-
-                  const date = new Date(appt.appointment_time);
-                  const formattedDate = date.toLocaleDateString();
-                  const formattedTime = date.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  });
-
-                  const statusColor = {
-                    approved: 'bg-green-100 text-green-800',
-                    rejected: 'bg-red-100 text-red-800',
-                    scheduled: 'bg-yellow-100 text-yellow-800',
-                  }[appt.status] || 'bg-gray-100 text-gray-700';
-
-                  return (
-                   <tr key={appt.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-              <td className="px-4 py-3 font-medium text-gray-800 flex items-center gap-2">
-                <span>{appt.patients?.full_name || '-'}</span>
-                {appt.patients?.id && (
-                  <button
-                    onClick={async () => {
-                      const { data, error } = await supabase
-                        .from('patients')
-                        .select('*')
-                        .eq('id', appt.patients.id)
-                        .single();
-
-                      if (!error) {
-                        setSelectedPatient(data);
-                        setNotesModalOpen(true);
-                      }
-                    }}
-                    title="Προβολή καρτέλας ασθενή"
-                    className="text-blue-600 hover:text-blue-800"
-                  >
-                    <FaStickyNote className="text-sm" />
-                  </button>
-                )}
-                  </td>
-
+              return (
+               <tr key={appt.id} className={i % 2 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-4 py-2"><strong>{appt.patients?.full_name || '-'}</strong>
+                            {appt.patients?.id && (
+                              <button
+                                onClick={async () => {
+                                  const { data, error } = await supabase
+                                    .from('patients')
+                                    .select('*')
+                                    .eq('id', appt.patients.id)
+                                    .single();
+                                  if (!error) {
+                                    setSelectedPatient(data);
+                                    setNotesModalOpen(true);
+                                  }
+                                }}
+                                title="Προβολή καρτέλας ασθενή"
+                                className="ml-2 text-blue-600 hover:text-blue-800"
+                              >
+                                <FaStickyNote className="inline-block text-sm" />
+                              </button>
+                            )}
+                          </td>
                   <td className="px-4 py-3 text-gray-600">{appt.patients?.phone || '-'}</td>
                   <td className="px-4 py-3 text-gray-600">{appt.patients?.amka || '-'}</td>
-                   <td className="px-4 py-3 text-gray-600">
-                    {appt.reason?.trim() || '-'}
-                  </td>
-                  <td className="px-4 py-3">{formattedDate}</td>
-                  <td className="px-4 py-3">{formattedTime}</td>
-
+                  <td className="px-4 py-3 text-gray-600">{appt.reason?.trim() || '-'}</td>
+                  <td className="px-4 py-3">{time}</td>
                   <td className="px-4 py-3">
-                    <span
-                      className={`inline-block text-xs px-2 py-1 rounded-full font-medium ${statusColor}`}
-                    >
+                    <span className={`inline-block text-xs px-2 py-1 rounded-full font-medium ${statusColor}`}>
                       {appt.status}
                     </span>
                   </td>
-
-            <td className="px-4 py-3 text-right">
+                   <td className="px-4 py-3 text-right">
               <div className="inline-flex items-center gap-2 flex-wrap justify-end">
 
                 {/* Σχόλια */}
@@ -365,13 +370,16 @@ function calculateAge(birthDateStr) {
                           )}
                          </div>
                        </td>
-                       </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-           </div>
-          )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  ))
+)}
+
             </div>
         {appointmentNoteModalOpen && (
           <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4 py-10">
@@ -496,52 +504,43 @@ function calculateAge(birthDateStr) {
           </div>
         </div>
       )}
-    {deleteDialogOpen && (
-      <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4">
-        <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md border border-gray-200">
-          
-          {/* Icon + Τίτλος */}
-          <div className="flex items-center gap-3 mb-4">
-            <div className="bg-red-100 text-red-600 p-2 rounded-full">
-              <Trash2 className="w-5 h-5" />
-            </div>
-            <h2 className=" text-lg font-semibold text-gray-800">Επιβεβαίωση Διαγραφής</h2>
-          </div>
-
-          <p className="text-sm text-gray-600 mb-6">
-            Θέλετε σίγουρα να διαγράψετε αυτό το ραντεβού; Η ενέργεια δεν μπορεί να αναιρεθεί.
-          </p>
-
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={() => setDeleteDialogOpen(false)}
-              className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
-            >
-              Άκυρο
-            </button>
-            <button
-              onClick={async () => {
-                const { error } = await supabase
-                  .from('appointments')
-                  .delete()
-                  .eq('id', deleteTargetId);
-
-                if (!error) {
-                  setAppointments(prev => prev.filter(a => a.id !== deleteTargetId));
-                  setDeleteDialogOpen(false);
-                } else {
-                  alert('Σφάλμα κατά τη διαγραφή.');
-                }
-              }}
-              className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-500 flex items-center gap-1"
-            >
-              <Trash2 className="w-4 h-4" />
-              Διαγραφή
-            </button>
-          </div>
+      
+  {deleteDialogOpen && (
+  <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4">
+    <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md border border-gray-200">
+      
+      {/* Icon + Τίτλος */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="bg-red-100 text-red-600 p-2 rounded-full">
+          <Trash2 className="w-5 h-5" />
         </div>
+        <h2 className="text-lg font-semibold text-gray-800">Επιβεβαίωση Διαγραφής</h2>
       </div>
-    )}
+
+      <p className="text-sm text-gray-600 mb-6">
+        Θέλετε σίγουρα να διαγράψετε αυτό το ραντεβού; Η ενέργεια δεν μπορεί να αναιρεθεί.
+      </p>
+
+      <div className="flex justify-end gap-3">
+        <button
+          onClick={() => setDeleteDialogOpen(false)}
+          className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+        >
+          Άκυρο
+        </button>
+        <button
+          onClick={handleDeleteAppointment}
+          className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-500 flex items-center gap-1"
+        >
+          <Trash2 className="w-4 h-4" />
+          Διαγραφή
+        </button>
+      </div>
+      
+    </div>
+    
+  </div>
+)}
 
   </main>
   );

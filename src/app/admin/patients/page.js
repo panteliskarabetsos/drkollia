@@ -3,9 +3,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { FaArrowLeft, FaEdit, FaTrash, FaStickyNote, FaFilter, FaSearch, FaMinus, FaPlus } from 'react-icons/fa';
+import { FaArrowLeft, FaEdit, FaTrash, FaStickyNote, FaFilter, FaSearch, FaMinus, FaPlus, FaHistory } from 'react-icons/fa';
 import { FiX, FiPlus, FiMinus } from 'react-icons/fi';
 import { HiAdjustmentsHorizontal } from 'react-icons/hi2';
+import { StickyNote, PencilLine, Trash2, ScrollText } from 'lucide-react';
+
 function removeDiacritics(str) {
   return str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 }
@@ -440,16 +442,42 @@ const clearHold = (type) => {
                     <td className="px-4 py-3 whitespace-nowrap">
                       {highlightMatch(p.email || '-', search)}
                     </td>
-                    <td className="px-4 py-3">
+                        <td className="px-4 py-3">
                       <div className="flex gap-2">
-                        <button onClick={() => handleViewNotes(p)} title="Σημειώσεις" className="p-2 rounded-full hover:bg-blue-100">
-                          <FaStickyNote className="text-blue-500 hover:text-blue-700 text-sm" />
+                        {/* Σημειώσεις */}
+                        <button
+                          onClick={() => handleViewNotes(p)}
+                          title="Σημειώσεις"
+                          className="p-2 rounded-full hover:bg-blue-100"
+                        >
+                          <StickyNote className="text-blue-500 hover:text-blue-700 w-4 h-4" />
                         </button>
-                        <button onClick={() => handleEdit(p)} title="Επεξεργασία" className="p-2 rounded-full hover:bg-green-100">
-                          <FaEdit className="text-green-500 hover:text-green-700 text-sm" />
+
+                        {/* Επεξεργασία */}
+                        <button
+                          onClick={() => handleEdit(p)}
+                          title="Επεξεργασία"
+                          className="p-2 rounded-full hover:bg-green-100"
+                        >
+                          <PencilLine className="text-green-500 hover:text-green-700 w-4 h-4" />
                         </button>
-                        <button onClick={() => handleDelete(p)} title="Διαγραφή" className="p-2 rounded-full hover:bg-red-100">
-                          <FaTrash className="text-red-500 hover:text-red-700 text-sm" />
+
+                        {/* Ιστορικό Επισκέψεων */}
+                        <button
+                          onClick={() => router.push(`/admin/patients/history/${p.id}`)}
+                          title="Ιστορικό Επισκέψεων"
+                          className="p-2 rounded-full hover:bg-purple-100"
+                        >
+                          <ScrollText className="text-purple-500 hover:text-purple-700 w-4 h-4" />
+                        </button>
+
+                        {/* Διαγραφή */}
+                        <button
+                          onClick={() => handleDelete(p)}
+                          title="Διαγραφή"
+                          className="p-2 rounded-full hover:bg-red-100"
+                        >
+                          <Trash2 className="text-red-500 hover:text-red-700 w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -487,7 +515,7 @@ const clearHold = (type) => {
                 <p><strong>Κληρονομικό Ιστορικό:</strong> {selectedPatient.hereditary_history || '-'}</p>
                 <p><strong>Παρούσα Νόσος:</strong> {selectedPatient.current_disease || '-'}</p>
                 <p><strong>Αντικειμενική Εξέταση:</strong> {selectedPatient.physical_exam || '-'}</p>
-                <p><strong>Πκλινικός Έλεγχος:</strong> {selectedPatient.preclinical_screening || '-'}</p>
+                <p><strong>Παράκλινικός Έλεγχος:</strong> {selectedPatient.preclinical_screening || '-'}</p>
               </div>
               <div className="mt-6 text-sm bg-gray-50 p-4 rounded">
                 <p><strong>Σημειώσεις:</strong></p>
