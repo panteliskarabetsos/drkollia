@@ -1,18 +1,22 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { supabase } from '../../../../lib/supabaseClient';
-import { Plus, Stethoscope, FileText, NotebookPen, X } from 'lucide-react';
+import { Plus, Stethoscope, FileText, NotebookPen, X, Trash2, Pencil, ArrowLeft, StickyNote } from 'lucide-react';
 
 export default function PatientHistoryPage() {
   const { id } = useParams();
+  const router = useRouter();
 
   const [visitNotes, setVisitNotes] = useState([]);
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [newVisit, setNewVisit] = useState({
     visit_date: '',
     physical_exam: '',
@@ -44,45 +48,104 @@ export default function PatientHistoryPage() {
     fetchHistory();
   }, [id]);
 
+  const refreshNotes = async () => {
+    const { data } = await supabase
+      .from('visit_notes')
+      .select('*')
+      .eq('patient_id', id)
+      .order('visit_date', { ascending: false });
+    setVisitNotes(data);
+  };
+
   const handleSubmit = async () => {
     if (!newVisit.visit_date) return;
 
-    const { error } = await supabase.from('visit_notes').insert({
-      ...newVisit,
-      patient_id: id,
-    });
+    if (editMode && editingId) {
+      await supabase.from('visit_notes').update({
+        ...newVisit
+      }).eq('id', editingId);
+    } else {
+      await supabase.from('visit_notes').insert({
+        ...newVisit,
+        patient_id: id,
+      });
+    }
 
-    if (!error) {
-      setModalOpen(false);
-      setNewVisit({ visit_date: '', physical_exam: '', preclinical_screening: '', notes: '' });
-      const { data } = await supabase
-        .from('visit_notes')
-        .select('*')
-        .eq('patient_id', id)
-        .order('visit_date', { ascending: false });
-      setVisitNotes(data);
+    setModalOpen(false);
+    setEditMode(false);
+    setEditingId(null);
+    setNewVisit({ visit_date: '', physical_exam: '', preclinical_screening: '', notes: '' });
+    refreshNotes();
+  };
+
+  const handleEdit = (note) => {
+    setNewVisit({
+      visit_date: note.visit_date.split('T')[0],
+      physical_exam: note.physical_exam,
+      preclinical_screening: note.preclinical_screening,
+      notes: note.notes
+    });
+    setEditingId(note.id);
+    setEditMode(true);
+    setModalOpen(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (confirm('Να διαγραφεί η επίσκεψη;')) {
+      await supabase.from('visit_notes').delete().eq('id', id);
+      refreshNotes();
     }
   };
+
+  const formatDate = (date) => date ? format(new Date(date), 'dd/MM/yyyy') : '-';
+
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return '-';
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const formatDateTime = (date) => date ? format(new Date(date), 'dd/MM/yyyy HH:mm') : '-';
 
   if (loading) return <main className="p-10">Φόρτωση ιστορικού...</main>;
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#f9f9f9] via-[#f4f1ec] to-[#e8e5de] px-6 py-12">
+    <main className="min-h-screen bg-gradient-to-br from-[#f9f9f9] via-[#f4f1ec] to-[#e8e5de] px-6 py-22">
       <div className="max-w-5xl mx-auto bg-white border border-gray-200 rounded-2xl shadow-xl p-6 md:p-10">
 
-        <div className="flex flex-col md:flex-row justify-between md:items-center mb-8 gap-4">
+    
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-semibold text-gray-800 mb-1">Ιστορικό Επισκέψεων</h1>
             <p className="text-sm text-gray-500">Ασθενής: <strong>{patient?.full_name}</strong></p>
           </div>
 
-          <button
-            onClick={() => setModalOpen(true)}
-            className="flex items-center gap-2 bg-[#8c7c68] hover:bg-[#6f6253] text-white text-sm px-4 py-2 rounded-xl shadow transition"
-          >
-            <Plus className="w-4 h-4" />
-            Καταχώρηση Επίσκεψης
-          </button>
+          <div className="flex flex-wrap gap-3 md:ml-auto">
+            <button
+              onClick={() => router.back()}
+              className="flex items-center gap-2 text-sm px-4 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+            >
+              <ArrowLeft className="w-4 h-4" /> Πίσω
+            </button>
+            <button
+              onClick={() => setNotesModalOpen(true)}
+              className="flex items-center gap-2 text-sm px-4 py-2 rounded-xl border border-[#c1b4a2] text-[#8c7c68] hover:bg-[#f3f0eb] transition"
+            >
+              <StickyNote className="w-4 h-4" /> Στοιχεία Ασθενούς
+            </button>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 bg-[#8c7c68] hover:bg-[#6f6253] text-white text-sm px-4 py-2 rounded-xl shadow transition"
+            >
+              <Plus className="w-4 h-4" /> Καταχώρηση Επίσκεψης
+            </button>
+          </div>
         </div>
 
         {visitNotes.length === 0 ? (
@@ -96,6 +159,14 @@ export default function PatientHistoryPage() {
                     <Stethoscope className="w-5 h-5 text-[#8c7c68]" />
                     Επίσκεψη στις {format(new Date(note.visit_date), 'dd/MM/yyyy')}
                   </h2>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEdit(note)} title="Επεξεργασία" className="p-2 rounded-full hover:bg-gray-100">
+                      <Pencil className="w-4 h-4 text-blue-600" />
+                    </button>
+                    <button onClick={() => handleDelete(note.id)} title="Διαγραφή" className="p-2 rounded-full hover:bg-gray-100">
+                      <Trash2 className="w-4 h-4 text-red-600" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="text-sm text-gray-700 space-y-3">
@@ -129,67 +200,58 @@ export default function PatientHistoryPage() {
         )}
       </div>
 
-      {modalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-xl shadow-lg max-w-lg w-full relative">
-            <button
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
-              onClick={() => setModalOpen(false)}
-            >
-              <X size={20} />
-            </button>
-            <h2 className="text-lg font-semibold mb-4 text-center">Καταχώρηση Νέας Επίσκεψης</h2>
-
-            <div className="flex flex-col gap-4 text-sm">
-              <div>
-                <label className="block text-gray-600 mb-1">Ημερομηνία</label>
-                <input
-                  type="date"
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  value={newVisit.visit_date}
-                  onChange={(e) => setNewVisit({ ...newVisit, visit_date: e.target.value })}
-                />
+   {notesModalOpen && patient && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-y-auto py-10">
+            <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-3xl mx-4">
+              <h2 className="text-lg font-semibold text-center mb-4 flex items-center justify-center gap-2">
+                <StickyNote className="text-[#8c7c68] w-5 h-5" />
+                Στοιχεία Ασθενούς
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+                <p><strong>Ονοματεπώνυμο:</strong> {patient.full_name}</p>
+                <p><strong>ΑΜΚΑ:</strong> {patient.amka || '-'}</p>
+                <p><strong>Email:</strong> {patient.email || '-'}</p>
+                <p><strong>Τηλέφωνο:</strong> {patient.phone || '-'}</p>
+                <p><strong>Ημ. Γέννησης:</strong> {formatDate(patient.birth_date)}</p>
+                <p><strong>Ηλικία:</strong> {calculateAge(patient.birth_date)}</p>
+                <p><strong>Φύλο:</strong> {patient.gender || '-'}</p>
+                <p><strong>Επάγγελμα:</strong> {patient.occupation || '-'}</p>
+                <p><strong>Ημ. Πρώτης Επίσκεψης:</strong> {formatDate(patient.first_visit_date)}</p>
+                <p><strong>Οικογενειακή Κατάσταση:</strong> {patient.marital_status || '-'}</p>
+                <p><strong>Τέκνα:</strong> {patient.children || '-'}</p>
+                <p><strong>Κάπνισμα:</strong> {patient.smoking || '-'}</p>
+                <p><strong>Αλκοόλ:</strong> {patient.alcohol || '-'}</p>
+                <p><strong>Φάρμακα:</strong> {patient.medications || '-'}</p>
+                <p><strong>Γυναικολογικό Ιστορικό:</strong> {patient.gynecological_history || '-'}</p>
+                <p><strong>Κληρονομικό Ιστορικό:</strong> {patient.hereditary_history || '-'}</p>
+                <p><strong>Παρούσα Νόσος:</strong> {patient.current_disease || '-'}</p>
+                <p><strong>Αντικειμενική Εξέταση:</strong> {patient.physical_exam || '-'}</p>
+                <p><strong>Παράκλινικός Έλεγχος:</strong> {patient.preclinical_screening || '-'}</p>
               </div>
-              <div>
-                <label className="block text-gray-600 mb-1">Αντικειμενική Εξέταση</label>
-                <textarea
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  rows="3"
-                  value={newVisit.physical_exam}
-                  onChange={(e) => setNewVisit({ ...newVisit, physical_exam: e.target.value })}
-                />
+              <div className="mt-6 text-sm bg-gray-50 p-4 rounded">
+                <p><strong>Σημειώσεις:</strong></p>
+                <p className="whitespace-pre-wrap text-gray-600 mt-2">{patient.notes?.trim() || 'Δεν υπάρχουν σημειώσεις.'}</p>
               </div>
-              <div>
-                <label className="block text-gray-600 mb-1">Παρακλινικός Έλεγχος</label>
-                <textarea
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  rows="3"
-                  value={newVisit.preclinical_screening}
-                  onChange={(e) => setNewVisit({ ...newVisit, preclinical_screening: e.target.value })}
-                />
+              <p className="mt-4 text-xs text-gray-400 text-right">
+                Τελευταία ενημέρωση: {formatDateTime(patient.updated_at)}
+              </p>
+              <div className="flex justify-end gap-4 mt-6">
+                <button
+                  onClick={() => setNotesModalOpen(false)}
+                  className="px-4 py-2 text-sm bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                >Κλείσιμο</button>
+                <button
+                  onClick={() => {
+                    setNotesModalOpen(false);
+                    router.push(`/admin/patients/${patient.id}`);
+                  }}
+                  className="px-4 py-2 text-sm bg-[#8c7c68] text-white rounded hover:bg-[#6f6253]"
+                >Επεξεργασία</button>
               </div>
-              <div>
-                <label className="block text-gray-600 mb-1">Σημειώσεις</label>
-                <textarea
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  rows="3"
-                  value={newVisit.notes}
-                  onChange={(e) => setNewVisit({ ...newVisit, notes: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="mt-6 text-right">
-              <button
-                onClick={handleSubmit}
-                className="bg-[#8c7c68] text-white px-5 py-2 rounded-xl hover:bg-[#6f6253] transition"
-              >
-                Αποθήκευση
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      
     </main>
   );
 }

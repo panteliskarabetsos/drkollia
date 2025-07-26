@@ -209,7 +209,7 @@ const clearHold = (type) => {
   return (
   <main className="min-h-screen bg-gradient-to-br from-[#f7f5f2] via-[#ece9e6] to-[#dcd8d3] text-[#3a3a38] font-sans">
 
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-7xl mx-auto px-6 py-26">
       {/* Header Actions */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6 mb-10">
           {/* Left Buttons */}
