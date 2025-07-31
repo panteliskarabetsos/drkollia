@@ -39,7 +39,7 @@ export default function LegalPage() {
 
         {/* Contact */}
         <p className="text-sm text-slate-500">
-          Για οποιαδήποτε νομική απορία, επικοινωνήστε στο{" "}
+          Για οποιαδήποτε απορία, επικοινωνήστε στο{" "}
           <a
             href="mailto:gokollia@gmail.com"
             className="text-blue-600 hover:underline"
