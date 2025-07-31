@@ -2,7 +2,7 @@ import { Noto_Serif } from "next/font/google";
 import "./globals.css";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
-
+import { Analytics } from "@vercel/analytics/next";
 const notoSerif = Noto_Serif({
   subsets: ["latin"],
   weight: ["400", "700"],
@@ -12,7 +12,8 @@ const notoSerif = Noto_Serif({
 
 export const metadata = {
   title: "Γεωργία Κόλλια - Ενδοκρινολόγος - Διαβητολόγος",
-  description: "Ενδοκρινολόγος - Διαβητολόγος | Ορμονική Υγεία & Φροντίδα Διαβήτη",
+  description:
+    "Ενδοκρινολόγος - Διαβητολόγος | Ορμονική Υγεία & Φροντίδα Διαβήτη",
 };
 
 export default function RootLayout({ children }) {
