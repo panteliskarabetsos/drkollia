@@ -19,6 +19,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="el" className="h-full">
+      <SpeedInsights />
       <body
         className={`
           ${notoSerif.variable}
