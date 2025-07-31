@@ -63,12 +63,6 @@ export default function AdminPage() {
       icon: <Clock className="w-5 h-5 text-[#3a3a38]" />,
     },
     {
-      title: 'Μηνύματα',
-      description: 'Μηνύματα από τη φόρμα επικοινωνίας.',
-      href: '/admin/messages',
-      icon: <MessageCircle className="w-5 h-5 text-[#3a3a38]" />,
-    },
-    {
       title: 'Πρόσβαση',
       description: 'Διαχείριση λογαριασμών διαχειριστών.',
       href: '/admin/accounts',
