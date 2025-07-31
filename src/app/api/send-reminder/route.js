@@ -1,6 +1,10 @@
 import nodemailer from 'nodemailer';
 import { createClient } from '@supabase/supabase-js';
 
+export const config = {
+  schedule: '0 8 * * *', // κάθε μέρα 08:00 UTC (11:00 Ελλάδας το καλοκαίρι)
+};
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
