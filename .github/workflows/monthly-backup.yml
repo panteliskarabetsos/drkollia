@@ -2,46 +2,44 @@ name: Monthly Supabase Backup
 
 on:
   schedule:
-    - cron: "0 0 1 * *" # Run at 00:00 on the 1st of every month
-  workflow_dispatch: # Allow manual runs
+    - cron: "0 2 1 * *" # 2 π.μ. UTC κάθε 1η του μήνα
+  workflow_dispatch: # Μπορείς να το τρέχεις και χειροκίνητα
 
 jobs:
   backup:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install PostgreSQL 17
+      - name: Install PostgreSQL 17 client
         run: |
           echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          curl -s https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
           sudo apt-get update
-          sudo apt-get -y install postgresql-client-17
+          sudo apt-get install -y postgresql-client-17
 
-      - name: Confirm correct pg_dump version
-        run: /usr/lib/postgresql/17/bin/pg_dump --version
-
-      - name: Set up environment
-        run: mkdir -p db_backups
-
-      - name: Dump PostgreSQL database
+      - name: Dump Supabase Database
         env:
           PGPASSWORD: ${{ secrets.PGPASSWORD }}
         run: |
-          /usr/lib/postgresql/17/bin/pg_dump \
+          pg_dump \
             --host=${{ secrets.PGHOST }} \
             --port=${{ secrets.PGPORT }} \
             --username=${{ secrets.PGUSER }} \
             --dbname=${{ secrets.PGDATABASE }} \
-            --format=plain \
-            --no-owner \
-            --no-privileges \
-            > db_backups/supabase-backup-$(date +'%Y-%m-%d').sql
+            --format=custom \
+            --file=backup-$(date +'%Y-%m').dump
 
-      - name: Compress backup
-        run: gzip db_backups/*.sql
+      # (Προαιρετικό upload – διάλεξε μία από τις παρακάτω επιλογές)
 
-      - name: Upload backup as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: supabase-backup-${{ github.run_id }}
-          path: db_backups/*.gz
+      # - name: Upload to GitHub Artifacts
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: supabase-backup
+      #     path: backup-*.dump
+
+      # - name: Upload to Supabase storage (π.χ. σε bucket)
+      #   run: |
+      #     curl -X POST "https://your-project-id.supabase.co/storage/v1/object/${{ secrets.SUPABASE_BACKUP_BUCKET }}/backup-$(date +'%Y-%m').dump" \
+      #       -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+      #       -H "Content-Type: application/octet-stream" \
+      #       --data-binary @backup-$(date +'%Y-%m').dump
