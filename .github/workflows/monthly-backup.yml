@@ -2,25 +2,32 @@ name: Monthly Supabase Backup
 
 on:
   schedule:
-    - cron: "0 0 1 * *" # Run monthly
-  workflow_dispatch:
+    - cron: "0 0 1 * *" # Κάθε 1η του μήνα, 00:00
+  workflow_dispatch: # Επιτρέπει χειροκίνητη εκτέλεση
 
 jobs:
   backup:
     runs-on: ubuntu-latest
 
-    container:
-      image: postgres:17
-
     steps:
-      - name: Create backup folder
+      - name: Install PostgreSQL 17
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get -y install postgresql-client-17
+
+      - name: Confirm pg_dump version
+        run: pg_dump --version
+
+      - name: Set up environment
         run: mkdir -p db_backups
 
       - name: Dump PostgreSQL database
         env:
           PGPASSWORD: ${{ secrets.PGPASSWORD }}
         run: |
-          pg_dump \
+          /usr/lib/postgresql/17/bin/pg_dump \
             --host=${{ secrets.PGHOST }} \
             --port=${{ secrets.PGPORT }} \
             --username=${{ secrets.PGUSER }} \
@@ -33,7 +40,7 @@ jobs:
       - name: Compress backup
         run: gzip db_backups/*.sql
 
-      - name: Upload backup
+      - name: Upload backup as artifact
         uses: actions/upload-artifact@v4
         with:
           name: supabase-backup-${{ github.run_id }}
