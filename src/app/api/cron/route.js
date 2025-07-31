@@ -15,8 +15,15 @@ export async function GET(req) {
   }
 
   const now = new Date();
-  const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  const in25h = new Date(now.getTime() + 25 * 60 * 60 * 1000); // π.χ. περιθώριο 1 ώρας
+
+  // Υπολογισμός αυριανής ημερομηνίας (00:00)
+  const startOfTomorrow = new Date(now);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+  startOfTomorrow.setHours(0, 0, 0, 0);
+
+  // Τέλος αυριανής ημέρας (23:59:59)
+  const endOfTomorrow = new Date(startOfTomorrow);
+  endOfTomorrow.setHours(23, 59, 59, 999);
 
   const { data: appointments, error } = await supabase
     .from("appointments")
@@ -24,8 +31,8 @@ export async function GET(req) {
       "id, appointment_time, reason, patients (first_name, last_name, email)"
     )
     .eq("status", "approved")
-    .gte("appointment_time", in24h.toISOString())
-    .lte("appointment_time", in25h.toISOString());
+    .gte("appointment_time", startOfTomorrow.toISOString())
+    .lte("appointment_time", endOfTomorrow.toISOString());
 
   if (error) {
     console.error("Supabase error:", error.message);
@@ -114,7 +121,6 @@ export async function GET(req) {
                             </p>
                         </td>
                         </tr>
-
                         <tr>
                         <td align="center" style="background-color:#f2f2f2;padding:15px;color:#888;font-size:13px;border-top:1px solid #ddd;">
                             Το παρόν μήνυμα αποστέλλεται αυτόματα από το σύστημα κρατήσεων του ιατρείου.<br/>

@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Noto_Serif } from "next/font/google";
 import Header from "./components/Header";
-
+import { Clock } from "lucide-react";
 const notoSerif = Noto_Serif({ subsets: ["latin"], weight: ["400", "700"] });
 
 export default function Home() {
@@ -125,17 +125,37 @@ export default function Home() {
       <div className="w-full h-[2px] bg-gradient-to-r from-transparent via-[#d8d2c8] to-transparent " />
 
       {/* --- Section: Ώρες Λειτουργίας --- */}
-      <section className="py-24 px-6 bg-[#faf7f3] animate-fadeInUp duration-1000">
+      <section className="py-14 px-6 bg-[#faf7f3] animate-fadeInUp duration-1000">
         <div className="max-w-4xl mx-auto text-center space-y-6">
-          <h2 className="text-3xl font-semibold tracking-tight">
+          {/* Icon */}
+          <div className="flex justify-center">
+            <div className="p-3 bg-[#f3eee6] rounded-full shadow-md">
+              <Clock className="w-8 h-8 text-[#a78b64]" />
+            </div>
+          </div>
+
+          {/* Τίτλος */}
+          <h2 className="text-3xl md:text-4xl font-serif font-semibold tracking-tight text-[#2f2e2c]">
             Ώρες Λειτουργίας Ιατρείου
           </h2>
-          <div className="text-lg text-[#4a4944] leading-relaxed">
-            <p>Δευτέρα: 10:00 - 12:30 & 17:30 - 20:30</p>
-            <p>Τρίτη: 17:30 - 20:30</p>
-            <p>Τετάρτη: 10:00 - 12:30</p>
-            <p>Πέμπτη: 10:00 - 12:30 & 17:30 - 20:30</p>
-            <p>Παρασκευή, Σάββατο & Κυριακή: Κλειστά</p>
+
+          {/* Ώρες */}
+          <div className="text-lg text-[#4a4944] leading-relaxed space-y-1">
+            <p>
+              <strong>Δευτέρα:</strong> 10:00 - 12:30 & 17:30 - 20:30
+            </p>
+            <p>
+              <strong>Τρίτη:</strong> 17:30 - 20:30
+            </p>
+            <p>
+              <strong>Τετάρτη:</strong> 10:00 - 12:30
+            </p>
+            <p>
+              <strong>Πέμπτη:</strong> 10:00 - 12:30 & 17:30 - 20:30
+            </p>
+            <p>
+              <strong>Παρασκευή, Σάββατο & Κυριακή:</strong> Κλειστά
+            </p>
             <p className="mt-4 text-sm italic text-[#6a6257]">
               *Κατόπιν ραντεβού
             </p>
