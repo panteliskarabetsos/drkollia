@@ -36,7 +36,7 @@ export default function Home() {
             Θυρεοειδής, ορμόνες, μεταβολισμός — με φροντίδα.
           </p>
           <Link
-            href="/contact"
+            href="/appointments"
             className="inline-block text-[#3b3a36] border border-[#3b3a36] px-6 py-2 rounded-full hover:bg-[#3b3a36] hover:text-white transition"
           >
             Κλείστε Ραντεβού
