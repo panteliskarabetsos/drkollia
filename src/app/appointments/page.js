@@ -510,15 +510,32 @@ const handleSubmit = async (e) => {
       duration_minutes: duration,
       reason: formData.reason === 'Προσαρμογή' ? formData.customReason : formData.reason,
       notes: formData.notes,
-      status: 'pending'
+      status: 'approved'
     }]);
 
     if (error) {
       console.error('❌ Appointment insert error:', error);
       alert(`Σφάλμα κατά την καταχώρηση ραντεβού:\n${error.message}`);
     } else {
-      alert('Το αίτημά σας καταχωρήθηκε με επιτυχία και θα εξεταστεί σύντομα.');
-      router.push('/');
+        try {
+            if (newPatientData.email) {
+              await fetch('/api/send-confirmation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  email: newPatientData.email,
+                  name: newPatientData.first_name,
+                  date: combinedDate.toISOString(),
+                  time: formData.appointment_time,
+                  reason: formData.reason === 'Προσαρμογή' ? formData.customReason : formData.reason,
+                }),
+              });
+            }
+          } catch (err) {
+            console.error(' Σφάλμα αποστολής email επιβεβαίωσης:', err);
+          }
+      router.push(`/appointments/success?ref=ok&name=${encodeURIComponent(newPatientData.first_name)}&date=${combinedDate.toISOString()}&reason=${encodeURIComponent(formData.reason)}`);
+
     }
 
   } catch (err) {

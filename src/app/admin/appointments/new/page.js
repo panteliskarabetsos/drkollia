@@ -55,7 +55,18 @@ export default function NewAppointmentPage() {
   const [allScheduleSlots, setAllScheduleSlots] = useState([]);
   const [visitorCount, setVisitorCount] = useState(null);
   const [showVisitorMessage, setShowVisitorMessage] = useState(false);
+const filteredPatients = patients.filter((p) => {
+    const term = normalizeGreekText(searchTerm);
+    const fullName = normalizeGreekText(`${p.first_name} ${p.last_name}`);
+    const amka = p.amka || '';
+    const phone = p.phone || '';
 
+    return (
+      fullName.includes(term) ||
+      amka.includes(term) ||
+      phone.includes(term)
+    );
+  });
   const router = useRouter();
 
   const greekLocale = {
@@ -303,23 +314,21 @@ const handleSubmit = async (e) => {
   setIsSubmitting(true);
 
   try {
-  const duration = formData.duration_minutes === 'custom'
-    ? parseInt(formData.customDuration || '', 10)
-    : parseInt(formData.duration_minutes, 10);
-
+    const duration = formData.duration_minutes === 'custom'
+      ? parseInt(formData.customDuration || '', 10)
+      : parseInt(formData.duration_minutes, 10);
 
     if (isNaN(duration) || duration <= 0) {
       alert('Η διάρκεια του ραντεβού δεν είναι έγκυρη.');
       return;
     }
+
     const [hour, minute] = formData.appointment_time.split(':').map(Number);
     const combinedDate = new Date(formData.appointment_date);
     combinedDate.setHours(hour, minute, 0, 0);
 
     // === Ειδικός έλεγχος για Ιατρικό Επισκέπτη ===
     if (formData.reason === 'Ιατρικός Επισκέπτης') {
-
-
       if (!formData.appointment_date || !formData.appointment_time || !searchTerm.trim()) {
         alert('Πρέπει να συμπληρωθούν όλα τα απαραίτητα πεδία (Ημερομηνία, Ώρα, Όνομα Επισκέπτη).');
         return;
@@ -330,7 +339,7 @@ const handleSubmit = async (e) => {
           patient_id: null,
           appointment_time: combinedDate.toISOString(),
           duration_minutes: duration,
-         reason: 'Ιατρικός Επισκέπτης',
+          reason: 'Ιατρικός Επισκέπτης',
           notes: `Εταιρεία: ${searchTerm.trim()}\n${formData.notes || ''}`.trim(),
           status: 'approved'
         }
@@ -343,11 +352,13 @@ const handleSubmit = async (e) => {
         router.push('/admin/appointments');
       }
 
-      return; // τερματισμός εδώ
+      return;
     }
 
     // === Δημιουργία νέου ασθενούς αν χρειάζεται ===
     let patientId = selectedPatient?.id;
+    let email = null;
+    let name = '';
 
     if (newPatientMode) {
       const trimmedAmka = newPatientData.amka?.trim();
@@ -383,6 +394,11 @@ const handleSubmit = async (e) => {
       }
 
       patientId = data[0].id;
+      email = newPatientData.email;
+      name = `${newPatientData.first_name} ${newPatientData.last_name}`;
+    } else {
+      email = selectedPatient?.email;
+      name = `${selectedPatient?.first_name} ${selectedPatient?.last_name}`;
     }
 
     // === Έλεγχος πεδίων ===
@@ -390,8 +406,6 @@ const handleSubmit = async (e) => {
       alert('Πρέπει να συμπληρωθούν όλα τα απαραίτητα πεδία.');
       return;
     }
-
-
 
     const { error } = await supabase.from('appointments').insert([
       {
@@ -408,8 +422,24 @@ const handleSubmit = async (e) => {
       console.error('Appointment insert error:', error);
       alert('Σφάλμα κατά την καταχώρηση ραντεβού.');
     } else {
+      // ✅ Αποστολή email επιβεβαίωσης σε ασθενή (νέο ή υπάρχον)
+      if (email) {
+          await fetch('/api/send-confirmation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              name,
+              date: formData.appointment_date.toISOString(),
+              time: formData.appointment_time,
+              reason: formData.reason === 'Προσαρμογή' ? formData.customReason : formData.reason,
+            }),
+          });
+      }
+
       router.push('/admin/appointments');
     }
+
   } catch (err) {
     console.error('Σφάλμα:', err);
     alert('Προέκυψε σφάλμα.');

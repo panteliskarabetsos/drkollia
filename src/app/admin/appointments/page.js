@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { Calendar } from '@/components/ui/calendar';
 import { format, isSameDay } from 'date-fns';
 import { Plus, ArrowLeft, UserCircle, Trash2, StickyNote,Check,X,Ban,AlertTriangle,IdCard } from 'lucide-react';
-
+import { el } from 'date-fns/locale';
 
 export default function AdminAppointmentsPage() {
   
@@ -48,7 +48,13 @@ useEffect(() => {
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const [viewMode, setViewMode] = useState('day'); // 'day', 'week', 'month'
   const [dateRange, setDateRange] = useState(undefined);
-  
+  const greekLocale = {
+  ...el,
+  options: {
+    ...el.options,
+    weekStartsOn: 1, // Ξεκινά η εβδομάδα από Δευτέρα
+  },
+};
     const filteredAppointments = appointments.filter((appt) => {
       const apptDate = new Date(appt.appointment_time);
 
@@ -141,20 +147,46 @@ const handleDeleteAppointment = async () => {
 }, [sessionExists]);
 
 
-  const updateStatus = async (id, status) => {
-    const { error } = await supabase
-      .from('appointments')
-      .update({ status })
-      .eq('id', id);
+const updateStatus = async (id, status) => {
+  const appointment = appointments.find(app => app.id === id);
+  if (!appointment) return;
 
-    if (!error) {
-      setAppointments(prev =>
-        prev.map(app => (app.id === id ? { ...app, status } : app))
-      );
-    } else {
-      alert('Σφάλμα κατά την ενημέρωση.');
+  const { error } = await supabase
+    .from('appointments')
+    .update({ status })
+    .eq('id', id);
+
+  if (error) {
+    alert('Σφάλμα κατά την ενημέρωση.');
+    return;
+  }
+
+  // Ενημέρωση τοπικού state
+  setAppointments(prev =>
+    prev.map(app => (app.id === id ? { ...app, status } : app))
+  );
+
+  // Αν είναι ακύρωση, στείλε email
+  if (status === 'cancelled' && appointment.patients?.email) {
+    try {
+      await fetch('/api/send-cancellation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: appointment.patients.email,
+          name: `${appointment.patients.first_name} ${appointment.patients.last_name}`,
+          date: appointment.appointment_time,
+          reason: appointment.reason,
+        }),
+      });
+    } catch (err) {
+      console.error('❌ Σφάλμα αποστολής email ακύρωσης:', err);
     }
-  };
+  }
+};
+
+
+
 if (!sessionChecked) return <main className="min-h-screen flex items-center justify-center">Έλεγχος σύνδεσης...</main>;
 if (!sessionExists) return null;
 
@@ -248,9 +280,16 @@ function calculateAge(birthDateStr) {
     {/* Δεξιά - Calendar */}
     <Calendar
       mode="range"
+         locale={greekLocale}
       selected={dateRange}
       onSelect={setDateRange}
-      disabled={{ before: new Date() }}
+        disabled={{ before: new Date() }}
+                  modifiers={{
+                  weekend: (date) => [0, 6].includes(date.getDay()), // Κυριακή = 0, Σάββατο = 6
+                }}
+                modifiersClassNames={{
+                  weekend: 'text-gray-400 opacity-60', // πιο "faded"
+                }}
       className="rounded-md border border-gray-200 shadow"
     />
 
