@@ -41,6 +41,7 @@ export async function GET(req) {
   });
 
   let sentCount = 0;
+  const name = patients?.name || "Ασθενής";
 
   for (const appointment of appointments) {
     const { patients, appointment_time, reason } = appointment;
