@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { Calendar } from "@/components/ui/calendar";
 import { format, isSameDay } from "date-fns";
+import * as XLSX from "xlsx";
+
 import {
   Plus,
   ArrowLeft,
@@ -16,6 +18,8 @@ import {
   Ban,
   AlertTriangle,
   IdCard,
+  FileDown,
+  Printer,
 } from "lucide-react";
 import { el } from "date-fns/locale";
 
@@ -153,13 +157,6 @@ export default function AdminAppointmentsPage() {
     }
   };
 
-  // useEffect(() => {
-  //   const interval = setInterval(() => {
-  //     setCurrentTime(new Date());
-  //   }, 1000);
-  //   return () => clearInterval(interval);
-  // }, []);
-
   useEffect(() => {
     const fetchAppointments = async () => {
       const { data, error } = await supabase
@@ -252,6 +249,130 @@ export default function AdminAppointmentsPage() {
       </main>
     );
   }
+
+  const handleDownloadExcel = (appointments) => {
+    if (!Array.isArray(appointments)) {
+      console.error("appointments is not an array:", appointments);
+      return;
+    }
+
+    const groupedByDate = appointments.reduce((acc, appt) => {
+      const date = new Date(appt.appointment_time)
+        .toLocaleDateString("el-GR")
+        .replace(/\//g, "-");
+      if (!acc[date]) acc[date] = [];
+      acc[date].push(appt);
+      return acc;
+    }, {});
+
+    const workbook = XLSX.utils.book_new();
+
+    // Συλλογή όλων των ημερομηνιών
+    const allDates = Object.keys(groupedByDate).sort((a, b) => {
+      const [d1, m1, y1] = a.split("-").map(Number);
+      const [d2, m2, y2] = b.split("-").map(Number);
+      return new Date(y1, m1 - 1, d1) - new Date(y2, m2 - 1, d2);
+    });
+
+    for (const date of allDates) {
+      const data = groupedByDate[date].map((appt) => ({
+        Ασθενής: `${appt.patients?.last_name ?? ""} ${
+          appt.patients?.first_name ?? ""
+        }`,
+        Τηλέφωνο: appt.patients?.phone ?? "",
+        ΑΜΚΑ: appt.patients?.amka ?? "",
+        Ημερομηνία: new Date(appt.appointment_time).toLocaleDateString("el-GR"),
+        Ώρα: new Date(appt.appointment_time).toLocaleTimeString("el-GR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        "Διάρκεια (λεπτά)": appt.duration_minutes,
+        Κατάσταση: appt.status,
+        "Λόγος Επίσκεψης": appt.reason ?? "",
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(data);
+
+      // Auto-width
+      const maxColWidths = data.reduce((widths, row) => {
+        Object.values(row).forEach((val, i) => {
+          const len = String(val).length;
+          widths[i] = Math.max(widths[i] || 10, len);
+        });
+        return widths;
+      }, []);
+      worksheet["!cols"] = maxColWidths.map((w) => ({ wch: w + 5 }));
+      worksheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, date);
+    }
+
+    // Τίτλος αρχείου με εύρος ημερομηνιών
+    const filename =
+      allDates.length === 1
+        ? `appointments_${allDates[0]}.xlsx`
+        : `appointments_${allDates[0]}_${allDates[allDates.length - 1]}.xlsx`;
+
+    XLSX.writeFile(workbook, filename);
+  };
+  const handlePrint = () => {
+    const originalContent = document.getElementById("printable-content");
+    if (!originalContent) return;
+
+    // Clone the content so we can safely modify it
+    const clonedContent = originalContent.cloneNode(true);
+
+    // Remove elements with class "no-print" or "print:hidden"
+    const elementsToRemove = clonedContent.querySelectorAll(
+      ".no-print, .print\\:hidden"
+    );
+    elementsToRemove.forEach((el) => el.remove());
+
+    const printWindow = window.open("", "", "width=800,height=600");
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+    <html lang="el">
+    <head>
+      <title>Εκτύπωση Ραντεβού</title>
+      <style>
+        body {
+          font-family: "Noto Serif", serif;
+          padding: 20px;
+          color: #333;
+        }
+        h2 {
+          text-align: center;
+          margin-bottom: 30px;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 40px;
+        }
+        th, td {
+          border: 1px solid #ccc;
+          padding: 10px;
+          text-align: left;
+          font-size: 14px;
+        }
+        th {
+          background-color: #f0ede7;
+        }
+      </style>
+    </head>
+    <body>
+      <h2>Λίστα Ραντεβού</h2>
+      ${clonedContent.innerHTML}
+    </body>
+    </html>
+  `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  };
 
   function calculateAge(birthDateStr) {
     if (!birthDateStr) return "-";
@@ -355,8 +476,9 @@ export default function AdminAppointmentsPage() {
         </div>
 
         {/* search bar  */}
-        <div className="mb-8 flex justify-start w-full">
-          <div className="relative w-full max-w-sm">
+        <div className="mb-8 flex flex-col md:flex-row justify-between gap-4 w-full">
+          {/* Search bar */}
+          <div className="relative w-full md:max-w-sm">
             <input
               type="text"
               placeholder="Αναζήτηση ασθενούς..."
@@ -378,214 +500,255 @@ export default function AdminAppointmentsPage() {
               />
             </svg>
           </div>
-        </div>
 
-        {Object.keys(groupedAppointments).length === 0 ? (
-          <p className="text-center text-gray-500">
-            Δεν υπάρχουν ραντεβού για την επιλεγμένη{" "}
-            {dateRange?.from && dateRange?.to ? "περίοδο." : "ημερομηνία."}
-          </p>
-        ) : (
-          Object.entries(groupedAppointments).map(([date, appts]) => (
-            <div key={date} className="mb-10">
-              <h2 className="text-lg font-semibold text-gray-700 mb-3">
-                {date}
-              </h2>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm border-t border-gray-200">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr className="text-left text-xs text-gray-500 uppercase tracking-wide">
-                      <th className="px-4 py-3">Όνομα</th>
-                      <th className="px-4 py-3">Τηλέφωνο</th>
-                      <th className="px-4 py-3">ΑΜΚΑ</th>
-                      <th className="px-4 py-3">Λόγος Επίσκεψης</th>
-                      <th className="px-4 py-3">Ώρα</th>
-                      <th className="px-4 py-3">Διάρκεια</th>
-                      <th className="px-4 py-3">Κατάσταση</th>
-                      <th className="px-4 py-3 text-right">Ενέργειες</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {appts.map((appt, i) => {
-                      const time = new Date(
-                        appt.appointment_time
-                      ).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      });
-                      const statusColor =
-                        {
-                          approved: "bg-green-200 text-green-800",
-                          rejected: "bg-red-100 text-red-800",
-                          scheduled: "bg-yellow-100 text-yellow-800",
-                          completed: "bg-blue-100 text-blue-800",
-                        }[
-                          appt.status === "approved" &&
-                          new Date(appt.appointment_time) < new Date()
-                            ? "completed"
-                            : appt.status
-                        ] || "bg-gray-100 text-gray-700";
-
-                      return (
-                        <tr
-                          key={appt.id}
-                          className={
-                            appt.is_exception
-                              ? "bg-red-100"
-                              : i % 2
-                              ? "bg-gray-50 hover:bg-gray-100 animate-bg-transition"
-                              : "bg-white hover:bg-gray-100 animate-bg-transition"
-                          }
-                        >
-                          <td className="px-4 py-2">
-                            <strong>
-                              {appt.patients
-                                ? `${appt.patients.first_name} ${appt.patients.last_name}`
-                                : "-"}
-                            </strong>
-
-                            {appt.patients?.id && (
-                              <button
-                                onClick={async () => {
-                                  const { data, error } = await supabase
-                                    .from("patients")
-                                    .select("*")
-                                    .eq("id", appt.patients.id)
-                                    .single();
-                                  if (!error) {
-                                    setSelectedPatient(data);
-                                    setNotesModalOpen(true);
-                                  }
-                                }}
-                                title="Προβολή καρτέλας ασθενούς"
-                                className="ml-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-1.5 rounded-full transition-colors duration-200"
-                              >
-                                <IdCard className="w-4 h-4 text-blue-600" />
-                              </button>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600">
-                            {appt.patients?.phone || "-"}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600">
-                            {appt.patients?.amka || "-"}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600">
-                            {appt.reason?.trim() || "-"}
-                          </td>
-                          <td className="px-4 py-3">{time}</td>
-                          <td className="px-4 py-3 text-gray-600">
-                            {appt.duration_minutes
-                              ? `${appt.duration_minutes} λεπτά`
-                              : "-"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-block text-xs px-2 py-1 rounded-full font-medium ${statusColor}`}
-                            >
-                              {appt.status === "approved" &&
-                              new Date(appt.appointment_time) < new Date()
-                                ? "completed"
-                                : appt.status}
-                              {appt.is_exception && (
-                                <span className="ml-2 text-orange-400 text-xs font-semibold">
-                                  (εξαίρεση)
-                                </span>
-                              )}
-                            </span>
-                          </td>
-
-                          <td className="px-4 py-3 text-right">
-                            <div className="inline-flex items-center gap-2 flex-wrap justify-end">
-                              {/* Σχόλια */}
-                              <button
-                                onClick={() => {
-                                  setSelectedAppointmentNote(appt.notes);
-                                  setAppointmentNoteModalOpen(true);
-                                }}
-                                className={`p-1.5 rounded-full border transition ${
-                                  appt.notes?.trim()
-                                    ? "text-blue-700 border-blue-300 hover:bg-blue-50"
-                                    : "text-gray-400 border-gray-200 hover:bg-gray-50"
-                                }`}
-                                title="Προβολή σημειώσεων"
-                              >
-                                <StickyNote className="w-4 h-4" />
-                              </button>
-
-                              {/* Οι υπόλοιπες ενέργειες μόνο αν ΔΕΝ είναι completed */}
-                              {!(
-                                appt.status === "completed" ||
-                                (appt.status === "approved" &&
-                                  new Date(appt.appointment_time) < new Date())
-                              ) && (
-                                <>
-                                  {/* Έγκριση */}
-                                  {appt.status === "scheduled" && (
-                                    <button
-                                      onClick={() =>
-                                        updateStatus(appt.id, "approved")
-                                      }
-                                      className="p-1.5 rounded-full border border-green-300 text-green-700 hover:bg-green-50"
-                                      title="Έγκριση"
-                                    >
-                                      <Check className="w-4 h-4" />
-                                    </button>
-                                  )}
-
-                                  {/* Απόρριψη */}
-                                  {appt.status === "scheduled" && (
-                                    <button
-                                      onClick={() =>
-                                        updateStatus(appt.id, "rejected")
-                                      }
-                                      className="p-1.5 rounded-full border border-red-300 text-red-700 hover:bg-red-50"
-                                      title="Απόρριψη"
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </button>
-                                  )}
-
-                                  {/* Ακύρωση */}
-                                  {appt.status === "approved" && (
-                                    <button
-                                      onClick={() => {
-                                        setCancelTargetId(appt.id);
-                                        setCancelDialogOpen(true);
-                                      }}
-                                      className="p-1.5 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-100"
-                                      title="Ακύρωση"
-                                    >
-                                      <Ban className="w-4 h-4" />
-                                    </button>
-                                  )}
-
-                                  {/* Διαγραφή */}
-                                  {appt.status === "cancelled" && (
-                                    <button
-                                      onClick={() => {
-                                        setDeleteTargetId(appt.id);
-                                        setDeleteDialogOpen(true);
-                                      }}
-                                      className="p-1.5 rounded-full border border-red-300 text-red-600 hover:bg-red-50"
-                                      title="Διαγραφή"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+          {/* Export button */}
+          <div className="flex gap-3 justify-end items-center mb-6">
+            {/* Excel Export Button */}
+            <button
+              onClick={() => handleDownloadExcel(filteredAppointments)}
+              className="group relative flex items-center gap-2 pl-3 pr-1 py-2 rounded-full border border-[#c8bfae] bg-white/70 backdrop-blur-md text-[#4c3f2c] shadow-sm hover:bg-[#ffcbab87] hover:shadow-md transition-all duration-300"
+              title="Εξαγωγή σε Excel"
+            >
+              <div className="flex items-center justify-center w-6 h-6">
+                <FileDown
+                  size={18}
+                  className="text-[#7b6a55] group-hover:text-[#4c3f2c] transition-colors duration-200"
+                />
               </div>
-            </div>
-          ))
-        )}
+              <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 group-hover:max-w-[200px] group-hover:opacity-100 transition-all duration-300 text-sm font-medium tracking-wide">
+                Εξαγωγή σε Excel
+              </span>
+            </button>
+
+            {/* Print Button */}
+            <button
+              onClick={handlePrint}
+              className="group relative flex items-center gap-2 pl-3 pr-1 py-2 rounded-full border border-[#c8bfae] bg-white/70 backdrop-blur-md text-[#4c3f2c] shadow-sm hover:bg-[#fdf5d8] hover:shadow-md transition-all duration-300"
+              title="Εκτύπωση"
+            >
+              <div className="flex items-center justify-center w-6 h-6">
+                <Printer
+                  size={18}
+                  className="text-[#7b6a55] group-hover:text-[#4c3f2c] transition-colors duration-200"
+                />
+              </div>
+              <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 group-hover:max-w-[200px] group-hover:opacity-100 transition-all duration-300 text-sm font-medium tracking-wide">
+                Εκτύπωση
+              </span>
+            </button>
+          </div>
+        </div>
+        <div id="printable-content">
+          {Object.keys(groupedAppointments).length === 0 ? (
+            <p className="text-center text-gray-500">
+              Δεν υπάρχουν ραντεβού για την επιλεγμένη{" "}
+              {dateRange?.from && dateRange?.to ? "περίοδο." : "ημερομηνία."}
+            </p>
+          ) : (
+            Object.entries(groupedAppointments).map(([date, appts]) => (
+              <div key={date} className="mb-10">
+                <h2 className="text-lg font-semibold text-gray-700 mb-3">
+                  {date}
+                </h2>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm border-t border-gray-200">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr className="text-left text-xs text-gray-500 uppercase tracking-wide">
+                        <th className="px-4 py-3">Όνομα</th>
+                        <th className="px-4 py-3">Τηλέφωνο</th>
+                        <th className="px-4 py-3">ΑΜΚΑ</th>
+                        <th className="px-4 py-3">Λόγος Επίσκεψης</th>
+                        <th className="px-4 py-3">Ώρα</th>
+                        <th className="px-4 py-3">Διάρκεια</th>
+                        <th className="px-4 py-3">Κατάσταση</th>
+                        <th className="px-4 py-3 text-right no-print">
+                          Ενέργειες
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {appts.map((appt, i) => {
+                        const time = new Date(
+                          appt.appointment_time
+                        ).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        });
+                        const statusColor =
+                          {
+                            approved: "bg-green-200 text-green-800",
+                            rejected: "bg-red-100 text-red-800",
+                            scheduled: "bg-yellow-100 text-yellow-800",
+                            completed: "bg-blue-100 text-blue-800",
+                          }[
+                            appt.status === "approved" &&
+                            new Date(appt.appointment_time) < new Date()
+                              ? "completed"
+                              : appt.status
+                          ] || "bg-gray-100 text-gray-700";
+
+                        return (
+                          <tr
+                            key={appt.id}
+                            className={
+                              appt.is_exception
+                                ? "bg-red-100"
+                                : i % 2
+                                ? "bg-gray-50 hover:bg-gray-100 animate-bg-transition"
+                                : "bg-white hover:bg-gray-100 animate-bg-transition"
+                            }
+                          >
+                            <td className="px-4 py-2">
+                              <strong>
+                                {appt.patients
+                                  ? `${appt.patients.first_name} ${appt.patients.last_name}`
+                                  : "-"}
+                              </strong>
+
+                              {appt.patients?.id && (
+                                <button
+                                  onClick={async () => {
+                                    const { data, error } = await supabase
+                                      .from("patients")
+                                      .select("*")
+                                      .eq("id", appt.patients.id)
+                                      .single();
+                                    if (!error) {
+                                      setSelectedPatient(data);
+                                      setNotesModalOpen(true);
+                                    }
+                                  }}
+                                  title="Προβολή καρτέλας ασθενούς"
+                                  className="ml-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-1.5 rounded-full transition-colors duration-200 no-print print:hidden"
+                                >
+                                  <IdCard className="w-4 h-4 text-blue-600 no-print print:hidden" />
+                                </button>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {appt.patients?.phone || "-"}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {appt.patients?.amka || "-"}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {appt.reason?.trim() || "-"}
+                            </td>
+                            <td className="px-4 py-3">{time}</td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {appt.duration_minutes
+                                ? `${appt.duration_minutes} λεπτά`
+                                : "-"}
+                            </td>
+                            <td className="px-4 py-3 ">
+                              <span
+                                className={`inline-block text-xs px-2 py-1 rounded-full font-medium ${statusColor}`}
+                              >
+                                {appt.status === "approved" &&
+                                new Date(appt.appointment_time) < new Date()
+                                  ? "completed"
+                                  : appt.status}
+                                {appt.is_exception && (
+                                  <span className="ml-2 text-orange-400 text-xs font-semibold">
+                                    (εξαίρεση)
+                                  </span>
+                                )}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3 text-right no-print">
+                              <div className="inline-flex items-center gap-2 flex-wrap justify-end">
+                                {/* Σχόλια */}
+                                <button
+                                  onClick={() => {
+                                    setSelectedAppointmentNote(appt.notes);
+                                    setAppointmentNoteModalOpen(true);
+                                  }}
+                                  className={`p-1.5 rounded-full border transition ${
+                                    appt.notes?.trim()
+                                      ? "text-blue-700 border-blue-300 hover:bg-blue-50"
+                                      : "text-gray-400 border-gray-200 hover:bg-gray-50"
+                                  }`}
+                                  title="Προβολή σημειώσεων"
+                                >
+                                  <StickyNote className="w-4 h-4 no-print" />
+                                </button>
+
+                                {/* Οι υπόλοιπες ενέργειες μόνο αν ΔΕΝ είναι completed */}
+                                {!(
+                                  appt.status === "completed" ||
+                                  (appt.status === "approved" &&
+                                    new Date(appt.appointment_time) <
+                                      new Date())
+                                ) && (
+                                  <>
+                                    {/* Έγκριση */}
+                                    {appt.status === "scheduled" && (
+                                      <button
+                                        onClick={() =>
+                                          updateStatus(appt.id, "approved")
+                                        }
+                                        className="p-1.5 rounded-full border border-green-300 text-green-700 hover:bg-green-50"
+                                        title="Έγκριση"
+                                      >
+                                        <Check className="w-4 h-4" />
+                                      </button>
+                                    )}
+
+                                    {/* Απόρριψη */}
+                                    {appt.status === "scheduled" && (
+                                      <button
+                                        onClick={() =>
+                                          updateStatus(appt.id, "rejected")
+                                        }
+                                        className="p-1.5 rounded-full border border-red-300 text-red-700 hover:bg-red-50"
+                                        title="Απόρριψη"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    )}
+
+                                    {/* Ακύρωση */}
+                                    {appt.status === "approved" && (
+                                      <button
+                                        onClick={() => {
+                                          setCancelTargetId(appt.id);
+                                          setCancelDialogOpen(true);
+                                        }}
+                                        className="p-1.5 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                        title="Ακύρωση"
+                                      >
+                                        <Ban className="w-4 h-4" />
+                                      </button>
+                                    )}
+
+                                    {/* Διαγραφή */}
+                                    {appt.status === "cancelled" && (
+                                      <button
+                                        onClick={() => {
+                                          setDeleteTargetId(appt.id);
+                                          setDeleteDialogOpen(true);
+                                        }}
+                                        className="p-1.5 rounded-full border border-red-300 text-red-600 hover:bg-red-50"
+                                        title="Διαγραφή"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
       {appointmentNoteModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4 py-10">
@@ -614,7 +777,7 @@ export default function AdminAppointmentsPage() {
                   setEditingNote(selectedAppointmentNote || "");
                   setAppointmentNoteModalOpen(false);
                 }}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-500"
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-500 no-print"
               >
                 Επεξεργασία
               </button>
@@ -851,3 +1014,11 @@ export default function AdminAppointmentsPage() {
     </main>
   );
 }
+
+<style jsx global>{`
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+  }
+`}</style>;
