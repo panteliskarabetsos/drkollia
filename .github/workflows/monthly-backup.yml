@@ -31,11 +31,11 @@ jobs:
 
       # (Προαιρετικό upload – διάλεξε μία από τις παρακάτω επιλογές)
 
-      # - name: Upload to GitHub Artifacts
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: supabase-backup
-      #     path: backup-*.dump
+      - name: Upload to GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-backup
+          path: backup-*.dump
 
       # - name: Upload to Supabase storage (π.χ. σε bucket)
       #   run: |
