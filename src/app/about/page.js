@@ -25,57 +25,72 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Bio Section */}
-      <section className="py-24 px-6 bg-[#f7f3ec]">
-        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 items-center">
-          <div className="overflow-hidden rounded-[1.5rem] shadow-xl border-[5px] border-[#ece6dd]">
-            <Image
-              src="/doctor.jpg"
-              alt="Δρ. Γεωργία Κόλλια"
-              width={600}
-              height={600}
-              className="object-cover w-full h-full transition-transform duration-700 hover:scale-105"
-            />
-          </div>
-          <div className="text-center md:text-left">
-            <h2 className="text-3xl md:text-4xl font-semibold mb-6">Η Δρ. Γεωργία Κόλλια</h2>
-            <p className="text-[#4a4944] text-lg leading-relaxed">
-              Με πολυετή πορεία και εξειδίκευση στην ενδοκρινολογία, η Δρ. Κόλλια προσφέρει φροντίδα με επίκεντρο τον άνθρωπο.
-              Η προσέγγισή της βασίζεται στην επιστημονική γνώση, την ενσυναίσθηση και την εξατομίκευση. Μέσω συνεχούς επιμόρφωσης,
-              παραμένει στην αιχμή της ιατρικής εξέλιξης, προσφέροντας ουσιαστικές λύσεις σε κάθε ασθενή.
-            </p>
-          </div>
+     <section className="py-24 px-6 bg-[#f7f3ec]">
+      <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+        <div className="overflow-hidden rounded-3xl shadow-2xl border border-[#eae2d9]">
+          <Image
+            src="/doctor.jpg"
+            alt="Δρ. Γεωργία Κόλλια"
+            width={600}
+            height={600}
+            className="object-cover w-full h-full transition-transform duration-700 hover:scale-105"
+          />
         </div>
-      </section>
+        <div className="text-center md:text-left space-y-6">
+          <h2 className="text-4xl font-semibold tracking-tight text-[#3b3a36]">Η Δρ. Γεωργία Κόλλια</h2>
+          <p className="text-[#4a4944] text-[1.1rem] leading-relaxed">
+            Με πολυετή πορεία και εξειδίκευση στην ενδοκρινολογία, η Δρ. Κόλλια προσφέρει φροντίδα με επίκεντρο τον άνθρωπο.
+            Η προσέγγισή της βασίζεται στην επιστημονική γνώση, την ενσυναίσθηση και την εξατομίκευση. Μέσω συνεχούς επιμόρφωσης,
+            παραμένει στην αιχμή της ιατρικής εξέλιξης, προσφέροντας ουσιαστικές λύσεις σε κάθε ασθενή.
+          </p>
+        </div>
+      </div>
+    </section>
+
 
       {/* Expertise Section */}
-      <section className="py-24 px-6 bg-[#fdfaf6]">
-        <div className="max-w-6xl mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-semibold mb-14">Εξειδίκευση & Πορεία</h2>
-          <div className="grid md:grid-cols-2 gap-16 text-left text-[#4a4944] text-lg">
-            <div>
-              <h3 className="font-semibold text-xl mb-4 border-b pb-2 border-[#dcd4c6]">Τομείς Εξειδίκευσης</h3>
-              <ul className="list-disc list-inside space-y-3">
-                <li>Διαταραχές Θυρεοειδούς</li>
-                <li>Διαβήτης τύπου 1 & 2</li>
-                <li>Παχυσαρκία και Μεταβολικό Σύνδρομο</li>
-                <li>Πολυκυστικές Ωοθήκες (PCOS)</li>
-                <li>Ορμονικές Διαταραχές & Εμμηνόπαυση</li>
-                <li>Οστεοπόρωση & Μεταβολικά Νοσήματα Οστών</li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-semibold text-xl mb-4 border-b pb-2 border-[#dcd4c6]">Επαγγελματική Πορεία</h3>
-              <ul className="list-disc list-inside space-y-3">
-                <li>Ειδίκευση στην Ενδοκρινολογία & Διαβήτη</li>
-                <li>Κλινική εμπειρία σε πανεπιστημιακά νοσοκομεία</li>
-                <li>Συμμετοχή σε διεθνή συνέδρια & επιστημονικές εργασίες</li>
-                <li>Συνεχής μετεκπαίδευση και σεμινάρια</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
+   <section className="py-24 px-6 bg-[#fdfaf6]">
+  <div className="max-w-6xl mx-auto text-center space-y-16">
+    <h2 className="text-4xl font-semibold tracking-tight">Εξειδίκευση & Πορεία</h2>
+    <div className="grid md:grid-cols-2 gap-16 text-left text-[#4a4944]">
+      <div className="space-y-4">
+        <h3 className="text-2xl font-medium text-[#3b3a36] mb-4">Τομείς Εξειδίκευσης</h3>
+        <ul className="space-y-3">
+          {[
+            "Διαταραχές Θυρεοειδούς",
+            "Διαβήτης τύπου 1 & 2",
+            "Παχυσαρκία και Μεταβολικό Σύνδρομο",
+            "Πολυκυστικές Ωοθήκες (PCOS)",
+            "Ορμονικές Διαταραχές & Εμμηνόπαυση",
+            "Οστεοπόρωση & Μεταβολικά Νοσήματα Οστών",
+          ].map((item, i) => (
+            <li key={i} className="flex items-start gap-3">
+              <span className="mt-1 w-2 h-2 bg-[#8c7c68] rounded-full shrink-0" />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="space-y-4">
+        <h3 className="text-2xl font-medium text-[#3b3a36] mb-4">Επαγγελματική Πορεία</h3>
+        <ul className="space-y-3">
+          {[
+            "Ειδίκευση στην Ενδοκρινολογία & Διαβήτη",
+            "Κλινική εμπειρία σε πανεπιστημιακά νοσοκομεία",
+            "Συμμετοχή σε διεθνή συνέδρια & επιστημονικές εργασίες",
+            "Συνεχής μετεκπαίδευση και σεμινάρια",
+          ].map((item, i) => (
+            <li key={i} className="flex items-start gap-3">
+              <span className="mt-1 w-2 h-2 bg-[#8c7c68] rounded-full shrink-0" />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
          {/* Divider */}
        <div className="w-full h-[2px] bg-gradient-to-r from-transparent via-[#d8d2c8] to-transparent " />
 
@@ -90,20 +105,20 @@ export default function AboutPage() {
 
 const testimonials = [
   {
-    name: "Ελένη Μ.",
-    text: "Η κυρία Κόλλια με βοήθησε να βρω την ορμονική ισορροπία μου με προσοχή και κατανόηση. Εξαιρετική επαγγελματίας.",
+    name: "Κωνσταντίνα Β.",
+    text: "Εξαιρετική γιατρός και άνθρωπος. Ψάχνει την πάθηση εις βάθος και λύνει οποιαδήποτε απορία με απλό κατανοητό τρόπο. Πολύ ευγενική, ήρεμη, εμπνέει εμπιστοσύνη στον ασθενή. Τη συστήνω ανεπιφύλακτα.",
     source: "Google",
     stars: 5,
   },
   {
-    name: "Αντώνης Κ.",
-    text: "Άμεση εξυπηρέτηση, ανθρώπινη προσέγγιση και γνώση. Τη συστήνω ανεπιφύλακτα.",
+    name: "Κωνσταντίνα Κ.",
+    text: "Εξαιρετική γιατρός! Απαντά σε οποιαδήποτε απορία αναλυτικά και είναι πάντα ευγενική! Την επισκέπτομαι σχεδόν είκοσι χρόνια και δεν την αλλάζω με τίποτα!",
     source: "Google",
     stars: 4.5,
   },
   {
-    name: "Μαρία Σ.",
-    text: "Εντυπωσιάστηκα από τη λεπτομέρεια στην προσέγγιση και την εμπιστοσύνη που σου εμπνέει από την πρώτη στιγμή.",
+    name: "Βιολέτα Β.",
+    text: "Εξαιρετική ιατρός και άνθρωπος πάνω απ´όλα! Ευγενική πάντα μας δίνει απαντήσεις ακόμη και παραμονή Χριστουγέννων και μας εξυπηρετεί με τον καλύτερο τροπο! Δεν έχω ξαναδεί αυτό το ενδιαφέρον από κανέναν γιατρό!! Την συνιστώ ανεπιφύλακτα!!!",
     source: "Google",
     stars: 5,
   },
@@ -137,54 +152,112 @@ export function Carousel() {
   }, [index]);
 
   return (
-    <section className="bg-[#fffaf4] py-12 px-4">
-      <div className="max-w-xl mx-auto text-center">
-        <h2 className="text-2xl font-medium mb-8 text-[#8a7555]">Απόψεις Ασθενών</h2>
+   <section className="bg-[#fffaf4] py-14 px-4">
+  <div className="max-w-2xl mx-auto text-center">
+    <h2 className="text-3xl font-semibold text-[#6d5b44] mb-12 tracking-tight relative inline-block after:content-[''] after:block after:h-[2px] after:bg-[#d5c4ae] after:w-16 after:mx-auto after:mt-3">
+      Απόψεις Ασθενών
+    </h2>
 
-        <div className="relative">
-          <div
-            className={`relative bg-white/70 rounded-xl px-6 py-8 shadow border border-[#f1e9db] transition-all duration-500 ease-in-out ${
-              fade ? "opacity-100 scale-100" : "opacity-0 scale-95"
-            }`}
-          >
-            <Stars rating={testimonials[index].stars} />
+    <div className="relative">
+   <div
+  className={`relative rounded-3xl px-10 py-12 shadow-xl border border-[#eee3d5] bg-white/60 backdrop-blur-md transition-all duration-500 ease-in-out ${
+    fade ? "opacity-100 scale-100" : "opacity-0 scale-95"
+  }`}
+>
 
-            <p className="text-[#5f5749] text-base italic leading-relaxed mb-4 transition-opacity duration-300">
-              “{testimonials[index].text}”
-            </p>
-        <div className="text-[#b39b77] text-sm font-semibold">
-            — {testimonials[index].name}
-            <span className="block text-xs font-normal text-[#a4957b] mt-1">
-                {testimonials[index].source}
-            </span>
-         </div>
-          </div>
+  {/* Top Quote Icon */}
+  <div className="flex justify-start mb-4">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className="w-8 h-8 text-[#d6ba8a] opacity-70"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 5h-2a4 4 0 00-4 4v4h4V9h2V5zM21 5h-2a4 4 0 00-4 4v4h4V9h2V5z"
+      />
+    </svg>
+  </div>
+  {/* Stars */}
+  <Stars rating={testimonials[index].stars} />
 
-          {/* Navigation */}
-          <div className="flex justify-between absolute top-1/2 left-0 right-0 px-2 transform -translate-y-1/2">
-            <button onClick={prev} className="p-1 hover:opacity-70">
-              <ChevronLeft className="w-4 h-4 text-[#b5a689]" />
-            </button>
-            <button onClick={next} className="p-1 hover:opacity-70">
-              <ChevronRight className="w-4 h-4 text-[#b5a689]" />
-            </button>
-          </div>
-        </div>
+  {/* Testimonial Text */}
+  <p className="text-[#4f473c] text-lg italic leading-relaxed mb-6">
+    “{testimonials[index].text}”
+  </p>
 
-        {/* Dots */}
-        <div className="mt-5 flex justify-center gap-1">
-          {testimonials.map((_, i) => (
-            <span
-              key={i}
-              onClick={() => changeIndex(i)}
-              className={`w-2 h-2 rounded-full cursor-pointer transition-all duration-300 ${
-                index === i ? "bg-[#bba98c]" : "bg-[#e6dcc9]"
-              }`}
-            />
-          ))}
-        </div>
+
+
+  {/* Name & Source */}
+  <div className="text-[#7c6650] text-sm font-semibold mt-6">
+    — {testimonials[index].name}
+    <span className="block text-xs font-normal text-[#a39584] mt-1">
+      {testimonials[index].source}
+    </span>
+  </div>
+
+  {/* Bottom Quote Icon */}
+  <div className="flex justify-end mt-4">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className="w-8 h-8 text-[#d6ba8a] opacity-70 rotate-180"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 5h-2a4 4 0 00-4 4v4h4V9h2V5zM21 5h-2a4 4 0 00-4 4v4h4V9h2V5z"
+      />
+    </svg>
+  </div>
+
+
+        {/* Optional subtle glow divider at bottom */}
+        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-2/3 h-[2px] bg-gradient-to-r from-transparent via-[#e8dac0] to-transparent rounded-full" />
       </div>
-    </section>
+
+      {/* Navigation arrows */}
+      <div className="flex justify-between absolute top-1/2 left-0 right-0 px-2 transform -translate-y-1/2">
+        <button
+          onClick={prev}
+          className="p-2 rounded-full bg-white/70 hover:bg-white shadow-md transition"
+        >
+          <ChevronLeft className="w-5 h-5 text-[#a28f75]" />
+        </button>
+        <button
+          onClick={next}
+          className="p-2 rounded-full bg-white/70 hover:bg-white shadow-md transition"
+        >
+          <ChevronRight className="w-5 h-5 text-[#a28f75]" />
+        </button>
+      </div>
+    </div>
+
+    {/* Dots */}
+    <div className="mt-6 flex justify-center gap-2">
+      {testimonials.map((_, i) => (
+        <button
+          key={i}
+          onClick={() => changeIndex(i)}
+          className={`w-3 h-3 rounded-full transition-all duration-300 border ${
+            index === i
+              ? "bg-[#c0a887] border-[#c0a887]"
+              : "bg-[#e8dfd3] border-[#d5cbbd] hover:scale-105"
+          }`}
+          aria-label={`Testimonial ${i + 1}`}
+        />
+      ))}
+    </div>
+  </div>
+</section>
+
   );
 }
 

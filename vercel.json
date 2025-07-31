@@ -1,0 +1,9 @@
+{
+  "cron": [
+    {
+      "path": "/api/send-reminders",
+      "schedule": "0 8 * * *",
+      "timezone": "Europe/Athens"
+    }
+  ]
+}

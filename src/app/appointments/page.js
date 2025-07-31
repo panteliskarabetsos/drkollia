@@ -384,6 +384,11 @@ const handleSubmit = async (e) => {
     errors.phone = 'Ο αριθμός τηλεφώνου πρέπει να είναι 10 ψηφία.';
   }
 
+  if ( !newPatientData.email || !/^[\w-.]+@([\w-]+\.)+[\w-]{2,}$/i.test(newPatientData.email.trim())
+) {
+  errors.email = 'Παρακαλώ εισάγετε ένα έγκυρο email.';
+}
+
   if (Object.keys(errors).length > 0) {
     setFormErrors(errors);
     setIsSubmitting(false);
@@ -715,7 +720,7 @@ const isFormValid =
 
       {/* Τίτλος στο κέντρο */}
       <h2 className="text-center text-3xl font-serif font-semibold text-[#3b3a36] tracking-tight">
-        Καταχώρηση Ραντεβού
+        Νέο Ραντεβού
       </h2>
         </div>
    <div className="mb-6 grid grid-cols-1 gap-3">
@@ -778,16 +783,24 @@ const isFormValid =
   )}
 </div>
 
-
+<div>
   <input
     type="email"
-    placeholder="Email (προαιρετικό)"
+    placeholder="Email"
     value={newPatientData.email}
     onChange={(e) =>
       setNewPatientData({ ...newPatientData, email: e.target.value })
     }
-    className="p-2 border border-gray-300 rounded-lg"
+    className={`p-2 border ${
+      formErrors?.email ? 'border-red-500' : 'border-gray-300'
+    } rounded-lg w-full`}
+    required
   />
+  {formErrors?.email && (
+    <p className="text-red-500 text-sm mt-1">{formErrors.email}</p>
+  )}
+</div>
+
 
   <input
     type="text"
@@ -1027,7 +1040,7 @@ const isFormValid =
         Καταχώρηση...
       </>
     ) : (
-      'Καταχώρηση Ραντεβού'
+      'Κλείστε Ραντεβού'
     )}
   </button>
 

@@ -79,7 +79,7 @@ export default function Home() {
         <div className="rounded-3xl overflow-hidden shadow-2xl hover:shadow-xl transition-shadow duration-500">
           <Image
             src="/doctor.jpg"
-            alt="Dr. Maria Kalogeropoulou"
+            alt="Dr. Georgia Kollia"
             width={600}
             height={500}
             className="object-cover w-full h-full hover:scale-105 transition-transform duration-700"
@@ -93,7 +93,7 @@ export default function Home() {
       <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
         <div className="rounded-3xl overflow-hidden shadow-2xl hover:shadow-xl transition-shadow duration-500">
           <Image
-            src="/clinic-interior.jpg"
+            src="/iatreio.jpg"
             alt="Clinic Interior"
             width={600}
             height={500}
@@ -123,8 +123,11 @@ export default function Home() {
         <div className="max-w-4xl mx-auto text-center space-y-6">
           <h2 className="text-3xl font-semibold tracking-tight">Ώρες Λειτουργίας Ιατρείου</h2>
           <div className="text-lg text-[#4a4944] leading-relaxed">
-            <p>Δευτέρα - Παρασκευή: 09:00 - 14:00 & 17:00 - 20:00</p>
-            <p>Σάββατο & Κυριακή: Κλειστά</p>
+            <p>Δευτέρα: 10:00 - 12:30 & 17:30 - 20:30</p>
+            <p>Τρίτη: 17:30 - 20:30</p>
+            <p>Τετάρτη: 10:00 - 12:30</p>
+            <p>Πέμπτη: 10:00 - 12:30 & 17:30 - 20:30</p>
+            <p>Παρασκευή, Σάββατο & Κυριακή: Κλειστά</p>
             <p className="mt-4 text-sm italic text-[#6a6257]">*Κατόπιν ραντεβού</p>
           </div>
         </div>

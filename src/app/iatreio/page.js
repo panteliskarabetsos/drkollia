@@ -14,7 +14,7 @@ export default function ClinicPage() {
     <main className="min-h-screen bg-[#fdfaf6] text-[#3b3a36]">
         <Header />
       {/* Hero Banner */}
-      <section className="relative flex items-center justify-center h-[60vh] bg-[url('/iatreio.png')] bg-cover bg-center text-white">
+      <section className="relative flex items-center justify-center h-[60vh] bg-[url('/iatreio-banner.png')] bg-cover bg-center text-white">
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
         <div className="relative z-10 text-center px-6">
           <h1 className="text-4xl md:text-6xl font-bold mb-4">Το Ιατρείο</h1>
@@ -76,7 +76,7 @@ export default function ClinicPage() {
         )
         }
     >
-      {["/iatreio1.jpg", "/iatreio2.jpg", "/iatreio3.jpg"].map((src, index) => (
+      {["/iatreio3.jpg", "/iatreio1.jpg", "/iatreio2.jpg","/iatreio4.jpg"].map((src, index) => (
         <div key={index} className="relative h-[55vh] sm:h-[60vh] w-full overflow-hidden group">
           {/* Ambient gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-tr from-[#fdfaf6]/70 via-white/20 to-transparent z-10" />
