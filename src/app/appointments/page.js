@@ -1144,7 +1144,7 @@ export default function NewAppointmentPage() {
               Καταχώρηση...
             </>
           ) : (
-            "Κλείστε Ραντεβού"
+            "Κλείστε Ραντεβού (demo)"
           )}
         </button>
         {submitError && (
