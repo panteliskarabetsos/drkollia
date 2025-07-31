@@ -3,7 +3,7 @@ name: Monthly Supabase Backup
 on:
   schedule:
     - cron: "0 2 1 * *" # 2 π.μ. UTC κάθε 1η του μήνα
-  workflow_dispatch: # Μπορείς να το τρέχεις και χειροκίνητα
+  workflow_dispatch: # Δυνατότητα χειροκίνητης εκτέλεσης
 
 jobs:
   backup:
@@ -17,6 +17,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
 
+      - name: Create backup filename
+        id: vars
+        run: echo "BACKUP_FILE=backup-$(date +'%Y-%m').dump" >> $GITHUB_ENV
+
       - name: Dump Supabase Database
         env:
           PGPASSWORD: ${{ secrets.PGPASSWORD }}
@@ -27,19 +31,13 @@ jobs:
             --username=${{ secrets.PGUSER }} \
             --dbname=${{ secrets.PGDATABASE }} \
             --format=custom \
-            --file=backup-$(date +'%Y-%m').dump
+            --file=$BACKUP_FILE
 
-      # (Προαιρετικό upload – διάλεξε μία από τις παρακάτω επιλογές)
-
-      - name: Upload to GitHub Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
         with:
-          name: supabase-backup
-          path: backup-*.dump
-
-      # - name: Upload to Supabase storage (π.χ. σε bucket)
-      #   run: |
-      #     curl -X POST "https://your-project-id.supabase.co/storage/v1/object/${{ secrets.SUPABASE_BACKUP_BUCKET }}/backup-$(date +'%Y-%m').dump" \
-      #       -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-      #       -H "Content-Type: application/octet-stream" \
-      #       --data-binary @backup-$(date +'%Y-%m').dump
+          tag_name: backup-$(date +'%Y-%m')
+          name: Supabase Backup $(date +'%Y-%m')
+          files: ${{ env.BACKUP_FILE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
