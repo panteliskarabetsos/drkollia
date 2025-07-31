@@ -118,11 +118,13 @@ export default function Header() {
           {!loading && user && (
             <button
               onClick={() => setDropdownOpen(prev => !prev)}
-              className="hidden md:inline text-[#3b3a36] font-semibold hover:text-[#8c7c68] transition"
+              className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-[#e8e2d6] text-[#3b3a36] hover:bg-[#d6cfc0] transition rounded-full shadow-sm border border-[#d4c9b9]"
             >
-              {profileName ?? user.email}
+              <UserIcon className="w-4 h-4" />
+              <span className="text-sm font-medium">{profileName ?? user.email}</span>
             </button>
           )}
+
 
           {/* Mobile Icons */}
           <div className="flex md:hidden items-center space-x-3">

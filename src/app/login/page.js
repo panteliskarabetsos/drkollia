@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
+import ReCAPTCHA from "react-google-recaptcha";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,6 +12,11 @@ export default function LoginPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [captchaValue, setCaptchaValue] = useState("");
+  const recaptchaRef = useRef(null);
+  const handleCaptchaChange = (value) => {
+      setCaptchaValue(value);
+    };
 
   // Check if already logged in
   useEffect(() => {
@@ -25,33 +31,59 @@ export default function LoginPage() {
     checkUser();
   }, [router]);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setErrorMsg("");
-    setSubmitting(true);
+const handleLogin = async (e) => {
+  e.preventDefault();
+  setErrorMsg("");
 
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+  if (!captchaValue) {
+    setErrorMsg("Παρακαλώ επιβεβαιώστε ότι δεν είστε ρομπότ.");
+    return;
+  }
 
-      if (error) {
-        if (error.message.toLowerCase().includes("invalid login credentials")) {
-          setErrorMsg("Λανθασμένα στοιχεία σύνδεσης.");
-        } else {
-          setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
-        }
-      } else {
-        router.push("/admin");
-      }
-    } catch (err) {
-      console.error("Login failed:", err.message);
-      setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
-    } finally {
+  setSubmitting(true);
+
+  try {
+    // Επαλήθευση του reCAPTCHA token server-side
+    const captchaRes = await fetch("/api/verify-recaptcha", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: captchaValue }),
+    });
+
+    const { success } = await captchaRes.json();
+
+    if (!success) {
+      setErrorMsg("Η επαλήθευση reCAPTCHA απέτυχε. Προσπαθήστε ξανά.");
       setSubmitting(false);
+      recaptchaRef.current?.reset(); // 👈 reset reCAPTCHA
+      return;
     }
-  };
+
+    // Αν περάσει το reCAPTCHA
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      recaptchaRef.current?.reset(); // 👈 reset αν αποτύχει login
+      if (error.message.toLowerCase().includes("invalid login credentials")) {
+        setErrorMsg("Λανθασμένα στοιχεία σύνδεσης.");
+      } else {
+        setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
+      }
+    } else {
+      router.push("/admin");
+    }
+  } catch (err) {
+    recaptchaRef.current?.reset(); // 👈 reset αν αποτύχει try/catch
+    console.error("Login failed:", err.message);
+    setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
+  } finally {
+    setSubmitting(false);
+  }
+};
+
 
   if (checkingAuth) {
     return (
@@ -90,6 +122,13 @@ export default function LoginPage() {
               disabled={submitting}
             />
           </div>
+            <ReCAPTCHA
+              ref={recaptchaRef}
+              sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
+              onChange={handleCaptchaChange}
+              className="mx-auto"
+            />
+
 
           {errorMsg && (
             <p className="text-red-600 text-sm font-medium">{errorMsg}</p>
