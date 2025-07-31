@@ -3,6 +3,7 @@ import "./globals.css";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/next";
 const notoSerif = Noto_Serif({
   subsets: ["latin"],
   weight: ["400", "700"],
@@ -31,6 +32,7 @@ export default function RootLayout({ children }) {
         <main className="flex-grow pt-8">{children}</main>
         <Footer />
         <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
