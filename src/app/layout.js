@@ -2,7 +2,7 @@ import { Noto_Serif } from "next/font/google";
 import "./globals.css";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
-import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 const notoSerif = Noto_Serif({
   subsets: ["latin"],
   weight: ["400", "700"],
@@ -19,7 +19,6 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="el" className="h-full">
-      <SpeedInsights />
       <body
         className={`
           ${notoSerif.variable}
@@ -31,6 +30,7 @@ export default function RootLayout({ children }) {
         <Header />
         <main className="flex-grow pt-8">{children}</main>
         <Footer />
+        <SpeedInsights />
       </body>
     </html>
   );
