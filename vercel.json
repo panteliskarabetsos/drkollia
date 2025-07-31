@@ -2,17 +2,11 @@
   "crons": [
     {
       "path": "/api/cron",
-      "schedule": "0 10 * * *",
-      "headers": {
-        "Authorization": "Bearer f2e36fb3-54ac-4c1f-a55c-f7875cb91633"
-      }
+      "schedule": "0 10 * * *"
     },
     {
       "path": "/api/cron-cleanup",
-      "schedule": "0 2 * * *",
-      "headers": {
-        "Authorization": "Bearer f2e36fb3-54ac-4c1f-a55c-f7875cb91633"
-      }
+      "schedule": "0 2 * * *"
     }
   ]
 }
