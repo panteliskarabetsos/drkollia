@@ -14,7 +14,7 @@ const notoSerif = Noto_Serif({
 export const metadata = {
   title: "Γεωργία Κόλλια - Ενδοκρινολόγος - Διαβητολόγος",
   description:
-    "Ενδοκρινολόγος - Διαβητολόγος | Ορμονική Υγεία & Φροντίδα Διαβήτη",
+    "Ενδοκρινολογία - Διαβήτης - Μεταβολισμός | Ορμονική Υγεία & Φροντίδα Διαβήτη",
   viewport: "width=device-width, initial-scale=1.0",
 };
 

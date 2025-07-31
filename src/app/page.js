@@ -29,7 +29,7 @@ export default function Home() {
         {/* Main Content */}
         <div className="relative z-10 max-w-3xl animate-fadeInUp duration-1000 ease-out">
           <h1 className="text-5xl md:text-7xl font-bold mb-8 leading-tight">
-            Ενδοκρινολογία & Ορμονική Ευεξία.
+            Ενδοκρινολογία & Ορμονική Ευεξία
           </h1>
           <p className="text-lg md:text-xl text-[#3b3a36] mb-10">
             Επιστημονική γνώση και ανθρώπινη προσέγγιση για την υγεία σας.

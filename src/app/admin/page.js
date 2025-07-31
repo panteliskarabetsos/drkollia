@@ -72,7 +72,7 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-[#fafafa] text-[#333] font-sans">
-      <section className="py-16 px-4 max-w-6xl mx-auto">
+      <section className="py-22 px-4 max-w-6xl mx-auto">
         <h1 className="text-3xl font-medium text-center mb-12 tracking-tight">
           Πίνακας Διαχείρισης
         </h1>
