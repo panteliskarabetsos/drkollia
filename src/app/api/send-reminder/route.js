@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-export async function POST() {
+export async function GET() {
   try {
     const now = new Date();
     const tomorrow = new Date();
