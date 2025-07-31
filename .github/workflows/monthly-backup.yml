@@ -2,15 +2,15 @@ name: Monthly Supabase Backup
 
 on:
   schedule:
-    - cron: "0 2 1 * *" # 2 π.μ. UTC κάθε 1η του μήνα
-  workflow_dispatch: # Δυνατότητα χειροκίνητης εκτέλεσης
+    - cron: "0 2 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   backup:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
 
     steps:
       - name: Install PostgreSQL 17 client
@@ -20,9 +20,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
 
-      - name: Create backup filename
+      - name: Set tag and filename
         id: vars
-        run: echo "BACKUP_FILE=backup-$(date +'%Y-%m').dump" >> $GITHUB_ENV
+        run: |
+          echo "TAG_NAME=backup-$(date +'%Y-%m')" >> $GITHUB_ENV
+          echo "FILENAME=backup-$(date +'%Y-%m').dump" >> $GITHUB_ENV
 
       - name: Dump Supabase Database
         env:
@@ -34,13 +36,13 @@ jobs:
             --username=${{ secrets.PGUSER }} \
             --dbname=${{ secrets.PGDATABASE }} \
             --format=custom \
-            --file=$BACKUP_FILE
+            --file=$FILENAME
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: backup-$(date +'%Y-%m')
-          name: Supabase Backup $(date +'%Y-%m')
-          files: ${{ env.BACKUP_FILE }}
+          tag_name: ${{ env.TAG_NAME }}
+          name: Supabase Backup ${{ env.TAG_NAME }}
+          files: ${{ env.FILENAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
