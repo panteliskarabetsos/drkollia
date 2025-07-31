@@ -30,6 +30,11 @@ useEffect(() => {
 
   checkAuth();
 }, []);
+const normalize = (text) =>
+  text
+    ?.normalize("NFD")                      // διαχωρίζει γράμμα και τόνο
+    .replace(/\p{Diacritic}/gu, "")        // αφαιρεί τους τόνους
+    .toLowerCase();         
 
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +53,7 @@ useEffect(() => {
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const [viewMode, setViewMode] = useState('day'); // 'day', 'week', 'month'
   const [dateRange, setDateRange] = useState(undefined);
+  const [searchQuery, setSearchQuery] = useState('')
   const greekLocale = {
   ...el,
   options: {
@@ -55,21 +61,50 @@ useEffect(() => {
     weekStartsOn: 1, // Ξεκινά η εβδομάδα από Δευτέρα
   },
 };
-    const filteredAppointments = appointments.filter((appt) => {
-      const apptDate = new Date(appt.appointment_time);
+const normalizeText = (text) =>
+  text
+    ?.normalize("NFD")                    // διαχωρίζει γράμμα και τόνο
+    .replace(/\p{Diacritic}/gu, "")      // αφαιρεί τόνους
+    .toLowerCase();                      // πεζά γράμματα
 
-      if (dateRange?.from && dateRange?.to) {
-        const from = new Date(dateRange.from);
-        from.setHours(0, 0, 0, 0);
+const filteredAppointments = appointments.filter((appt) => {
+  const apptDate = new Date(appt.appointment_time);
 
-        const to = new Date(dateRange.to);
-        to.setHours(23, 59, 59, 999);
+  let isInRange = false;
+  if (dateRange?.from && dateRange?.to) {
+    const from = new Date(dateRange.from);
+    from.setHours(0, 0, 0, 0);
 
-        return apptDate >= from && apptDate <= to;
-      }
+    const to = new Date(dateRange.to);
+    to.setHours(23, 59, 59, 999);
 
-      return isSameDay(apptDate, selectedDate);
-    });
+    isInRange = apptDate >= from && apptDate <= to;
+  } else {
+    isInRange = isSameDay(apptDate, selectedDate);
+  }
+
+  if (!isInRange) return false;
+
+  // Εφαρμογή φίλτρου αναζήτησης
+  if (searchQuery.trim() !== "") {
+    const q = normalizeText(searchQuery);
+
+    const fullName = normalizeText(`${appt.patients?.first_name ?? ""} ${appt.patients?.last_name ?? ""}`);
+    const phone = normalizeText(appt.patients?.phone ?? "");
+    const amka = normalizeText(appt.patients?.amka ?? "");
+    const reason = normalizeText(appt.reason ?? "");
+
+    return (
+      fullName.includes(q) ||
+      phone.includes(q) ||
+      amka.includes(q) ||
+      reason.includes(q)
+    );
+  }
+
+  return true;
+});
+
     const groupedAppointments = filteredAppointments.reduce((groups, appt) => {
     const dateKey = new Date(appt.appointment_time).toLocaleDateString('el-GR', {
       year: 'numeric',
@@ -270,6 +305,8 @@ function calculateAge(birthDateStr) {
       <p className="text-sm text-gray-500">Επιλέξτε ημερομηνία για προβολή</p>
     </div>
 
+
+
     {/* Κέντρο - Ώρα */}
     <div className="flex-1 flex justify-center">
       <div className="text-6xl font-extralight text-gray-700 tracking-widest">
@@ -294,6 +331,33 @@ function calculateAge(birthDateStr) {
     />
 
   </div>
+
+{/* search bar  */}
+<div className="mb-8 flex justify-start w-full">
+  <div className="relative w-full max-w-sm">
+    <input
+      type="text"
+      placeholder="Αναζήτηση ασθενούς..."
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+      className="w-full pl-10 pr-4 py-2 rounded-full border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#8c7c68] focus:border-transparent text-sm text-gray-700 placeholder-gray-400 transition"
+    />
+    <svg
+      className="absolute left-3 top-2.5 w-5 h-5 text-gray-400 pointer-events-none"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 1110.5 3a7.5 7.5 0 016.15 13.65z"
+      />
+    </svg>
+  </div>
+</div>
+
   
   {Object.keys(groupedAppointments).length === 0 ? (
   <p className="text-center text-gray-500">
