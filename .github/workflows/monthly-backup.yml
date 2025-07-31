@@ -9,6 +9,9 @@ jobs:
   backup:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - name: Install PostgreSQL 17 client
         run: |
