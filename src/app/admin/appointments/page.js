@@ -136,12 +136,12 @@ const handleDeleteAppointment = async () => {
   
 };
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     setCurrentTime(new Date());
+  //   }, 1000);
+  //   return () => clearInterval(interval);
+  // }, []);
 
 
   useEffect(() => {
@@ -404,10 +404,10 @@ function calculateAge(birthDateStr) {
                       key={appt.id}
                       className={
                         appt.is_exception
-                          ? 'bg-orange-100'
+                          ? 'bg-red-100'
                           : i % 2
-                            ? 'bg-white'
-                            : 'bg-gray-50'
+                            ? 'bg-gray-50 hover:bg-gray-100 animate-bg-transition'
+                            : 'bg-white hover:bg-gray-100 animate-bg-transition'
                       }
                     >
                           <td className="px-4 py-2">
@@ -446,7 +446,7 @@ function calculateAge(birthDateStr) {
                     ? 'completed'
                     : appt.status}
                     {appt.is_exception && (
-                        <span className="ml-2 text-orange-600 text-xs font-semibold">(εξαίρεση)</span>
+                        <span className="ml-2 text-orange-400 text-xs font-semibold">(εξαίρεση)</span>
                       )}
                 </span>
               </td>
