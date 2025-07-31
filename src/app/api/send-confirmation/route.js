@@ -1,15 +1,17 @@
-import nodemailer from 'nodemailer';
+import nodemailer from "nodemailer";
 
 export async function POST(req) {
   try {
     const { email, name, date, time, reason } = await req.json();
 
     if (!email || !name || !date || !time || !reason) {
-      return new Response(JSON.stringify({ message: 'Missing fields' }), { status: 400 });
+      return new Response(JSON.stringify({ message: "Missing fields" }), {
+        status: 400,
+      });
     }
 
     const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
+      host: "smtp.gmail.com",
       port: 465,
       secure: true,
       auth: {
@@ -17,25 +19,25 @@ export async function POST(req) {
         pass: process.env.SMTP_PASSWORD,
       },
     });
-const appointmentDate = new Date(date); // αυτό είναι το ISO string
+    const appointmentDate = new Date(date); // αυτό είναι το ISO string
 
-const formattedDate = appointmentDate.toLocaleDateString('el-GR', {
-  day: '2-digit',
-  month: 'long',
-  year: 'numeric',
-  timeZone: 'Europe/Athens',
-});
+    const formattedDate = appointmentDate.toLocaleDateString("el-GR", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      timeZone: "Europe/Athens",
+    });
 
-const formattedTime = appointmentDate.toLocaleTimeString('el-GR', {
-  hour: '2-digit',
-  minute: '2-digit',
-  timeZone: 'Europe/Athens',
-});
+    const formattedTime = appointmentDate.toLocaleTimeString("el-GR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Europe/Athens",
+    });
 
     await transporter.sendMail({
       from: `"Δρ. Γεωργία Κόλλια" <${process.env.SMTP_EMAIL}>`,
       to: email,
-      subject: 'Επιβεβαίωση Ραντεβού',
+      subject: "Επιβεβαίωση Ραντεβού",
       html: `
       <!DOCTYPE html>
       <html lang="el">
@@ -79,6 +81,10 @@ const formattedTime = appointmentDate.toLocaleTimeString('el-GR', {
                         Παρακαλούμε να προσέλθετε εγκαίρως.
                       </p>
 
+                      <p style="margin-top:30px;color:#333333;font-size:15px;line-height:1.6;">
+                        Για οποιαδήποτε αλλαγή ή ακύρωση, παρακαλούμε επικοινωνήστε μαζί μας στο τηλέφωνο <strong>210 9934316</strong>.
+                      </p>
+
                       <p style="margin-top:35px;color:#1a1a1a;font-size:15px;">
                         Με εκτίμηση,<br />
 
@@ -102,9 +108,14 @@ const formattedTime = appointmentDate.toLocaleTimeString('el-GR', {
       `,
     });
 
-    return new Response(JSON.stringify({ message: 'Email sent successfully' }), { status: 200 });
+    return new Response(
+      JSON.stringify({ message: "Email sent successfully" }),
+      { status: 200 }
+    );
   } catch (err) {
-    console.error('❌ Email error:', err);
-    return new Response(JSON.stringify({ message: 'Failed to send email' }), { status: 500 });
+    console.error("❌ Email error:", err);
+    return new Response(JSON.stringify({ message: "Failed to send email" }), {
+      status: 500,
+    });
   }
 }

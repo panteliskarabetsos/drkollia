@@ -1,28 +1,30 @@
-import nodemailer from 'nodemailer';
+import nodemailer from "nodemailer";
 
 export async function POST(req) {
   try {
     const { email, name, date, reason } = await req.json();
 
     if (!email || !name || !date || !reason) {
-      return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400 });
+      return new Response(JSON.stringify({ error: "Missing fields" }), {
+        status: 400,
+      });
     }
 
-    const formattedDate = new Date(date).toLocaleDateString('el-GR', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-      timeZone: 'Europe/Athens',
+    const formattedDate = new Date(date).toLocaleDateString("el-GR", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      timeZone: "Europe/Athens",
     });
 
-    const formattedTime = new Date(date).toLocaleTimeString('el-GR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Europe/Athens',
+    const formattedTime = new Date(date).toLocaleTimeString("el-GR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Europe/Athens",
     });
 
     const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
+      host: "smtp.gmail.com",
       port: 465,
       secure: true,
       auth: {
@@ -34,7 +36,7 @@ export async function POST(req) {
     await transporter.sendMail({
       from: `"Δρ. Γεωργία Κόλλια" <${process.env.SMTP_EMAIL}>`,
       to: email,
-      subject: 'Ακύρωση Ραντεβού',
+      subject: "Ακύρωση Ραντεβού",
       html: `
       <!DOCTYPE html>
       <html lang="el">
@@ -71,7 +73,7 @@ export async function POST(req) {
                       </table>
 
                       <p style="margin-top:30px;color:#333333;font-size:15px;line-height:1.6;">
-                        Για επαναπρογραμματισμό ή για οποιαδήποτε απορία, παρακαλούμε επικοινωνήστε μαζί μας στο τηλέφωνο <strong>210 1234567</strong>.
+                        Για επαναπρογραμματισμό ή για οποιαδήποτε απορία, παρακαλούμε επικοινωνήστε μαζί μας στο τηλέφωνο <strong>210 9934316</strong>.
                       </p>
 
                       <p style="margin-top:35px;color:#1a1a1a;font-size:15px;">
@@ -99,7 +101,9 @@ export async function POST(req) {
 
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   } catch (error) {
-    console.error('❌ Σφάλμα αποστολής email ακύρωσης:', error);
-    return new Response(JSON.stringify({ error: 'Αποτυχία αποστολής email' }), { status: 500 });
+    console.error("❌ Σφάλμα αποστολής email ακύρωσης:", error);
+    return new Response(JSON.stringify({ error: "Αποτυχία αποστολής email" }), {
+      status: 500,
+    });
   }
 }
