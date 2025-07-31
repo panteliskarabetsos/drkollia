@@ -1,7 +1,7 @@
 // app/api/cron/route.js
-import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import nodemailer from 'nodemailer';
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import nodemailer from "nodemailer";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -9,9 +9,9 @@ const supabase = createClient(
 );
 
 export async function GET(req) {
-  const auth = req.headers.get('authorization');
+  const auth = req.headers.get("authorization");
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new NextResponse('Unauthorized', { status: 401 });
+    return new NextResponse("Unauthorized", { status: 401 });
   }
 
   const now = new Date();
@@ -19,19 +19,19 @@ export async function GET(req) {
   const in25h = new Date(now.getTime() + 25 * 60 * 60 * 1000); // π.χ. περιθώριο 1 ώρας
 
   const { data: appointments, error } = await supabase
-    .from('appointments')
-    .select('id, appointment_time, reason, patients (name, email)')
-    .eq('status', 'approved')
-    .gte('appointment_time', in24h.toISOString())
-    .lte('appointment_time', in25h.toISOString());
+    .from("appointments")
+    .select("id, appointment_time, reason, patients (name, email)")
+    .eq("status", "approved")
+    .gte("appointment_time", in24h.toISOString())
+    .lte("appointment_time", in25h.toISOString());
 
   if (error) {
-    console.error('Supabase error:', error.message);
-    return new NextResponse('DB error', { status: 500 });
+    console.error("Supabase error:", error.message);
+    return new NextResponse("DB error", { status: 500 });
   }
 
   const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
+    host: "smtp.gmail.com",
     port: 465,
     secure: true,
     auth: {
@@ -47,23 +47,23 @@ export async function GET(req) {
     if (!patients?.email) continue;
 
     const date = new Date(appointment_time);
-    const formattedDate = date.toLocaleDateString('el-GR', {
-      weekday: 'long',
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-      timeZone: 'Europe/Athens',
+    const formattedDate = date.toLocaleDateString("el-GR", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      timeZone: "Europe/Athens",
     });
-    const formattedTime = date.toLocaleTimeString('el-GR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Europe/Athens',
+    const formattedTime = date.toLocaleTimeString("el-GR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Europe/Athens",
     });
 
     await transporter.sendMail({
       from: `"Δρ. Γεωργία Κόλλια" <${process.env.SMTP_EMAIL}>`,
       to: patients.email,
-      subject: 'Υπενθύμιση Ραντεβού',
+      subject: "Υπενθύμιση Ραντεβού",
       html: `
             <!DOCTYPE html>
             <html lang="el">

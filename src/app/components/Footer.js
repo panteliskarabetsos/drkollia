@@ -3,19 +3,48 @@ import Link from "next/link";
 export default function Footer() {
   return (
     <footer
-      className="py-10 bg-slate-950 text-slate-400 text-center text-sm"
+      className="py-10 px-4 bg-slate-950 text-slate-400 text-center text-sm border-t border-slate-800"
       data-aos="fade-in"
     >
-      <p className="mb-2">© 2025 Dr. Kollia Georgia | All rights reserved</p>
-      <p>Τάμπα 8, Ηλιούπολη 163 42 · +30 210 9934316 · gokollia@gmail.com</p>
+      <div className="max-w-4xl mx-auto space-y-4">
+        {/* Copyright & Contact Info */}
+        <div className="space-y-1">
+          <p className="text-slate-500 tracking-wide">
+            © 2025{" "}
+            <span className="font-medium text-white">Dr. Kollia Georgia</span> ·
+            All rights reserved
+          </p>
+          <p className="text-slate-500">
+            Τάμπα 8, Ηλιούπολη 163 42 ·{" "}
+            <a href="tel:+302109934316" className="hover:text-white transition">
+              +30 210 9934316
+            </a>{" "}
+            ·{" "}
+            <a
+              href="mailto:gokollia@gmail.com"
+              className="hover:text-white transition"
+            >
+              gokollia@gmail.com
+            </a>
+          </p>
+        </div>
 
-      <div className="mt-4">
-        <Link
-          href="/login"
-          className="inline-block text-slate-300 hover:text-white underline transition"
-        >
-          Είσοδος Διαχειριστή
-        </Link>
+        {/* Legal + Admin */}
+        <div className="flex justify-center flex-wrap gap-4 text-slate-500 text-xs">
+          <Link
+            href="/legal"
+            className="hover:text-white hover:underline transition"
+          >
+            Νομικά
+          </Link>
+          <span className="hidden sm:inline">|</span>
+          <Link
+            href="/login"
+            className="hover:text-white hover:underline font-medium transition"
+          >
+            Είσοδος Διαχειριστή
+          </Link>
+        </div>
       </div>
     </footer>
   );

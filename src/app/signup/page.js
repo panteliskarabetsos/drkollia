@@ -15,83 +15,88 @@ export default function SignupPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-  const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      router.replace('/login');
-    } else {
-      setCheckingAuth(false);
-    }
-  };
+    const checkAuth = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        router.replace("/login");
+      } else {
+        setCheckingAuth(false);
+      }
+    };
 
-  checkAuth();
-}, []);
+    checkAuth();
+  }, []);
 
   const handleSignup = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setErrorMsg("");
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg("");
 
-  if (password !== confirmPassword) {
-    setErrorMsg("Οι κωδικοί δεν ταιριάζουν.");
-    setLoading(false);
-    return;
-  }
+    if (password !== confirmPassword) {
+      setErrorMsg("Οι κωδικοί δεν ταιριάζουν.");
+      setLoading(false);
+      return;
+    }
 
-  try {
-    const { data, error: signupError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name },
-      },
-    });
+    try {
+      const { data, error: signupError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name },
+        },
+      });
 
-    if (signupError) {
-      if (signupError.message.includes("already registered")) {
-        setErrorMsg("Αυτό το email χρησιμοποιείται ήδη.");
-      } else {
-        setErrorMsg("Σφάλμα δημιουργίας λογαριασμού. Προσπαθήστε ξανά.");
+      if (signupError) {
+        if (signupError.message.includes("already registered")) {
+          setErrorMsg("Αυτό το email χρησιμοποιείται ήδη.");
+        } else {
+          setErrorMsg("Σφάλμα δημιουργίας λογαριασμού. Προσπαθήστε ξανά.");
+        }
+        return;
       }
-      return;
-    }
 
-    const userId = data?.user?.id;
-    const userEmail = data?.user?.email; // ✅ use this instead of local state
+      const userId = data?.user?.id;
+      const userEmail = data?.user?.email; // ✅ use this instead of local state
 
-    if (!userId || !userEmail) {
-      alert("Ο λογαριασμός δημιουργήθηκε. Ελέγξτε το email σας για επιβεβαίωση.");
+      if (!userId || !userEmail) {
+        alert(
+          "Ο λογαριασμός δημιουργήθηκε. Ελέγξτε το email σας για επιβεβαίωση."
+        );
+        router.push("/login");
+        return;
+      }
+
+      const { error: profileError } = await supabase.from("profiles").upsert([
+        {
+          id: userId,
+          name,
+          email: userEmail, // ✅ store the email from Supabase
+          role: "admin",
+        },
+      ]);
+
+      await supabase.auth.signOut(); // ✅ log out the created user immediately
+
+      if (profileError) {
+        console.error("Profile insert error:", profileError);
+        setErrorMsg(
+          "Ο λογαριασμός δημιουργήθηκε αλλά δεν αποθηκεύτηκαν τα στοιχεία προφίλ."
+        );
+        return;
+      }
+
+      alert("Ο λογαριασμός δημιουργήθηκε με επιτυχία.");
       router.push("/login");
-      return;
+    } catch (error) {
+      console.error("Signup error:", error.message);
+      setErrorMsg("Αποτυχία δημιουργίας λογαριασμού.");
+    } finally {
+      setLoading(false);
     }
-
-    const { error: profileError } = await supabase.from("profiles").upsert([
-      {
-        id: userId,
-        name,
-        email: userEmail, // ✅ store the email from Supabase
-        role: "admin",
-      },
-    ]);
-
-    await supabase.auth.signOut(); // ✅ log out the created user immediately
-
-    if (profileError) {
-      console.error("Profile insert error:", profileError);
-      setErrorMsg("Ο λογαριασμός δημιουργήθηκε αλλά δεν αποθηκεύτηκαν τα στοιχεία προφίλ.");
-      return;
-    }
-
-    alert("Ο λογαριασμός δημιουργήθηκε με επιτυχία.");
-    router.push("/login");
-  } catch (error) {
-    console.error("Signup error:", error.message);
-    setErrorMsg("Αποτυχία δημιουργίας λογαριασμού.");
-  } finally {
-    setLoading(false);
-  }
-};
-
+  };
 
   return (
     <main className="min-h-screen bg-[#fdfaf6] flex items-center justify-center px-4">
@@ -158,7 +163,6 @@ export default function SignupPage() {
           >
             {loading ? "Δημιουργία..." : "Δημιουργία Λογαριασμού"}
           </button>
-         
         </form>
       </div>
     </main>

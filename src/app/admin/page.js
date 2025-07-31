@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '../lib/supabaseClient';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "../lib/supabaseClient";
 import {
   CalendarDays,
   User,
@@ -10,8 +10,8 @@ import {
   MessageCircle,
   ShieldCheck,
   ArrowRight,
-  Loader2
-} from 'lucide-react';
+  Loader2,
+} from "lucide-react";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -25,7 +25,7 @@ export default function AdminPage() {
       const session = data?.session;
 
       if (!session) {
-        router.push('/login');
+        router.push("/login");
       } else {
         setUser(session.user);
         setLoading(false);
@@ -45,27 +45,27 @@ export default function AdminPage() {
 
   const items = [
     {
-      title: 'Ραντεβού',
-      description: 'Διαχείριση προγραμματισμένων ραντεβού.',
-      href: '/admin/appointments',
+      title: "Ραντεβού",
+      description: "Διαχείριση προγραμματισμένων ραντεβού.",
+      href: "/admin/appointments",
       icon: <CalendarDays className="w-5 h-5 text-[#3a3a38]" />,
     },
     {
-      title: 'Ασθενείς',
-      description: 'Προβολή και επεξεργασία αρχείου ασθενών.',
-      href: '/admin/patients',
+      title: "Ασθενείς",
+      description: "Προβολή και επεξεργασία αρχείου ασθενών.",
+      href: "/admin/patients",
       icon: <User className="w-5 h-5 text-[#3a3a38]" />,
     },
     {
-      title: 'Πρόγραμμα',
-      description: 'Διαχείριση προγράμματος λειτουργίας και εξαιρέσεων.',
-      href: '/admin/schedule',
+      title: "Πρόγραμμα",
+      description: "Διαχείριση προγράμματος λειτουργίας και εξαιρέσεων.",
+      href: "/admin/schedule",
       icon: <Clock className="w-5 h-5 text-[#3a3a38]" />,
     },
     {
-      title: 'Πρόσβαση',
-      description: 'Διαχείριση λογαριασμών διαχειριστών.',
-      href: '/admin/accounts',
+      title: "Πρόσβαση",
+      description: "Διαχείριση λογαριασμών διαχειριστών.",
+      href: "/admin/accounts",
       icon: <ShieldCheck className="w-5 h-5 text-[#3a3a38]" />,
     },
   ];
@@ -108,7 +108,6 @@ export default function AdminPage() {
                   </>
                 )}
               </button>
-
             </div>
           ))}
         </div>

@@ -12,7 +12,6 @@ export default function Home() {
     <main
       className={`min-h-screen bg-[#fdfaf6] text-[#3b3a36] ${notoSerif.className}`}
     >
-      
       {/* Hero Section */}
       <section className="relative flex flex-col items-center justify-center h-[100vh] text-center px-6 overflow-hidden">
         <video
@@ -33,7 +32,7 @@ export default function Home() {
             Ενδοκρινολογία & Ορμονική Ευεξία
           </h1>
           <p className="text-lg md:text-xl text-[#3b3a36] mb-10">
-            Επιστημονική γνώση και ανθρώπινη προσέγγιση για την υγεία σας. 
+            Επιστημονική γνώση και ανθρώπινη προσέγγιση για την υγεία σας.
             Θυρεοειδής, ορμόνες, μεταβολισμός — με φροντίδα.
           </p>
           <Link
@@ -54,81 +53,92 @@ export default function Home() {
             strokeWidth="2"
             viewBox="0 0 24 24"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M19 9l-7 7-7-7"
+            />
           </svg>
         </div>
       </section>
 
       <div className="w-full h-[2px] bg-gradient-to-r from-transparent via-[#d8d2c8] to-transparent " />
 
-    {/* --- Section: Η Ιατρός --- */}
-    <section className="py-24 px-6 bg-[#faf7f3] animate-fadeInUp duration-1000">
-      <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
-        <div className="space-y-5 text-center md:text-left">
-          <h2 className="text-4xl font-semibold tracking-tight">Η Ιατρός</h2>
-          <p className="text-[1.1rem] text-[#4a4944] leading-relaxed">
-            Η Δρ. Κόλλια ειδικεύεται στην ενδοκρινολογία με έμφαση στον θυρεοειδή και τον μεταβολισμό. Συνδυάζει την ιατρική ακρίβεια με προσωπική φροντίδα.
-          </p>
-          <Link
-            href="/about"
-            className="inline-block text-[#3b3a36] border border-[#3b3a36] px-6 py-2.5 rounded-full hover:bg-[#3b3a36] hover:text-white transition duration-300 shadow-md"
-          >
-            Δείτε Περισσότερα
-          </Link>
+      {/* --- Section: Η Ιατρός --- */}
+      <section className="py-24 px-6 bg-[#faf7f3] animate-fadeInUp duration-1000">
+        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+          <div className="space-y-5 text-center md:text-left">
+            <h2 className="text-4xl font-semibold tracking-tight">Η Ιατρός</h2>
+            <p className="text-[1.1rem] text-[#4a4944] leading-relaxed">
+              Η Δρ. Κόλλια ειδικεύεται στην ενδοκρινολογία με έμφαση στον
+              θυρεοειδή και τον μεταβολισμό. Συνδυάζει την ιατρική ακρίβεια με
+              προσωπική φροντίδα.
+            </p>
+            <Link
+              href="/about"
+              className="inline-block text-[#3b3a36] border border-[#3b3a36] px-6 py-2.5 rounded-full hover:bg-[#3b3a36] hover:text-white transition duration-300 shadow-md"
+            >
+              Δείτε Περισσότερα
+            </Link>
+          </div>
+          <div className="rounded-3xl overflow-hidden shadow-2xl hover:shadow-xl transition-shadow duration-500">
+            <Image
+              src="/doctor.jpg"
+              alt="Dr. Georgia Kollia"
+              width={600}
+              height={500}
+              className="object-cover w-full h-full hover:scale-105 transition-transform duration-700"
+            />
+          </div>
         </div>
-        <div className="rounded-3xl overflow-hidden shadow-2xl hover:shadow-xl transition-shadow duration-500">
-          <Image
-            src="/doctor.jpg"
-            alt="Dr. Georgia Kollia"
-            width={600}
-            height={500}
-            className="object-cover w-full h-full hover:scale-105 transition-transform duration-700"
-          />
-        </div>
-      </div>
-    </section>
+      </section>
 
-    {/* --- Section: Το Ιατρείο --- */}
-    <section className="py-24 px-6 bg-[#f2eee8] animate-fadeInUp duration-1000">
-      <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
-        <div className="rounded-3xl overflow-hidden shadow-2xl hover:shadow-xl transition-shadow duration-500">
-          <Image
-            src="/iatreio.jpg"
-            alt="Clinic Interior"
-            width={600}
-            height={500}
-            className="object-cover w-full h-full hover:scale-105 transition-transform duration-700"
-          />
+      {/* --- Section: Το Ιατρείο --- */}
+      <section className="py-24 px-6 bg-[#f2eee8] animate-fadeInUp duration-1000">
+        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+          <div className="rounded-3xl overflow-hidden shadow-2xl hover:shadow-xl transition-shadow duration-500">
+            <Image
+              src="/iatreio.jpg"
+              alt="Clinic Interior"
+              width={600}
+              height={500}
+              className="object-cover w-full h-full hover:scale-105 transition-transform duration-700"
+            />
+          </div>
+          <div className="space-y-5 text-center md:text-left">
+            <h2 className="text-4xl font-semibold tracking-tight">
+              Το Ιατρείο
+            </h2>
+            <p className="text-[1.1rem] text-[#4a4944] leading-relaxed">
+              Ένας φιλόξενος και κομψός χώρος για την υγειονομική φροντίδα σας.
+            </p>
+            <Link
+              href="/iatreio"
+              className="inline-block text-[#3b3a36] border border-[#3b3a36] px-6 py-2.5 rounded-full hover:bg-[#3b3a36] hover:text-white transition duration-300 shadow-md"
+            >
+              Δείτε Περισσότερα
+            </Link>
+          </div>
         </div>
-        <div className="space-y-5 text-center md:text-left">
-          <h2 className="text-4xl font-semibold tracking-tight">Το Ιατρείο</h2>
-          <p className="text-[1.1rem] text-[#4a4944] leading-relaxed">
-            Ένας φιλόξενος και κομψός χώρος για την υγειονομική φροντίδα σας.
-          </p>
-          <Link
-            href="/iatreio"
-            className="inline-block text-[#3b3a36] border border-[#3b3a36] px-6 py-2.5 rounded-full hover:bg-[#3b3a36] hover:text-white transition duration-300 shadow-md"
-          >
-            Δείτε Περισσότερα
-          </Link>
-        </div>
-      </div>
-    </section>
-
+      </section>
 
       <div className="w-full h-[2px] bg-gradient-to-r from-transparent via-[#d8d2c8] to-transparent " />
 
-     {/* --- Section: Ώρες Λειτουργίας --- */}
+      {/* --- Section: Ώρες Λειτουργίας --- */}
       <section className="py-24 px-6 bg-[#faf7f3] animate-fadeInUp duration-1000">
         <div className="max-w-4xl mx-auto text-center space-y-6">
-          <h2 className="text-3xl font-semibold tracking-tight">Ώρες Λειτουργίας Ιατρείου</h2>
+          <h2 className="text-3xl font-semibold tracking-tight">
+            Ώρες Λειτουργίας Ιατρείου
+          </h2>
           <div className="text-lg text-[#4a4944] leading-relaxed">
             <p>Δευτέρα: 10:00 - 12:30 & 17:30 - 20:30</p>
             <p>Τρίτη: 17:30 - 20:30</p>
             <p>Τετάρτη: 10:00 - 12:30</p>
             <p>Πέμπτη: 10:00 - 12:30 & 17:30 - 20:30</p>
             <p>Παρασκευή, Σάββατο & Κυριακή: Κλειστά</p>
-            <p className="mt-4 text-sm italic text-[#6a6257]">*Κατόπιν ραντεβού</p>
+            <p className="mt-4 text-sm italic text-[#6a6257]">
+              *Κατόπιν ραντεβού
+            </p>
           </div>
         </div>
       </section>
@@ -142,7 +152,9 @@ export default function Home() {
           <Image src="/cta.jpg" alt="cta image" fill className="object-cover" />
         </div>
         <div className="relative z-10 max-w-2xl mx-auto space-y-6">
-          <h2 className="text-4xl font-bold tracking-tight">Κλείστε Ραντεβού</h2>
+          <h2 className="text-4xl font-bold tracking-tight">
+            Κλείστε Ραντεβού
+          </h2>
           <p className="text-lg">
             Κάντε το πρώτο βήμα προς την ισορροπία. Επικοινωνήστε σήμερα.
           </p>

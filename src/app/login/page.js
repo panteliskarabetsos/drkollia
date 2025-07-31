@@ -15,13 +15,15 @@ export default function LoginPage() {
   const [captchaValue, setCaptchaValue] = useState("");
   const recaptchaRef = useRef(null);
   const handleCaptchaChange = (value) => {
-      setCaptchaValue(value);
-    };
+    setCaptchaValue(value);
+  };
 
   // Check if already logged in
   useEffect(() => {
     const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) {
         router.replace("/admin");
       } else {
@@ -31,59 +33,58 @@ export default function LoginPage() {
     checkUser();
   }, [router]);
 
-const handleLogin = async (e) => {
-  e.preventDefault();
-  setErrorMsg("");
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setErrorMsg("");
 
-  if (!captchaValue) {
-    setErrorMsg("Παρακαλώ επιβεβαιώστε ότι δεν είστε ρομπότ.");
-    return;
-  }
-
-  setSubmitting(true);
-
-  try {
-    // Επαλήθευση του reCAPTCHA token server-side
-    const captchaRes = await fetch("/api/verify-recaptcha", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: captchaValue }),
-    });
-
-    const { success } = await captchaRes.json();
-
-    if (!success) {
-      setErrorMsg("Η επαλήθευση reCAPTCHA απέτυχε. Προσπαθήστε ξανά.");
-      setSubmitting(false);
-      recaptchaRef.current?.reset(); // 👈 reset reCAPTCHA
+    if (!captchaValue) {
+      setErrorMsg("Παρακαλώ επιβεβαιώστε ότι δεν είστε ρομπότ.");
       return;
     }
 
-    // Αν περάσει το reCAPTCHA
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    setSubmitting(true);
 
-    if (error) {
-      recaptchaRef.current?.reset(); // 👈 reset αν αποτύχει login
-      if (error.message.toLowerCase().includes("invalid login credentials")) {
-        setErrorMsg("Λανθασμένα στοιχεία σύνδεσης.");
-      } else {
-        setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
+    try {
+      // Επαλήθευση του reCAPTCHA token server-side
+      const captchaRes = await fetch("/api/verify-recaptcha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: captchaValue }),
+      });
+
+      const { success } = await captchaRes.json();
+
+      if (!success) {
+        setErrorMsg("Η επαλήθευση reCAPTCHA απέτυχε. Προσπαθήστε ξανά.");
+        setSubmitting(false);
+        recaptchaRef.current?.reset(); // 👈 reset reCAPTCHA
+        return;
       }
-    } else {
-      router.push("/admin");
-    }
-  } catch (err) {
-    recaptchaRef.current?.reset(); // 👈 reset αν αποτύχει try/catch
-    console.error("Login failed:", err.message);
-    setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
-  } finally {
-    setSubmitting(false);
-  }
-};
 
+      // Αν περάσει το reCAPTCHA
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        recaptchaRef.current?.reset(); // 👈 reset αν αποτύχει login
+        if (error.message.toLowerCase().includes("invalid login credentials")) {
+          setErrorMsg("Λανθασμένα στοιχεία σύνδεσης.");
+        } else {
+          setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
+        }
+      } else {
+        router.push("/admin");
+      }
+    } catch (err) {
+      recaptchaRef.current?.reset(); // 👈 reset αν αποτύχει try/catch
+      console.error("Login failed:", err.message);
+      setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (checkingAuth) {
     return (
@@ -122,13 +123,12 @@ const handleLogin = async (e) => {
               disabled={submitting}
             />
           </div>
-            <ReCAPTCHA
-              ref={recaptchaRef}
-              sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
-              onChange={handleCaptchaChange}
-              className="mx-auto"
-            />
-
+          <ReCAPTCHA
+            ref={recaptchaRef}
+            sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
+            onChange={handleCaptchaChange}
+            className="mx-auto"
+          />
 
           {errorMsg && (
             <p className="text-red-600 text-sm font-medium">{errorMsg}</p>
@@ -137,7 +137,9 @@ const handleLogin = async (e) => {
           <button
             type="submit"
             className={`w-full bg-[#3b3a36] text-white py-2 rounded-lg transition ${
-              submitting ? "opacity-70 cursor-not-allowed" : "hover:bg-[#2f2e2a]"
+              submitting
+                ? "opacity-70 cursor-not-allowed"
+                : "hover:bg-[#2f2e2a]"
             }`}
             disabled={submitting}
           >
