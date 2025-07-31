@@ -3,16 +3,20 @@ name: Monthly Supabase Backup
 on:
   schedule:
     - cron: "0 0 1 * *" # Run at 00:00 on the 1st of every month
-  workflow_dispatch: # Allow manual runs
+  workflow_dispatch: # Allow manual trigger
 
 jobs:
   backup:
     runs-on: ubuntu-latest
+    container:
+      image: postgres:17
 
     steps:
-      - name: Set up environment
-        run: |
-          mkdir -p db_backups
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create backup folder
+        run: mkdir -p db_backups
 
       - name: Dump PostgreSQL database
         env:
@@ -31,7 +35,7 @@ jobs:
       - name: Compress backup
         run: gzip db_backups/*.sql
 
-      - name: Upload backup as artifact
+      - name: Upload backup artifact
         uses: actions/upload-artifact@v4
         with:
           name: supabase-backup-${{ github.run_id }}
