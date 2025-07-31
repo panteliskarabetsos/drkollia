@@ -7,6 +7,11 @@ const supabase = createClient(
 );
 
 export async function GET() {
+    const authHeader = req.headers.get("authorization");
+        if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        return new Response("Unauthorized", { status: 401 });
+        }
+
   try {
     const now = new Date();
     const tomorrow = new Date();
