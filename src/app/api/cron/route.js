@@ -20,7 +20,9 @@ export async function GET(req) {
 
   const { data: appointments, error } = await supabase
     .from("appointments")
-    .select("id, appointment_time, reason, patients (name, email)")
+    .select(
+      "id, appointment_time, reason, patients (first_name, last_name, email)"
+    )
     .eq("status", "approved")
     .gte("appointment_time", in24h.toISOString())
     .lte("appointment_time", in25h.toISOString());
@@ -41,7 +43,9 @@ export async function GET(req) {
   });
 
   let sentCount = 0;
-  const name = patients?.name || "Ασθενής";
+  const name =
+    [patients?.first_name, patients?.last_name].filter(Boolean).join(" ") ||
+    "Ασθενής";
 
   for (const appointment of appointments) {
     const { patients, appointment_time, reason } = appointment;

@@ -25,8 +25,8 @@ export default function ContactPage() {
             transition={{ delay: 0.3, duration: 0.8 }}
             className="text-lg md:text-xl max-w-2xl mx-auto text-[#eae7e0] leading-relaxed"
           >
-            Είμαστε εδώ για να σας εξυπηρετήσουμε. Επικοινωνήστε μαζί μας
-            τηλεφωνικά ή μέσω email.
+            Είμαστε εδώ για να σας βοηθήσουμε. Επικοινωνήστε μαζί μας τηλεφωνικά
+            ή κλείστε το ραντεβού σας ηλεκτρονικά.
           </motion.p>
         </div>
       </section>
