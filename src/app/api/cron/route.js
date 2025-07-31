@@ -43,13 +43,13 @@ export async function GET(req) {
   });
 
   let sentCount = 0;
-  const name =
-    [patients?.first_name, patients?.last_name].filter(Boolean).join(" ") ||
-    "Ασθενής";
 
   for (const appointment of appointments) {
     const { patients, appointment_time, reason } = appointment;
     if (!patients?.email) continue;
+    const name =
+      [patients?.first_name, patients?.last_name].filter(Boolean).join(" ") ||
+      "Ασθενής";
 
     const date = new Date(appointment_time);
     const formattedDate = date.toLocaleDateString("el-GR", {
