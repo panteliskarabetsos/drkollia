@@ -797,7 +797,7 @@ export default function AdminAppointmentsPage() {
             {/* Contact Info */}
             <div className="mb-6">
               <h3 className="text-md font-semibold text-gray-700 mb-2 border-b pb-1">
-                Στοιχεία Επικοινωνίας
+                Στοιχεία Ασθενούς
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-700">
                 <p>

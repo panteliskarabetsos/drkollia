@@ -939,7 +939,12 @@ export default function NewAppointmentPage() {
                     appointment_time: null,
                   });
                 }}
-                disabled={{ before: new Date() }}
+                disabled={{
+                  before: new Date(),
+                  after: new Date(
+                    new Date().setMonth(new Date().getMonth() + 2)
+                  ),
+                }}
                 modifiers={{
                   weekend: (date) => [0, 6].includes(date.getDay()), // Κυριακή = 0, Σάββατο = 6
                 }}

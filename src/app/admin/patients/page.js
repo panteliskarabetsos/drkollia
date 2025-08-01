@@ -16,7 +16,13 @@ import {
 } from "react-icons/fa";
 import { FiX, FiPlus, FiMinus } from "react-icons/fi";
 import { HiAdjustmentsHorizontal } from "react-icons/hi2";
-import { StickyNote, PencilLine, Trash2, ScrollText } from "lucide-react";
+import {
+  IdCard,
+  PencilLine,
+  Trash2,
+  ScrollText,
+  UserCircle,
+} from "lucide-react";
 
 function removeDiacritics(str) {
   if (typeof str !== "string") return "";
@@ -517,7 +523,7 @@ export default function PatientsPage() {
                           title="Σημειώσεις"
                           className="p-2 rounded-full hover:bg-blue-100"
                         >
-                          <StickyNote className="text-blue-500 hover:text-blue-700 w-4 h-4" />
+                          <IdCard className="text-blue-500 hover:text-blue-700 w-4 h-4" />
                         </button>
 
                         {/* Επεξεργασία */}
@@ -558,100 +564,131 @@ export default function PatientsPage() {
         )}
 
         {notesModalOpen && selectedPatient && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-y-auto py-10">
-            <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-3xl mx-4">
-              <h2 className="text-lg font-semibold text-center mb-4 flex items-center justify-center gap-2">
-                <FaStickyNote className="text-[#8c7c68]" />
-                Στοιχεία Ασθενούς
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-y-auto py-8 px-4">
+            <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-4xl mx-auto">
+              {/* Title */}
+              <h2 className="text-xl sm:text-2xl font-bold text-center text-gray-800 mb-6 flex items-center justify-center gap-2">
+                <UserCircle className="w-6 h-6 text-[#8c7c68]" />
+                Καρτέλα Ασθενούς
               </h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
-                <p>
-                  <strong>Ονοματεπώνυμο:</strong>{" "}
-                  {`${selectedPatient.first_name} ${selectedPatient.last_name}`}
-                </p>
-                <p>
-                  <strong>ΑΜΚΑ:</strong> {selectedPatient.amka || "-"}
-                </p>
-                <p>
-                  <strong>Email:</strong> {selectedPatient.email || "-"}
-                </p>
-                <p>
-                  <strong>Τηλέφωνο:</strong> {selectedPatient.phone || "-"}
-                </p>
-                <p>
-                  <strong>Ημ. Γέννησης:</strong>{" "}
-                  {formatDate(selectedPatient.birth_date) || "-"}
-                </p>
-                <p>
-                  <strong>Ηλικία:</strong>{" "}
-                  {calculateAge(selectedPatient.birth_date)}
-                </p>
-                <p>
-                  <strong>Φύλο:</strong> {selectedPatient.gender || "-"}
-                </p>
-                <p>
-                  <strong>Επάγγελμα:</strong>{" "}
-                  {selectedPatient.occupation || "-"}
-                </p>
-                <p>
-                  <strong>Ημ. Πρώτης Επίσκεψης:</strong>{" "}
-                  {formatDate(selectedPatient.first_visit_date) || "-"}
-                </p>
-                <p>
-                  <strong>Οικογενειακή Κατάσταση:</strong>{" "}
-                  {selectedPatient.marital_status || "-"}
-                </p>
-                <p>
-                  <strong>Τέκνα:</strong> {selectedPatient.children || "-"}
-                </p>
-                <p>
-                  <strong>Κάπνισμα:</strong> {selectedPatient.smoking || "-"}
-                </p>
-                <p>
-                  <strong>Αλκοόλ:</strong> {selectedPatient.alcohol || "-"}
-                </p>
-                <p>
-                  <strong>Φάρμακα:</strong> {selectedPatient.medications || "-"}
-                </p>
-                <p>
-                  <strong>Γυναικολογικό Ιστορικό:</strong>{" "}
-                  {selectedPatient.gynecological_history || "-"}
-                </p>
-                <p>
-                  <strong>Κληρονομικό Ιστορικό:</strong>{" "}
-                  {selectedPatient.hereditary_history || "-"}
-                </p>
-                <p>
-                  <strong>Παρούσα Νόσος:</strong>{" "}
-                  {selectedPatient.current_disease || "-"}
-                </p>
-                <p>
-                  <strong>Αντικειμενική Εξέταση:</strong>{" "}
-                  {selectedPatient.physical_exam || "-"}
-                </p>
-                <p>
-                  <strong>Παράκλινικός Έλεγχος:</strong>{" "}
-                  {selectedPatient.preclinical_screening || "-"}
-                </p>
+              {/* Contact Info */}
+              <div className="mb-6">
+                <h3 className="text-md font-semibold text-gray-700 mb-2 border-b pb-1">
+                  Στοιχεία Ασθενούς
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-700">
+                  <p>
+                    <strong>Ονοματεπώνυμο:</strong> {selectedPatient.first_name}{" "}
+                    {selectedPatient.last_name}
+                  </p>
+                  <p>
+                    <strong>ΑΜΚΑ:</strong> {selectedPatient.amka || "-"}
+                  </p>
+                  <p>
+                    <strong>Email:</strong> {selectedPatient.email || "-"}
+                  </p>
+                  <p>
+                    <strong>Τηλέφωνο:</strong> {selectedPatient.phone || "-"}
+                  </p>
+                  <p>
+                    <strong>Ημ. Γέννησης:</strong>{" "}
+                    {selectedPatient.birth_date || "-"}
+                  </p>
+                  <p>
+                    <strong>Ηλικία:</strong>{" "}
+                    {calculateAge(selectedPatient.birth_date)}
+                  </p>
+                  <p>
+                    <strong>Φύλο:</strong> {selectedPatient.gender || "-"}
+                  </p>
+                  <p>
+                    <strong>Επάγγελμα:</strong>{" "}
+                    {selectedPatient.occupation || "-"}
+                  </p>
+                </div>
               </div>
-              <div className="mt-6 text-sm bg-gray-50 p-4 rounded">
-                <p>
-                  <strong>Σημειώσεις:</strong>
-                </p>
-                <p className="whitespace-pre-wrap text-gray-600 mt-2">
+
+              {/* History */}
+              <div className="mb-6">
+                <h3 className="text-md font-semibold text-gray-700 mb-2 border-b pb-1">
+                  Ιστορικό & Συνήθειες
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-700">
+                  <p>
+                    <strong>Πρώτη Επίσκεψη:</strong>{" "}
+                    {selectedPatient.first_visit_date || "-"}
+                  </p>
+                  <p>
+                    <strong>Οικογενειακή Κατάσταση:</strong>{" "}
+                    {selectedPatient.marital_status || "-"}
+                  </p>
+                  <p>
+                    <strong>Τέκνα:</strong> {selectedPatient.children || "-"}
+                  </p>
+                  <p>
+                    <strong>Κάπνισμα:</strong> {selectedPatient.smoking || "-"}
+                  </p>
+                  <p>
+                    <strong>Αλκοόλ:</strong> {selectedPatient.alcohol || "-"}
+                  </p>
+                  <p>
+                    <strong>Φάρμακα:</strong>{" "}
+                    {selectedPatient.medications || "-"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Clinical */}
+              <div className="mb-6">
+                <h3 className="text-md font-semibold text-gray-700 mb-2 border-b pb-1">
+                  Κλινικές Πληροφορίες
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-700">
+                  <p>
+                    <strong>Γυναικολογικό Ιστορικό:</strong>{" "}
+                    {selectedPatient.gynecological_history || "-"}
+                  </p>
+                  <p>
+                    <strong>Κληρονομικό Ιστορικό:</strong>{" "}
+                    {selectedPatient.hereditary_history || "-"}
+                  </p>
+                  <p>
+                    <strong>Παρούσα Νόσος:</strong>{" "}
+                    {selectedPatient.current_disease || "-"}
+                  </p>
+                  <p>
+                    <strong>Αντικειμενική Εξέταση:</strong>{" "}
+                    {selectedPatient.physical_exam || "-"}
+                  </p>
+                  <p>
+                    <strong>Προκλινικός Έλεγχος:</strong>{" "}
+                    {selectedPatient.preclinical_screening || "-"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700 mb-4">
+                <p className="font-semibold mb-2">Σημειώσεις:</p>
+                <p className="whitespace-pre-wrap text-gray-600">
                   {selectedPatient.notes?.trim() || "Δεν υπάρχουν σημειώσεις."}
                 </p>
               </div>
-              <p className="mt-4 text-xs text-gray-400 text-right">
+
+              {/* Updated At */}
+              <p className="text-xs text-gray-400 text-right mb-4">
                 Τελευταία ενημέρωση:{" "}
-                {formatDateTime(selectedPatient.updated_at)}
+                {selectedPatient.updated_at
+                  ? new Date(selectedPatient.updated_at).toLocaleString("el-GR")
+                  : "-"}
               </p>
 
-              <div className="flex justify-end gap-4 mt-6">
+              {/* Buttons */}
+              <div className="flex flex-col sm:flex-row justify-end gap-3 mt-4">
                 <button
                   onClick={() => setNotesModalOpen(false)}
-                  className="px-4 py-2 text-sm bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                  className="w-full sm:w-auto px-4 py-2 text-sm bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition"
                 >
                   Κλείσιμο
                 </button>
@@ -660,7 +697,7 @@ export default function PatientsPage() {
                     setNotesModalOpen(false);
                     router.push(`/admin/patients/${selectedPatient.id}`);
                   }}
-                  className="px-4 py-2 text-sm bg-[#8c7c68] text-white rounded hover:bg-[#6f6253]"
+                  className="w-full sm:w-auto px-4 py-2 text-sm bg-[#8c7c68] text-white rounded hover:bg-[#6f6253] transition"
                 >
                   Επεξεργασία
                 </button>
