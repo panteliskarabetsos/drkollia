@@ -16,6 +16,12 @@ export const metadata = {
   description:
     "Ενδοκρινολογία - Διαβήτης - Μεταβολισμός | Ορμονική Υγεία & Φροντίδα Διαβήτη",
   viewport: "width=device-width, initial-scale=1.0",
+
+  icons: {
+    icon: "/favicon.ico", // βασικό favicon
+    shortcut: "/favicon.ico", // shortcut icon (legacy)
+    apple: "/apple-touch-icon.png", // προαιρετικό (για iOS)
+  },
 };
 
 export default function RootLayout({ children }) {
