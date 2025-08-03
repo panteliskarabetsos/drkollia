@@ -5,8 +5,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import { Calendar as CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
+import { format, addMonths } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
+
 import {
   Popover,
   PopoverContent,
@@ -19,6 +20,7 @@ import {
   ArrowLeft,
   CalendarX,
   AlertTriangle,
+  AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { startOfMonth, endOfMonth } from "date-fns";
@@ -63,6 +65,8 @@ export default function NewAppointmentPage() {
   const [allScheduleSlots, setAllScheduleSlots] = useState([]);
   const [visitorCount, setVisitorCount] = useState(null);
   const [showVisitorMessage, setShowVisitorMessage] = useState(false);
+  const [errors, setErrors] = useState({});
+
   const filteredPatients = patients.filter((p) => {
     const term = normalizeGreekText(searchTerm);
     const fullName = normalizeGreekText(`${p.first_name} ${p.last_name}`);
@@ -333,6 +337,82 @@ export default function NewAppointmentPage() {
     router.push("/admin/appointments");
   };
 
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.reason) newErrors.reason = "Απαιτείται λόγος επίσκεψης";
+    if (!formData.appointment_date)
+      newErrors.appointment_date = "Απαιτείται ημερομηνία";
+    if (!formData.appointment_time)
+      newErrors.appointment_time = "Απαιτείται ώρα ραντεβού";
+
+    if (formData.reason === "Προσαρμογή" && !formData.customReason)
+      newErrors.customReason = "Απαιτείται περιγραφή";
+
+    if (formData.duration_minutes === "custom" && !formData.customDuration)
+      newErrors.customDuration = "Απαιτείται προσαρμοσμένη διάρκεια";
+
+    if (newPatientMode) {
+      if (!newPatientData.first_name) newErrors.first_name = "Απαιτείται όνομα";
+      if (!newPatientData.last_name) newErrors.last_name = "Απαιτείται επώνυμο";
+    } else {
+      if (!selectedPatient) newErrors.selectedPatient = "Επιλέξτε ασθενή";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+  const [existingAmkaPatient, setExistingAmkaPatient] = useState(null);
+
+  useEffect(() => {
+    const checkAmka = async () => {
+      const trimmedAmka = newPatientData.amka?.trim();
+      if (!trimmedAmka || trimmedAmka.length < 6) {
+        setExistingAmkaPatient(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("patients")
+        .select("first_name, last_name")
+        .eq("amka", trimmedAmka)
+        .single();
+
+      if (data) {
+        setExistingAmkaPatient(`${data.first_name} ${data.last_name}`);
+      } else {
+        setExistingAmkaPatient(null);
+      }
+    };
+
+    checkAmka();
+  }, [newPatientData.amka]);
+
+  const [existingPhonePatient, setExistingPhonePatient] = useState(null);
+  useEffect(() => {
+    const checkPhone = async () => {
+      const trimmedPhone = newPatientData.phone?.trim();
+      if (!trimmedPhone || trimmedPhone.length < 6) {
+        setExistingPhonePatient(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("patients")
+        .select("first_name, last_name")
+        .ilike("phone", `%${trimmedPhone}%`)
+        .limit(1)
+        .single();
+
+      if (data) {
+        setExistingPhonePatient(`${data.first_name} ${data.last_name}`);
+      } else {
+        setExistingPhonePatient(null);
+      }
+    };
+
+    checkPhone();
+  }, [newPatientData.phone]);
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -364,7 +444,10 @@ export default function NewAppointmentPage() {
           );
           return;
         }
-
+        if (!validateForm()) {
+          setIsSubmitting(false);
+          return;
+        }
         const { error } = await supabase.from("appointments").insert([
           {
             patient_id: null,
@@ -464,7 +547,7 @@ export default function NewAppointmentPage() {
         console.error("Appointment insert error:", error);
         alert("Σφάλμα κατά την καταχώρηση ραντεβού.");
       } else {
-        // ✅ Αποστολή email επιβεβαίωσης σε ασθενή (νέο ή υπάρχον)
+        //Αποστολή email επιβεβαίωσης σε ασθενή (νέο ή υπάρχον)
         if (email) {
           await fetch("/api/send-confirmation", {
             method: "POST",
@@ -626,6 +709,18 @@ export default function NewAppointmentPage() {
     );
   }
 
+  const isFormValid =
+    formData.reason &&
+    formData.appointment_date &&
+    formData.appointment_time &&
+    (!newPatientMode ||
+      (newPatientData.first_name?.trim() &&
+        newPatientData.last_name?.trim() &&
+        !errors.amka &&
+        !existingAmkaPatient &&
+        !errors.phone &&
+        !existingPhonePatient));
+
   return (
     <main className="min-h-screen flex items-center justify-center bg-[#f9f9f9] px-14 py-22 ">
       <form
@@ -709,6 +804,9 @@ export default function NewAppointmentPage() {
                 className="p-2 border border-gray-300 rounded-lg"
                 required
               />
+              {errors.first_name && (
+                <p className="text-sm text-red-600 mt-1">{errors.first_name}</p>
+              )}
               <input
                 type="text"
                 placeholder="Επώνυμο"
@@ -722,6 +820,9 @@ export default function NewAppointmentPage() {
                 className="p-2 border border-gray-300 rounded-lg"
                 required
               />
+              {errors.last_name && (
+                <p className="text-sm text-red-600 mt-1">{errors.last_name}</p>
+              )}
             </div>
             {/* υπόλοιπα πεδία */}
             <input
@@ -733,6 +834,17 @@ export default function NewAppointmentPage() {
               }
               className="p-2 border border-gray-300 rounded-lg"
             />
+            {existingPhonePatient && (
+              <div className="mt-2 p-3 rounded-md bg-red-50 border border-red-300 text-red-700 text-sm flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0 text-red-500" />
+                <span>
+                  Υπάρχει ήδη ασθενής με αυτό το τηλέφωνο:{" "}
+                  <strong className="font-semibold">
+                    {existingPhonePatient}
+                  </strong>
+                </span>
+              </div>
+            )}
             <input
               type="email"
               placeholder="Email"
@@ -751,6 +863,21 @@ export default function NewAppointmentPage() {
               }
               className="p-2 border border-gray-300 rounded-lg"
             />
+            {existingAmkaPatient && (
+              <div className="mt-2 p-3 rounded-md bg-red-50 border border-red-300 text-red-700 text-sm flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0 text-red-500" />
+                <span>
+                  Υπάρχει ήδη ασθενής με αυτό το ΑΜΚΑ:{" "}
+                  <strong className="font-semibold">
+                    {existingAmkaPatient}
+                  </strong>
+                </span>
+              </div>
+            )}
+
+            {errors.amka && (
+              <p className="text-sm text-red-600 mt-1">{errors.amka}</p>
+            )}
           </div>
         ) : (
           <div className="mb-5">
@@ -804,7 +931,6 @@ export default function NewAppointmentPage() {
             )}
           </div>
         )}
-
         {/* Λόγος Επίσκεψης */}
         <div className="mb-5">
           <label className="block text-sm mb-1 text-gray-600">
@@ -830,7 +956,9 @@ export default function NewAppointmentPage() {
             }}
             className="w-full p-2 border border-gray-300 rounded-lg"
           >
-            <option value="">-- Επιλέξτε λόγο επίσκεψης --</option>
+            <option value="" disabled hidden>
+              -- Επιλέξτε λόγο επίσκεψης --
+            </option>
             <option value="Εξέταση">Εξέταση</option>
             <option value="Αξιολόγηση Αποτελεσμάτων">
               Αξιολόγηση Αποτελεσμάτων
@@ -839,7 +967,6 @@ export default function NewAppointmentPage() {
             <option value="Προσαρμογή">Προσαρμογή (ελεύθερο κείμενο)</option>
           </select>
         </div>
-
         {/* Ελεύθερο πεδίο αν επιλέχθηκε Προσαρμογή */}
         {formData.reason === "Προσαρμογή" && (
           <div className="mb-5">
@@ -858,7 +985,6 @@ export default function NewAppointmentPage() {
             />
           </div>
         )}
-
         {/* Επιλογή Ημερομηνίας */}
         <div className="mb-5">
           <label className="block text-sm mb-1 text-gray-600">Ημερομηνία</label>
@@ -866,7 +992,10 @@ export default function NewAppointmentPage() {
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                className="w-full justify-start text-left font-normal"
+                className={`w-full justify-start text-left font-normal ${
+                  !formData.reason ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                disabled={!formData.reason}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {formData.appointment_date
@@ -874,29 +1003,34 @@ export default function NewAppointmentPage() {
                   : "Επιλέξτε ημερομηνία"}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="single"
-                locale={greekLocale}
-                selected={formData.appointment_date}
-                onSelect={(date) => {
-                  setFormData({
-                    ...formData,
-                    appointment_date: date,
-                    appointment_time: null,
-                  });
-                }}
-                disabled={{ before: new Date() }}
-                modifiers={{
-                  weekend: (date) => [0, 6].includes(date.getDay()), // Κυριακή = 0, Σάββατο = 6
-                }}
-                modifiersClassNames={{
-                  weekend: "text-gray-400 opacity-60", // πιο "faded"
-                }}
-                showOutsideDays
-                initialFocus
-              />
-            </PopoverContent>
+            {formData.reason && (
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  locale={greekLocale}
+                  selected={formData.appointment_date}
+                  onSelect={(date) =>
+                    setFormData({
+                      ...formData,
+                      appointment_date: date,
+                      appointment_time: null,
+                    })
+                  }
+                  disabled={{
+                    before: new Date(),
+                    after: addMonths(new Date(), 2),
+                  }}
+                  modifiers={{
+                    weekend: (date) => [0, 6].includes(date.getDay()),
+                  }}
+                  modifiersClassNames={{
+                    weekend: "text-gray-400 opacity-60",
+                  }}
+                  showOutsideDays
+                  initialFocus
+                />
+              </PopoverContent>
+            )}
           </Popover>
         </div>
 
@@ -923,7 +1057,6 @@ export default function NewAppointmentPage() {
             <option value="custom">Προσαρμογή</option>
           </select>
         </div>
-
         {/* Προσαρμοσμένη διάρκεια */}
         {formData.duration_minutes === "custom" && (
           <div className="mb-5">
@@ -1046,7 +1179,6 @@ export default function NewAppointmentPage() {
             )}
           </div>
         )}
-
         {/* Σημειώσεις */}
         <div className="mb-6">
           <label className="block text-sm mb-1 text-gray-600">Σημειώσεις</label>
@@ -1062,10 +1194,13 @@ export default function NewAppointmentPage() {
 
         <button
           type="submit"
-          disabled={isSubmitting}
-          className={`w-full flex items-center justify-center bg-gray-800 text-white py-2 rounded-lg transition ${
-            isSubmitting ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-700"
-          }`}
+          disabled={isSubmitting || !isFormValid}
+          className={`w-full flex items-center justify-center py-2 rounded-lg transition
+    ${
+      isSubmitting || !isFormValid
+        ? "bg-gray-400 cursor-not-allowed text-white"
+        : "bg-gray-800 text-white hover:bg-gray-700"
+    }`}
         >
           {isSubmitting ? (
             <>
@@ -1104,8 +1239,8 @@ export default function NewAppointmentPage() {
                 <p className="font-semibold">Προειδοποίηση:</p>
                 <p>
                   {visitorCount === 1
-                    ? "Έχει ήδη προγραμματιστεί 1 Ιατρικός Επισκέπτης για τον συγκεκριμένο μήνα."
-                    : `Έχουν ήδη προγραμματιστεί ${visitorCount} Ιατρικοί Επισκέπτες για τον συγκεκριμένο μήνα.`}
+                    ? "Έχει ήδη προγραμματιστεί 1 Ιατρικός Επισκέπτης για τον επιλεγμένο μήνα."
+                    : `Έχουν ήδη προγραμματιστεί ${visitorCount} Ιατρικοί Επισκέπτες για τον επιλεγμένο μήνα.`}
                 </p>
               </div>
             </div>

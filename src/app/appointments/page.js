@@ -904,7 +904,10 @@ export default function NewAppointmentPage() {
             }}
             className="w-full p-2 border border-gray-300 rounded-lg"
           >
-            <option value="">-- Επιλέξτε λόγο επίσκεψης --</option>
+            <option value="" disabled hidden>
+              -- Επιλέξτε λόγο επίσκεψης --
+            </option>
+
             <option value="Εξέταση">Εξέταση</option>
             <option value="Αξιολόγηση Αποτελεσμάτων">
               Αξιολόγηση Αποτελεσμάτων
@@ -920,6 +923,7 @@ export default function NewAppointmentPage() {
               <Button
                 variant="outline"
                 className="w-full justify-start text-left font-normal"
+                disabled={!formData.reason}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {formData.appointment_date
@@ -1058,47 +1062,73 @@ export default function NewAppointmentPage() {
               </p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {allScheduleSlots.map(({ time, available }) => {
-                  const [hour, minute] = time.split(":").map(Number);
-                  const start = new Date();
-                  start.setHours(hour, minute, 0, 0);
+                {allScheduleSlots
+                  .filter(({ time }) => {
+                    const [hour, minute] = time.split(":").map(Number);
+                    const slotDate = new Date(formData.appointment_date);
+                    slotDate.setHours(hour, minute, 0, 0);
 
-                  const duration = parseInt(
-                    formData.duration_minutes === "custom"
-                      ? formData.customDuration
-                      : formData.duration_minutes
-                  );
+                    const now = new Date();
+                    const isToday =
+                      formData.appointment_date &&
+                      new Date(formData.appointment_date).toDateString() ===
+                        now.toDateString();
 
-                  const end = new Date(start);
-                  end.setMinutes(end.getMinutes() + duration);
+                    const oneHourLater = new Date(
+                      now.getTime() + 60 * 60 * 1000
+                    );
 
-                  const endTimeStr = `${String(end.getHours()).padStart(
-                    2,
-                    "0"
-                  )}:${String(end.getMinutes()).padStart(2, "0")}`;
+                    // Απόκρυψη slot αν είναι για σήμερα και λιγότερο από 1 ώρα από τώρα
+                    if (isToday && slotDate < oneHourLater) {
+                      return false;
+                    }
 
-                  return (
-                    <button
-                      key={time}
-                      type="button"
-                      onClick={() => {
-                        if (available)
-                          setFormData({ ...formData, appointment_time: time });
-                      }}
-                      disabled={!available}
-                      className={`px-3 py-2 text-sm rounded-lg border transition-all ${
-                        formData.appointment_time === time && available
-                          ? "bg-gray-800 text-white"
-                          : available
-                          ? "bg-white text-gray-800 border-gray-300 hover:bg-gray-100"
-                          : "bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed"
-                      }`}
-                      title={available ? "" : "Κλεισμένο ή μη διαθέσιμο"}
-                    >
-                      {time}–{endTimeStr}
-                    </button>
-                  );
-                })}
+                    return true;
+                  })
+                  .map(({ time, available }) => {
+                    const [hour, minute] = time.split(":").map(Number);
+                    const start = new Date();
+                    start.setHours(hour, minute, 0, 0);
+
+                    const duration = parseInt(
+                      formData.duration_minutes === "custom"
+                        ? formData.customDuration
+                        : formData.duration_minutes
+                    );
+
+                    const end = new Date(start);
+                    end.setMinutes(end.getMinutes() + duration);
+
+                    const endTimeStr = `${String(end.getHours()).padStart(
+                      2,
+                      "0"
+                    )}:${String(end.getMinutes()).padStart(2, "0")}`;
+
+                    return (
+                      <button
+                        key={time}
+                        type="button"
+                        onClick={() => {
+                          if (available)
+                            setFormData({
+                              ...formData,
+                              appointment_time: time,
+                            });
+                        }}
+                        disabled={!available}
+                        className={`px-3 py-2 text-sm rounded-lg border transition-all ${
+                          formData.appointment_time === time && available
+                            ? "bg-gray-800 text-white"
+                            : available
+                            ? "bg-white text-gray-800 border-gray-300 hover:bg-gray-100"
+                            : "bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed"
+                        }`}
+                        title={available ? "" : "Κλεισμένο ή μη διαθέσιμο"}
+                      >
+                        {time}–{endTimeStr}
+                      </button>
+                    );
+                  })}
               </div>
             )}
           </div>
