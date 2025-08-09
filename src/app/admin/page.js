@@ -7,17 +7,17 @@ import {
   CalendarDays,
   User,
   Clock,
-  MessageCircle,
   ShieldCheck,
   ArrowRight,
   Loader2,
+  LifeBuoy, // <-- Lifejacket icon
 } from "lucide-react";
 
 export default function AdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-  const [loadingButton, setLoadingButton] = useState(null); // track which button is clicked
+  const [loadingButton, setLoadingButton] = useState(null);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -71,7 +71,7 @@ export default function AdminPage() {
   ];
 
   return (
-    <main className="min-h-screen bg-[#fafafa] text-[#333] font-sans">
+    <main className="min-h-screen bg-[#fafafa] text-[#333] font-sans relative">
       <section className="py-22 px-4 max-w-6xl mx-auto">
         <h1 className="text-3xl font-medium text-center mb-12 tracking-tight">
           Πίνακας Διαχείρισης
@@ -112,6 +112,23 @@ export default function AdminPage() {
           ))}
         </div>
       </section>
+
+      {/* Floating Help Button with Hover Text */}
+      <div className="fixed bottom-6 right-6 flex items-center space-x-2 group">
+        {/* Hover text */}
+        <span className="opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 bg-white text-gray-700 text-sm px-3 py-1 rounded-lg shadow-md">
+          Χρειάζεστε βοήθεια?
+        </span>
+
+        {/* Icon button */}
+        <button
+          onClick={() => router.push("/help")}
+          aria-label="Need help?"
+          className="p-3 rounded-full shadow-lg bg-gradient-to-r from-blue-500 to-blue-700 text-white hover:from-blue-600 hover:to-blue-800 transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-300"
+        >
+          <LifeBuoy className="w-8 h-8" />
+        </button>
+      </div>
     </main>
   );
 }

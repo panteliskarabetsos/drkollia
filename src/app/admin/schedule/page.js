@@ -7,6 +7,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "../../lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Clock, Trash2, Pencil } from "lucide-react";
+import AdminBackButton from "../../components/AdminBackButton";
 
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -41,12 +42,47 @@ export default function SchedulePage() {
   const [isFullDay, setIsFullDay] = useState(false);
   const router = useRouter();
   const [formError, setFormError] = useState("");
+
   const [confirmDelete, setConfirmDelete] = useState({ type: null, id: null });
+  const [acceptNewAppointments, setAcceptNewAppointments] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+
+  const fetchClinicSettings = async () => {
+    setSettingsLoading(true);
+    const { data, error } = await supabase
+      .from("clinic_settings")
+      .select("accept_new_appointments")
+      .eq("id", 1)
+      .single();
+
+    if (!error && data) {
+      setAcceptNewAppointments(data.accept_new_appointments);
+    }
+    setSettingsLoading(false);
+  };
+
+  const toggleClinicAppointments = async (value) => {
+    setAcceptNewAppointments(value);
+    const { error } = await supabase
+      .from("clinic_settings")
+      .update({
+        accept_new_appointments: value,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", 1);
+
+    if (error) {
+      console.error(error);
+      // revert safely
+      setAcceptNewAppointments((prev) => prev); // or set back to !value if you prefer optimistic strict revert
+    }
+  };
 
   useEffect(() => {
     setHasMounted(true);
     fetchSchedule();
     fetchExceptions();
+    fetchClinicSettings();
   }, []);
 
   useEffect(() => {
@@ -333,18 +369,46 @@ export default function SchedulePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#fafafa] to-[#f1f1f1] py-20 px-6">
-      {/* Back Button */}
+    <div className="relative min-h-screen bg-gradient-to-b from-[#fafafa] to-[#f1f1f1] py-20 px-6">
       <button
-        onClick={() => router.back()}
-        className="mb-6 flex items-center text-gray-700 hover:text-emerald-600 transition"
+        onClick={() => router.push("/admin")}
+        className="fixed py-4 text-gray-600 hover:text-gray-800 hover:bg-gray-100 p-2 rounded-full transition-colors duration-200 inline-flex items-center gap-2 "
+        title="Επιστροφή στο Dashboard"
       >
-        <ArrowLeft className="w-5 h-5 mr-2" />
-        <span className="text-sm font-medium">Επιστροφή</span>
+        <ArrowLeft size={24} />
+        Eπιστροφή
       </button>
+
       <h1 className="text-3xl font-serif font-semibold text-[#3b3a36] mb-8 text-center">
         Πρόγραμμα Ιατρείου
       </h1>
+
+      <div className="mb-4 flex items-center justify-center gap-3 py-6">
+        <label className="inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            className="sr-only peer"
+            checked={acceptNewAppointments}
+            onChange={(e) => toggleClinicAppointments(e.target.checked)}
+            disabled={settingsLoading}
+          />
+          <div
+            className="relative w-12 h-6 rounded-full bg-gray-200 transition-colors
+               peer-checked:bg-emerald-600
+               peer-checked:[&>span]:translate-x-6"
+          >
+            <span
+              className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow
+                 transition-transform translate-x-0"
+            />
+          </div>
+          <span className="ml-2 text-sm text-gray-700">
+            {acceptNewAppointments
+              ? "Δεχόμαστε νέα ραντεβού"
+              : "Δεν δεχόμαστε νέα ραντεβού"}
+          </span>
+        </label>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white p-6 rounded-3xl shadow-xl">

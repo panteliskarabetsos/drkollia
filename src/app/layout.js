@@ -4,6 +4,8 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
+import { Toaster } from "sonner";
+
 const notoSerif = Noto_Serif({
   subsets: ["latin"],
   weight: ["400", "700"],
@@ -15,13 +17,16 @@ export const metadata = {
   title: "Γεωργία Κόλλια - Ενδοκρινολόγος - Διαβητολόγος",
   description:
     "Ενδοκρινολογία - Διαβήτης - Μεταβολισμός | Ορμονική Υγεία & Φροντίδα Διαβήτη",
-  viewport: "width=device-width, initial-scale=1.0",
 
   icons: {
     icon: "/favicon.ico", // βασικό favicon
     shortcut: "/favicon.ico", // shortcut icon (legacy)
     apple: "/apple-touch-icon.png", // προαιρετικό (για iOS)
   },
+};
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }) {
@@ -36,6 +41,12 @@ export default function RootLayout({ children }) {
         `}
       >
         <Header />
+        <Toaster
+          position="top-right"
+          richColors
+          expand
+          offset={80} // moves it 60px down from the top
+        />
         <main className="flex-grow pt-8">{children}</main>
         <Footer />
         <SpeedInsights />

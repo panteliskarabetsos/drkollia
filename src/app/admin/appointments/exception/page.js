@@ -8,6 +8,8 @@ import { formatISO } from "date-fns";
 import { ArrowLeft } from "lucide-react";
 import { Search } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
+import { Switch } from "@/components/ui/switch"; // If you have a shadcn/ui Switch
+import { Label } from "@/components/ui/label";
 
 function generateTimeSlots(start, end, intervalMinutes) {
   const times = [];

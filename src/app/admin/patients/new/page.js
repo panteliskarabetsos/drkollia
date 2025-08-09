@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import { FaArrowLeft } from "react-icons/fa";
+import { AlertCircle, Users, IdCard } from "lucide-react";
 
 export default function NewPatientPage() {
   const [session, setSession] = useState(null);
@@ -37,7 +38,12 @@ export default function NewPatientPage() {
   const [message, setMessage] = useState(null);
   const [fullNameError, setFullNameError] = useState(false);
   const [amkaError, setAmkaError] = useState(false);
+  const [amkaMatches, setAmkaMatches] = useState([]); // [{id, first_name, last_name, amka}]
+  const [amkaExists, setAmkaExists] = useState(false);
+  const [phoneExists, setPhoneExists] = useState(false);
 
+  const amkaTimerRef = useRef(null);
+  const phoneTimerRef = useRef(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -64,14 +70,50 @@ export default function NewPatientPage() {
     );
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
+
     setForm((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [name]: value,
     }));
-  };
 
+    if (name === "amka") {
+      // reset error if editing
+      setAmkaError(false);
+
+      // run only for 11 digits to avoid noisy queries
+      if (amkaTimerRef.current) clearTimeout(amkaTimerRef.current);
+      amkaTimerRef.current = setTimeout(() => {
+        if (/^\d{11}$/.test(value)) checkDuplicate("amka", value);
+        else setAmkaExists(false);
+      }, 300);
+    }
+
+    if (name === "amka") {
+      // live length validation
+      if (value.trim() === "") {
+        setAmkaError(false);
+      } else {
+        setAmkaError(!/^\d{11}$/.test(value));
+      }
+
+      // duplicate check μόνο όταν είναι ακριβώς 11 ψηφία
+      if (amkaTimerRef.current) clearTimeout(amkaTimerRef.current);
+      amkaTimerRef.current = setTimeout(() => {
+        if (/^\d{11}$/.test(value)) {
+          checkDuplicate("amka", value);
+        } else {
+          setAmkaExists(false);
+          // αν αλλάξει και δεν είναι 11, καθάρισε τα matches
+          setAmkaMatches?.([]); // μόνο αν χρησιμοποιείς matches
+        }
+      }, 300);
+    }
+  };
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Έλεγχος μήκους AMKA
     if (form.amka.trim() !== "" && !/^\d{11}$/.test(form.amka)) {
       setAmkaError(true);
       setMessage({
@@ -83,22 +125,31 @@ export default function NewPatientPage() {
       setAmkaError(false);
     }
 
-    setLoading(true);
-    setMessage(null);
+    // Έλεγχος duplicate AMKA
+    if (amkaExists) {
+      setMessage({
+        type: "error",
+        text: "Υπάρχει ήδη ασθενής με αυτόν τον ΑΜΚΑ.",
+      });
+      return;
+    }
 
+    // Έλεγχος Ονοματεπώνυμου
     if (!form.first_name.trim() || !form.last_name.trim()) {
       setFullNameError(true);
       setMessage({
         type: "error",
         text: "Το Ονοματεπώνυμο είναι υποχρεωτικό.",
       });
-      setLoading(false);
       return;
     }
 
+    setLoading(true);
+    setMessage(null);
+
+    // Επεξεργασία τιμών smoking/alcohol
     const preparedForm = {
       ...form,
-
       smoking:
         form.smoking === "Προσαρμογή" ? form.customSmoking : form.smoking,
       alcohol:
@@ -107,28 +158,25 @@ export default function NewPatientPage() {
 
     const { customSmoking, customAlcohol, ...cleanedFormRaw } = preparedForm;
 
-    // Χάρτης μετατροπής ελληνικών label φύλου σε αποδεκτές enum τιμές
+    // Map για φύλο
     const genderMap = {
       Άνδρας: "male",
       Γυναίκα: "female",
       Άλλο: "other",
     };
 
-    // Προετοιμασία final form
+    // Final form
     const cleanedForm = {
       ...cleanedFormRaw,
       gender: genderMap[cleanedFormRaw.gender] || cleanedFormRaw.gender || null,
     };
 
-    if (cleanedForm.birth_date === "") cleanedForm.birth_date = null;
-    if (cleanedForm.first_visit_date === "")
-      cleanedForm.first_visit_date = null;
-    if (cleanedForm.amka?.trim() === "") cleanedForm.amka = null;
+    // Μετατροπή κενών string σε null
+    ["birth_date", "first_visit_date", "amka"].forEach((field) => {
+      if (cleanedForm[field]?.trim?.() === "") cleanedForm[field] = null;
+    });
 
-    if (cleanedForm.birth_date === "") cleanedForm.birth_date = null;
-    if (cleanedForm.first_visit_date === "")
-      cleanedForm.first_visit_date = null;
-
+    // Αποθήκευση
     const { error } = await supabase.from("patients").insert([cleanedForm]);
 
     if (error) {
@@ -150,8 +198,41 @@ export default function NewPatientPage() {
     setLoading(false);
   };
 
+  const checkDuplicate = async (field, value) => {
+    if (!value?.trim()) return;
+
+    if (field === "amka") {
+      const { data, error } = await supabase
+        .from("patients")
+        .select("id, first_name, last_name, amka")
+        .eq("amka", value)
+        .limit(5);
+
+      if (error) {
+        console.error("Error checking AMKA duplicates:", error);
+        return;
+      }
+      setAmkaExists((data?.length ?? 0) > 0);
+      setAmkaMatches(data || []);
+      return;
+    }
+
+    // phone as before
+    const { data, error } = await supabase
+      .from("patients")
+      .select("id")
+      .eq(field, value)
+      .limit(1);
+
+    if (error) {
+      console.error("Error checking duplicates:", error);
+      return;
+    }
+    if (field === "phone") setPhoneExists((data?.length ?? 0) > 0);
+  };
+
   return (
-    <main className="min-h-screen bg-[#f2f5f4] py-12 px-4 text-[#3a3a38]">
+    <main className="min-h-screen bg-[#f2f5f4] py-22 px-4 text-[#3a3a38]">
       <div className="max-w-5xl mx-auto bg-white shadow-lg rounded-3xl p-10 border border-[#cfd8d6]">
         <div className="sticky top-0 bg-white z-10 flex justify-between items-center py-4 px-2 border-b mb-6">
           <button
@@ -160,7 +241,8 @@ export default function NewPatientPage() {
           >
             <FaArrowLeft />
           </button>
-          <h1 className="text-3xl font-serif font-semibold tracking-tight text-[#2d2d2b]">
+          <h1 className="text-3xl font-serif font-semibold tracking-tight text-[#2d2d2b]  flex justify-center items-center gap-3">
+            <Users className="w-6 h-6 text-[#8c7c68]" />
             Νέος Ασθενής
           </h1>
           <div className="w-5" /> {/* empty space for alignment */}
@@ -193,9 +275,30 @@ export default function NewPatientPage() {
                 placeholder="π.χ. 01019999999"
                 value={form.amka}
                 onChange={handleChange}
-                error={amkaError}
-                errorMessage="Ο ΑΜΚΑ πρέπει να αποτελείται από 11 ψηφία"
+                onBlur={() => {
+                  if (/^\d{11}$/.test(form.amka))
+                    checkDuplicate("amka", form.amka);
+                }}
+                // δείξε error όταν υπάρχει duplicate ή (λάθος μήκος ΚΑΙ δεν υπάρχει duplicate)
+                error={amkaExists || (amkaError && !amkaExists)}
+                // αν υπάρχει duplicate, μην δείχνεις το μήνυμα μήκους για να μην διπλολογεί
+                errorMessage={
+                  amkaExists
+                    ? "" // το card/list αναλαμβάνει το μήνυμα του duplicate
+                    : amkaError
+                    ? "Ο ΑΜΚΑ πρέπει να αποτελείται από 11 ψηφία"
+                    : ""
+                }
+                below={
+                  amkaExists && amkaMatches?.length > 0 ? (
+                    <ConflictCard
+                      title="Υπάρχοντες ασθενείς με αυτόν τον ΑΜΚΑ"
+                      items={amkaMatches}
+                    />
+                  ) : null
+                }
               />
+
               <InputField
                 name="email"
                 label="Email"
@@ -400,6 +503,7 @@ const InputField = ({
   onChange,
   error = false,
   errorMessage = "",
+  below,
 }) => (
   <div>
     <label
@@ -421,7 +525,19 @@ const InputField = ({
           : "border-[#d6d3cb] focus:ring-2 focus:ring-[#9e9483]"
       }`}
     />
-    {error && <p className="mt-1 text-xs text-red-600">{errorMessage}</p>}
+    {error && (
+      <div
+        id={`${name}-error`}
+        className="flex items-start gap-2 text-sm text-rose-700"
+        role="alert"
+        aria-live="polite"
+      >
+        <AlertCircle className="mt-[2px] h-4 w-4" />
+        <p>{errorMessage}</p>
+      </div>
+    )}
+
+    {below && <div className="pt-1">{below}</div>}
   </div>
 );
 
@@ -477,5 +593,29 @@ const TextAreaField = ({ name, label, value, onChange }) => (
       onChange={onChange}
       className="w-full px-3 py-2 border border-[#d6d3cb] rounded-md text-sm bg-white resize-none focus:outline-none focus:ring-2 focus:ring-[#9e9483] transition"
     />
+  </div>
+);
+const ConflictCard = ({ title, items }) => (
+  <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3 text-sm text-rose-800 shadow-sm">
+    <div className="flex items-center gap-2 font-medium mb-1.5">
+      <Users className="h-4 w-4" />
+      <span>{title}</span>
+      <span className="ml-auto text-xs bg-rose-100 text-rose-700 rounded-full px-2 py-0.5">
+        {items.length}
+      </span>
+    </div>
+    <ul className="space-y-1">
+      {items.map((p) => (
+        <li key={p.id} className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-rose-500 inline-block" />
+
+          {/* <Link href={`/admin/patients/${p.id}`} className="hover:underline"> */}
+          <span className="leading-tight">
+            {p.last_name} {p.first_name}
+          </span>
+          {/* </Link> */}
+        </li>
+      ))}
+    </ul>
   </div>
 );

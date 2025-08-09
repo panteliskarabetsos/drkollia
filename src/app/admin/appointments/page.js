@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { Calendar } from "@/components/ui/calendar";
-import { format, isSameDay } from "date-fns";
+import { format, isSameDay, set } from "date-fns";
 import * as XLSX from "xlsx";
 
 import {
@@ -27,6 +27,7 @@ export default function AdminAppointmentsPage() {
   const router = useRouter();
   const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionExists, setSessionExists] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -56,6 +57,7 @@ export default function AdminAppointmentsPage() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [notifyCancelEmail, setNotifyCancelEmail] = useState(true);
   const [cancelTargetId, setCancelTargetId] = useState(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notesModalOpen, setNotesModalOpen] = useState(false);
@@ -71,6 +73,7 @@ export default function AdminAppointmentsPage() {
   const [viewMode, setViewMode] = useState("day"); // 'day', 'week', 'month'
   const [dateRange, setDateRange] = useState(undefined);
   const [searchQuery, setSearchQuery] = useState("");
+
   const greekLocale = {
     ...el,
     options: {
@@ -189,6 +192,7 @@ export default function AdminAppointmentsPage() {
       }
 
       setLoading(false);
+      setIsLoading(false);
     };
 
     if (sessionExists) {
@@ -196,7 +200,8 @@ export default function AdminAppointmentsPage() {
     }
   }, [sessionExists]);
 
-  const updateStatus = async (id, status) => {
+  // sendEmail comes from the modal checkbox (true/false)
+  const updateStatus = async (id, status, sendEmail = false) => {
     const appointment = appointments.find((app) => app.id === id);
     if (!appointment) return;
 
@@ -210,13 +215,13 @@ export default function AdminAppointmentsPage() {
       return;
     }
 
-    // Ενημέρωση τοπικού state
+    // update local state
     setAppointments((prev) =>
       prev.map((app) => (app.id === id ? { ...app, status } : app))
     );
 
-    // Αν είναι ακύρωση, στείλε email
-    if (status === "cancelled" && appointment.patients?.email) {
+    // email only if requested AND we have an email
+    if (status === "cancelled" && sendEmail && appointment.patients?.email) {
       try {
         await fetch("/api/send-cancellation", {
           method: "POST",
@@ -385,47 +390,90 @@ export default function AdminAppointmentsPage() {
     }
     return age;
   }
+  function openCancelDialog(id) {
+    const appt = appointments.find((a) => a.id === id);
+    setCancelTargetId(id);
+    // Προεπιλογή: τσεκαρισμένο μόνο αν υπάρχει email
+    setNotifyCancelEmail(!!appt?.patients?.email);
+    setCancelDialogOpen(true);
+  }
 
   return (
     <main className="min-h-screen bg-[#f9f9f9] text-[#3b3a36] py-22 px-4 relative">
       <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-lg border border-gray-200 p-6 md:p-8 relative">
-        {cancelDialogOpen && (
-          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md border border-gray-200">
-              {/* Icon + Title */}
-              <div className="flex items-center gap-3 mb-3">
-                <div className="bg-yellow-100 text-yellow-600 p-2 rounded-full">
-                  <AlertTriangle className="w-5 h-5" />
+        {cancelDialogOpen &&
+          (() => {
+            const currentAppt = appointments.find(
+              (a) => a.id === cancelTargetId
+            );
+            const hasEmail = !!currentAppt?.patients?.email;
+
+            return (
+              <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center">
+                <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md border border-gray-200">
+                  {/* Icon + Title */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="bg-yellow-100 text-yellow-600 p-2 rounded-full">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <h2 className="text-lg font-semibold text-gray-800">
+                      Επιβεβαίωση Ακύρωσης
+                    </h2>
+                  </div>
+
+                  <p className="text-sm text-gray-600 mb-6">
+                    Είστε σίγουροι ότι θέλετε να ακυρώσετε αυτό το ραντεβού;
+                  </p>
+
+                  {/* Checkbox ενημέρωσης */}
+                  <div className="mb-5 flex items-center gap-2">
+                    <input
+                      id="notifyCancelEmail"
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300"
+                      checked={notifyCancelEmail}
+                      onChange={(e) => setNotifyCancelEmail(e.target.checked)}
+                      disabled={!hasEmail}
+                    />
+                    <label
+                      htmlFor="notifyCancelEmail"
+                      className="text-sm text-gray-700"
+                    >
+                      Ενημέρωση ασθενούς με email
+                      {!hasEmail && (
+                        <span className="ml-1 text-gray-500">
+                          (δεν υπάρχει email)
+                        </span>
+                      )}
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => setCancelDialogOpen(false)}
+                      className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                    >
+                      Άκυρο
+                    </button>
+                    <button
+                      onClick={() => {
+                        updateStatus(
+                          cancelTargetId,
+                          "cancelled",
+                          notifyCancelEmail && hasEmail
+                        );
+                        setCancelDialogOpen(false);
+                      }}
+                      className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-500"
+                    >
+                      Ναι, ακύρωση
+                    </button>
+                  </div>
                 </div>
-                <h2 className="text-lg font-semibold text-gray-800">
-                  Επιβεβαίωση Ακύρωσης
-                </h2>
               </div>
+            );
+          })()}
 
-              <p className="text-sm text-gray-600 mb-6">
-                Είστε σίγουροι ότι θέλετε να ακυρώσετε αυτό το ραντεβού;
-              </p>
-
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setCancelDialogOpen(false)}
-                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
-                >
-                  Άκυρο
-                </button>
-                <button
-                  onClick={() => {
-                    updateStatus(cancelTargetId, "cancelled");
-                    setCancelDialogOpen(false);
-                  }}
-                  className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-500"
-                >
-                  Ναι, ακύρωση
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
         <button
           onClick={() => router.push("/admin")}
           className="absolute top-4 left-4 text-gray-600 hover:text-gray-800 hover:bg-gray-100 p-2 rounded-full transition-colors duration-200"

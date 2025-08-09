@@ -7,6 +7,7 @@ import { supabase } from "../../../lib/supabaseClient";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { format, addMonths } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
+import { toast } from "sonner";
 
 import {
   Popover,
@@ -413,6 +414,7 @@ export default function NewAppointmentPage() {
 
     checkPhone();
   }, [newPatientData.phone]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -465,6 +467,7 @@ export default function NewAppointmentPage() {
           console.error("Appointment insert error:", error);
           alert("Σφάλμα κατά την καταχώρηση ραντεβού.");
         } else {
+          toast.success("✅ Το ραντεβού καταχωρήθηκε επιτυχώς!");
           router.push("/admin/appointments");
         }
 

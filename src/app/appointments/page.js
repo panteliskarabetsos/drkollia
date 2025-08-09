@@ -81,9 +81,37 @@ export default function NewAppointmentPage() {
     },
   };
 
+  const [acceptNewAppointments, setAcceptNewAppointments] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+
+  const fetchClinicSettings = async () => {
+    setSettingsLoading(true);
+    const { data, error } = await supabase
+      .from("clinic_settings")
+      .select("accept_new_appointments")
+      .eq("id", 1)
+      .single();
+    if (!error && data) setAcceptNewAppointments(data.accept_new_appointments);
+    setSettingsLoading(false);
+  };
+
   useEffect(() => {
     const fetchAvailableSlots = async () => {
       if (!formData.appointment_date) return;
+      // Block if clinic doesn't accept new appointments
+      const { data: settings } = await supabase
+        .from("clinic_settings")
+        .select("accept_new_appointments")
+        .eq("id", 1)
+        .single();
+
+      if (!settings?.accept_new_appointments) {
+        setAvailableSlots([]);
+        setAllScheduleSlots([]);
+        setHasFullDayException(false);
+        setLoadingSlots(false);
+        return;
+      }
 
       setLoadingSlots(true);
       const date = formData.appointment_date;
@@ -320,6 +348,7 @@ export default function NewAppointmentPage() {
       if (!error) setPatients(data);
     };
     fetchPatients();
+    fetchClinicSettings();
   }, []);
 
   useEffect(() => {
@@ -389,6 +418,24 @@ export default function NewAppointmentPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Final guard to prevent race conditions
+    const { data: settingsCheck, error: settingsErr } = await supabase
+      .from("clinic_settings")
+      .select("accept_new_appointments")
+      .eq("id", 1)
+      .single();
+
+    if (settingsErr) {
+      setIsSubmitting(false);
+      setSubmitError("Σφάλμα κατά τον έλεγχο ρυθμίσεων ιατρείου.");
+      return;
+    }
+    if (!settingsCheck?.accept_new_appointments) {
+      setIsSubmitting(false);
+      setSubmitError("Προς το παρόν δεν δεχόμαστε νέα ραντεβού.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     // --- Επαλήθευση στοιχείων ασθενούς ---
@@ -545,7 +592,7 @@ export default function NewAppointmentPage() {
       }
 
       if (sameDayAppointments.length > 0) {
-        setSubmitError("Ο ασθενής έχει ήδη ραντεβού την ίδια ημέρα.");
+        setSubmitError("Έχετε ήδη ραντεβού για την επιλεγμένη ημέρα.");
         setIsSubmitting(false);
         return;
       }
@@ -923,7 +970,7 @@ export default function NewAppointmentPage() {
               <Button
                 variant="outline"
                 className="w-full justify-start text-left font-normal"
-                disabled={!formData.reason}
+                disabled={!formData.reason || !acceptNewAppointments} // 🔹 disable when clinic OFF
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {formData.appointment_date
@@ -937,6 +984,7 @@ export default function NewAppointmentPage() {
                 locale={greekLocale}
                 selected={formData.appointment_date}
                 onSelect={(date) => {
+                  if (!acceptNewAppointments) return; // 🔹 block selecting when OFF
                   setFormData({
                     ...formData,
                     appointment_date: date,
@@ -953,7 +1001,7 @@ export default function NewAppointmentPage() {
                   weekend: (date) => [0, 6].includes(date.getDay()), // Κυριακή = 0, Σάββατο = 6
                 }}
                 modifiersClassNames={{
-                  weekend: "text-gray-400 opacity-60", // πιο "faded"
+                  weekend: "text-gray-400 opacity-60",
                 }}
                 showOutsideDays
                 initialFocus
@@ -961,44 +1009,26 @@ export default function NewAppointmentPage() {
             </PopoverContent>
           </Popover>
         </div>
-        {/* Διάρκεια Ραντεβού
-        <div className="mb-5">
-          <label className="block text-sm mb-1 text-gray-600">Διάρκεια Ραντεβού</label>
-          <select
-            value={formData.duration_minutes}
-            onChange={(e) =>
-              setFormData({ ...formData, duration_minutes: e.target.value, customDuration: '' })
-            }
-            className="w-full p-2 border border-gray-300 rounded-lg"
-          >
-            <option value="15">15 λεπτά</option>
-            <option value="30">30 λεπτά</option>
-            <option value="45">45 λεπτά</option>
-            <option value="60">1 ώρα</option>
-            <option value="custom">Προσαρμογή</option>
-          </select>
-        </div> */}
-        {/* Προσαρμοσμένη διάρκεια */}
-        {formData.duration_minutes === "custom" && (
-          <div className="mb-5">
-            <label className="block text-sm mb-1 text-gray-600">
-              Προσαρμοσμένη Διάρκεια (σε λεπτά)
-            </label>
-            <input
-              type="number"
-              min="5"
-              step="5"
-              placeholder="π.χ. 20"
-              value={formData.customDuration}
-              onChange={(e) =>
-                setFormData({ ...formData, customDuration: e.target.value })
-              }
-              className="w-full p-2 border border-gray-300 rounded-lg"
-              required
-            />
+        {!settingsLoading && !acceptNewAppointments && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-200 bg-gradient-to-r from-red-50 to-red-100 px-4 py-3 text-sm text-red-800 shadow-sm">
+            <CalendarX className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p>
+                Προς το παρόν <strong>δεν</strong> δεχόμαστε νέα ραντεβού.
+              </p>
+              <p className="mt-1 text-red-700">
+                Μπορείτε να κλείσετε το ραντεβού σας τηλεφωνικά στο{" "}
+                <a
+                  href="tel:2109934316"
+                  className="font-semibold underline hover:text-red-900"
+                >
+                  210 9934316
+                </a>
+                .
+              </p>
+            </div>
           </div>
         )}
-        {/* Ώρες Διαθεσιμότητας */}
         {/* Ώρες Διαθεσιμότητας */}
         {formData.appointment_date && (
           <div className="mb-5">
