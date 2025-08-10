@@ -1014,7 +1014,8 @@ export default function NewAppointmentPage() {
             <CalendarX className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
             <div>
               <p>
-                Προς το παρόν <strong>δεν</strong> δεχόμαστε νέα ραντεβού.
+                Προς το παρόν <strong>δεν</strong> δεχόμαστε νέα ηλεκτρονικά
+                ραντεβού.
               </p>
               <p className="mt-1 text-red-700">
                 Μπορείτε να κλείσετε το ραντεβού σας τηλεφωνικά στο{" "}
