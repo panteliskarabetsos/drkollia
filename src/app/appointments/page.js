@@ -432,7 +432,7 @@ export default function NewAppointmentPage() {
     }
     if (!settingsCheck?.accept_new_appointments) {
       setIsSubmitting(false);
-      setSubmitError("Προς το παρόν δεν δεχόμαστε νέα ραντεβού.");
+      setSubmitError("Προς το παρόν δεν δεχόμαστε νέα ηλεκτρονικά ραντεβού.");
       return;
     }
 
