@@ -110,7 +110,7 @@ export default function Home() {
               Το Ιατρείο
             </h2>
             <p className="text-[1.1rem] text-[#4a4944] leading-relaxed">
-              Ένας φιλόξενος και κομψός χώρος για την υγειονομική φροντίδα σας.
+              Ένας φιλόξενος και κομψός χώρος για την υγειονομική σας φροντίδα.
             </p>
             <Link
               href="/iatreio"
