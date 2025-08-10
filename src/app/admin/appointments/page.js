@@ -56,7 +56,7 @@ export default function AdminAppointmentsPage() {
       .replace(/\p{Diacritic}/gu, "") // αφαιρεί τους τόνους
       .toLowerCase();
 
-  const [appointments, setAppointments] = useAppointmentsRealtime([]);
+  const [appointments, setAppointments] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -66,7 +66,7 @@ export default function AdminAppointmentsPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
-  const [selectedAppointmentNote, setSelectedAppointmentNote] = useState(null);
+  // const [selectedAppointmentNote, setSelectedAppointmentNote] = useState(null);
   const [appointmentNoteModalOpen, setAppointmentNoteModalOpen] =
     useState(false);
   const [editNoteModalOpen, setEditNoteModalOpen] = useState(false);
@@ -77,6 +77,8 @@ export default function AdminAppointmentsPage() {
   const [viewMode, setViewMode] = useState("day"); // 'day', 'week', 'month'
   const [dateRange, setDateRange] = useState(undefined);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
+  const [selectedAppointmentNote, setSelectedAppointmentNote] = useState("");
 
   const greekLocale = {
     ...el,
@@ -229,15 +231,17 @@ export default function AdminAppointmentsPage() {
           (payload) => {
             setAppointments((prev) => {
               if (payload.eventType === "INSERT") {
-                return [...prev, payload.new];
+                return prev.some((a) => a.id === payload.new.id)
+                  ? prev
+                  : [...prev, payload.new];
               }
               if (payload.eventType === "UPDATE") {
-                return prev.map((appt) =>
-                  appt.id === payload.new.id ? payload.new : appt
+                return prev.map((a) =>
+                  a.id === payload.new.id ? { ...a, ...payload.new } : a
                 );
               }
               if (payload.eventType === "DELETE") {
-                return prev.filter((appt) => appt.id !== payload.old.id);
+                return prev.filter((a) => a.id !== payload.old.id);
               }
               return prev;
             });
@@ -448,6 +452,13 @@ export default function AdminAppointmentsPage() {
     // Προεπιλογή: τσεκαρισμένο μόνο αν υπάρχει email
     setNotifyCancelEmail(!!appt?.patients?.email);
     setCancelDialogOpen(true);
+  }
+
+  // wherever you open the modal:
+  function openAppointmentNoteModal(appt) {
+    setSelectedAppointmentId(appt.id); // ✅ keep the id
+    setSelectedAppointmentNote(appt.notes || "");
+    setAppointmentNoteModalOpen(true);
   }
 
   return (
@@ -763,10 +774,7 @@ export default function AdminAppointmentsPage() {
                               <div className="inline-flex items-center gap-2 flex-wrap justify-end">
                                 {/* Σχόλια */}
                                 <button
-                                  onClick={() => {
-                                    setSelectedAppointmentNote(appt.notes);
-                                    setAppointmentNoteModalOpen(true);
-                                  }}
+                                  onClick={() => openAppointmentNoteModal(appt)}
                                   className={`p-1.5 rounded-full border transition ${
                                     appt.notes?.trim()
                                       ? "text-blue-700 border-blue-300 hover:bg-blue-50"
@@ -1061,23 +1069,37 @@ export default function AdminAppointmentsPage() {
               </button>
               <button
                 onClick={async () => {
+                  if (!editingAppointmentId) {
+                    alert("Δεν βρέθηκε ραντεβού για επεξεργασία.");
+                    return;
+                  }
+
                   const { error } = await supabase
                     .from("appointments")
                     .update({ notes: editingNote })
                     .eq("id", editingAppointmentId);
 
-                  if (!error) {
-                    setAppointments((prev) =>
-                      prev.map((appt) =>
-                        appt.id === editingAppointmentId
-                          ? { ...appt, notes: editingNote }
-                          : appt
-                      )
-                    );
-                    setEditNoteModalOpen(false);
-                  } else {
+                  if (error) {
+                    console.error(error);
                     alert("Σφάλμα κατά την αποθήκευση σημειώσεων.");
+                    return;
                   }
+
+                  // Optimistic local update
+                  setAppointments((prev) =>
+                    prev.map((appt) =>
+                      appt.id === editingAppointmentId
+                        ? { ...appt, notes: editingNote }
+                        : appt
+                    )
+                  );
+
+                  // Sync with selected note (if same appointment is open in view modal)
+                  if (selectedAppointmentId === editingAppointmentId) {
+                    setSelectedAppointmentNote(editingNote);
+                  }
+
+                  setEditNoteModalOpen(false);
                 }}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-500"
               >
