@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import LiveClock from "../../components/LiveClock";
+
 import {
   FaArrowLeft,
   FaEdit,
@@ -266,6 +266,21 @@ export default function PatientsPage() {
     if (type === "max" && maxInterval.current)
       clearInterval(maxInterval.current);
   };
+  const [patientAppointments, setPatientAppointments] = useState([]);
+
+  useEffect(() => {
+    if (patientToDelete) {
+      supabase
+        .from("appointments")
+        .select("status, appointment_time, patient_id")
+        .eq("patient_id", patientToDelete.id)
+        .eq("status", "approved")
+        .gt("appointment_time", new Date().toISOString())
+        .then(({ data }) => {
+          setPatientAppointments(data || []);
+        });
+    }
+  }, [patientToDelete]);
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-[#f7f5f2] via-[#ece9e6] to-[#dcd8d3] text-[#3a3a38] font-sans">
@@ -713,12 +728,22 @@ export default function PatientsPage() {
             <h2 className="text-lg font-semibold text-gray-800 mb-4 text-center">
               Επιβεβαίωση Διαγραφής
             </h2>
-            <p className="text-sm text-gray-600 text-center mb-6">
+            <p className="text-sm text-gray-600 text-center mb-4">
               Είστε σίγουροι ότι θέλετε να διαγράψετε τον ασθενή{" "}
               <span className="font-medium text-red-600">
                 {`${patientToDelete.first_name} ${patientToDelete.last_name}`}
               </span>
+              ;
             </p>
+
+            {patientAppointments.length > 0 && (
+              <p className="text-sm text-red-600 text-center mb-6">
+                ⚠ Ο ασθενής έχει {patientAppointments.length} επιβεβαιωμένα
+                επερχόμενα ραντεβού. Με την διαγραφή ασθενούς, θα ακυρωθούν
+                σιωπηλά και όλα τα επερχόμενα ραντεβού του.
+              </p>
+            )}
+
             <div className="flex justify-end gap-4">
               <button
                 onClick={() => {

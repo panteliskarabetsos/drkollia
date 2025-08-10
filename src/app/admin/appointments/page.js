@@ -605,7 +605,7 @@ export default function AdminAppointmentsPage() {
             {/* Excel Export Button */}
             <button
               onClick={() => handleDownloadExcel(filteredAppointments)}
-              className="group relative flex items-center gap-2 pl-3 pr-1 py-2 rounded-full border border-[#c8bfae] bg-white/70 backdrop-blur-md text-[#4c3f2c] shadow-sm hover:bg-[#ffcbab87] hover:shadow-md transition-all duration-300"
+              className="group relative flex items-center gap-2 pl-3 pr-1 py-2 rounded-full border border-[#c8bfae] bg-white/70 backdrop-blur-md text-[#4c3f2c] shadow-sm hover:bg-[#86fcae87] hover:shadow-md transition-all duration-300"
               title="Εξαγωγή σε Excel"
               disabled={
                 !filteredAppointments || filteredAppointments.length === 0
@@ -625,7 +625,7 @@ export default function AdminAppointmentsPage() {
             {/* Print Button */}
             <button
               onClick={handlePrint}
-              className="group relative flex items-center gap-2 pl-3 pr-1 py-2 rounded-full border border-[#c8bfae] bg-white/70 backdrop-blur-md text-[#4c3f2c] shadow-sm hover:bg-[#fdf5d8] hover:shadow-md transition-all duration-300"
+              className="group relative flex items-center gap-2 pl-3 pr-1 py-2 rounded-full border border-[#c8bfae] bg-white/70 backdrop-blur-md text-[#4c3f2c] shadow-sm hover:bg-[#74dcf9b6] hover:shadow-md transition-all duration-300"
               title="Εκτύπωση"
             >
               <div className="flex items-center justify-center w-6 h-6">
