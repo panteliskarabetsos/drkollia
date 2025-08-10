@@ -879,12 +879,14 @@ export default function AdminAppointmentsPage() {
               </button>
               <button
                 onClick={() => {
+                  if (!selectedAppointmentId) {
+                    console.warn(
+                      "No selectedAppointmentId — did you call openAppointmentNoteModal(appt)?"
+                    );
+                    return;
+                  }
                   setEditNoteModalOpen(true);
-                  setEditingAppointmentId(
-                    appointments.find(
-                      (appt) => appt.notes === selectedAppointmentNote
-                    )?.id || null
-                  );
+                  setEditingAppointmentId(selectedAppointmentId); // ✅ use id, not note text
                   setEditingNote(selectedAppointmentNote || "");
                   setAppointmentNoteModalOpen(false);
                 }}
