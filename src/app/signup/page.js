@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
-
+import { ArrowLeft } from "lucide-react";
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -101,6 +101,16 @@ export default function SignupPage() {
   return (
     <main className="min-h-screen bg-[#fdfaf6] flex items-center justify-center px-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-md p-8 border border-[#e8e2d6]">
+        {/* Back Button */}
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="flex items-center text-gray-600 hover:text-gray-800 mb-6 transition-colors"
+        >
+          <ArrowLeft size={20} className="mr-2" />
+          Επιστροφή
+        </button>
+
         <h1 className="text-2xl font-semibold mb-6 text-[#3b3a36] text-center">
           Δημιουργία Λογαριασμού
         </h1>

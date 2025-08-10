@@ -22,6 +22,7 @@ import {
   IdCard,
   FileDown,
   Printer,
+  ScrollText,
 } from "lucide-react";
 import { el } from "date-fns/locale";
 
@@ -1023,6 +1024,16 @@ export default function AdminAppointmentsPage() {
                 className="w-full sm:w-auto px-4 py-2 text-sm bg-[#8c7c68] text-white rounded hover:bg-[#6f6253] transition"
               >
                 Επεξεργασία
+              </button>
+              <button
+                onClick={() => {
+                  setNotesModalOpen(false);
+                  router.push(`/admin/patients/history/${selectedPatient.id}`);
+                }}
+                className="w-full sm:w-auto px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition flex items-center gap-2"
+              >
+                <ScrollText className="w-4 h-4" />
+                Ιστορικό Επισκέψεων
               </button>
             </div>
           </div>
