@@ -370,19 +370,20 @@ export default function SchedulePage() {
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-[#fafafa] to-[#f1f1f1] py-20 px-6">
-      <button
-        onClick={() => router.push("/admin")}
-        className="fixed py-4 text-gray-600 hover:text-gray-800 hover:bg-gray-100 p-2 rounded-full transition-colors duration-200 inline-flex items-center gap-2 "
-        title="Επιστροφή στο Dashboard"
-      >
-        <ArrowLeft size={24} />
-        Eπιστροφή
-      </button>
+      <div className=" gap-4 mb-8">
+        <button
+          onClick={() => router.push("/admin")}
+          className=" py-4 text-gray-600 hover:text-gray-800 hover:bg-gray-100 p-2 rounded-full transition-colors duration-200 inline-flex items-center gap-2 "
+          title="Επιστροφή στο Dashboard"
+        >
+          <ArrowLeft size={24} />
+          Eπιστροφή
+        </button>
 
-      <h1 className="text-3xl font-serif font-semibold text-[#3b3a36] mb-8 text-center">
-        Πρόγραμμα Ιατρείου
-      </h1>
-
+        <h1 className="text-3xl font-serif font-semibold text-[#3b3a36] mb-8 text-center">
+          Πρόγραμμα Ιατρείου
+        </h1>
+      </div>
       <div className="mb-4 flex items-center justify-center gap-3 py-6">
         <label className="inline-flex items-center cursor-pointer">
           <input

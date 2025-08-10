@@ -306,10 +306,10 @@ export default function AddExceptionAppointmentPage() {
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !selectedPatient}
               className="bg-[#2e2c28] hover:bg-[#1f1e1b] text-white px-6 py-2 rounded-lg text-sm font-semibold tracking-wide shadow-md hover:shadow-lg transition disabled:opacity-50"
             >
-              {loading ? "Καταχώρηση..." : "Αποθήκευση Ραντεβού"}
+              {loading ? "Καταχώρηση..." : "Καταχώρηση Ραντεβού"}
             </button>
           </div>
         </form>

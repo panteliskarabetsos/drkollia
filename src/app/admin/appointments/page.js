@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { Calendar } from "@/components/ui/calendar";
 import { format, isSameDay, set } from "date-fns";
 import * as XLSX from "xlsx";
+import LiveClock from "../../components/LiveClock";
+import useAppointmentsRealtime from "../../components/useAppointmentsRealtime";
 
 import {
   Plus,
@@ -53,7 +55,8 @@ export default function AdminAppointmentsPage() {
       .replace(/\p{Diacritic}/gu, "") // αφαιρεί τους τόνους
       .toLowerCase();
 
-  const [appointments, setAppointments] = useState([]);
+  const [appointments, setAppointments] = useAppointmentsRealtime([]);
+
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -87,26 +90,13 @@ export default function AdminAppointmentsPage() {
       .replace(/\p{Diacritic}/gu, "") // αφαιρεί τόνους
       .toLowerCase(); // πεζά γράμματα
 
-  const filteredAppointments = appointments.filter((appt) => {
+  const patientSearchActive = searchQuery.trim() !== "";
+
+  const filteredAppointments = (appointments ?? []).filter((appt) => {
     const apptDate = new Date(appt.appointment_time);
 
-    let isInRange = false;
-    if (dateRange?.from && dateRange?.to) {
-      const from = new Date(dateRange.from);
-      from.setHours(0, 0, 0, 0);
-
-      const to = new Date(dateRange.to);
-      to.setHours(23, 59, 59, 999);
-
-      isInRange = apptDate >= from && apptDate <= to;
-    } else {
-      isInRange = isSameDay(apptDate, selectedDate);
-    }
-
-    if (!isInRange) return false;
-
-    // Εφαρμογή φίλτρου αναζήτησης
-    if (searchQuery.trim() !== "") {
+    // --- Search (patient-first) ---
+    if (patientSearchActive) {
       const q = normalizeText(searchQuery);
 
       const fullName = normalizeText(
@@ -116,6 +106,7 @@ export default function AdminAppointmentsPage() {
       const amka = normalizeText(appt.patients?.amka ?? "");
       const reason = normalizeText(appt.reason ?? "");
 
+      // If it matches the patient (or reason), RETURN TRUE now (skip date filter)
       return (
         fullName.includes(q) ||
         phone.includes(q) ||
@@ -124,8 +115,38 @@ export default function AdminAppointmentsPage() {
       );
     }
 
-    return true;
+    // --- No search: apply your date filter as before ---
+    let isInRange = false;
+    if (dateRange?.from && dateRange?.to) {
+      const from = new Date(dateRange.from);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(dateRange.to);
+      to.setHours(23, 59, 59, 999);
+      isInRange = apptDate >= from && apptDate <= to;
+    } else {
+      isInRange = isSameDay(apptDate, selectedDate);
+    }
+
+    return isInRange;
   });
+  const patientAppointmentDates = useMemo(() => {
+    if (!patientSearchActive) return [];
+    const set = new Set();
+    (appointments ?? [])
+      .filter((a) => {
+        const q = normalizeText(searchQuery);
+        const name = normalizeText(
+          `${a.patients?.first_name ?? ""} ${a.patients?.last_name ?? ""}`
+        );
+        const phone = normalizeText(a.patients?.phone ?? "");
+        const amka = normalizeText(a.patients?.amka ?? "");
+        return name.includes(q) || phone.includes(q) || amka.includes(q);
+      })
+      .forEach((a) =>
+        set.add(new Date(a.appointment_time).toISOString().slice(0, 10))
+      );
+    return Array.from(set).sort();
+  }, [appointments, searchQuery, patientSearchActive]);
 
   const groupedAppointments = filteredAppointments.reduce((groups, appt) => {
     const dateKey = new Date(appt.appointment_time).toLocaleDateString(
@@ -197,6 +218,36 @@ export default function AdminAppointmentsPage() {
 
     if (sessionExists) {
       fetchAppointments();
+
+      // 🔴 Realtime updates
+      const channel = supabase
+        .channel("appointments-changes")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "appointments" },
+          (payload) => {
+            setAppointments((prev) => {
+              if (payload.eventType === "INSERT") {
+                return [...prev, payload.new];
+              }
+              if (payload.eventType === "UPDATE") {
+                return prev.map((appt) =>
+                  appt.id === payload.new.id ? payload.new : appt
+                );
+              }
+              if (payload.eventType === "DELETE") {
+                return prev.filter((appt) => appt.id !== payload.old.id);
+              }
+              return prev;
+            });
+          }
+        )
+        .subscribe();
+
+      // cleanup
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [sessionExists]);
 
@@ -501,9 +552,7 @@ export default function AdminAppointmentsPage() {
 
           {/* Κέντρο - Ώρα */}
           <div className="flex-1 flex justify-center">
-            <div className="text-6xl font-extralight text-gray-700 tracking-widest">
-              {format(currentTime, "HH:mm")}
-            </div>
+            <LiveClock className="text-6xl font-extralight text-gray-700 tracking-widest" />
           </div>
 
           {/* Δεξιά - Calendar */}
@@ -515,9 +564,11 @@ export default function AdminAppointmentsPage() {
             disabled={{ before: new Date() }}
             modifiers={{
               weekend: (date) => [0, 6].includes(date.getDay()), // Κυριακή = 0, Σάββατο = 6
+              patientDays: patientAppointmentDates.map((k) => new Date(k)),
             }}
             modifiersClassNames={{
               weekend: "text-gray-400 opacity-60", // πιο "faded"
+              patientDays: "bg-amber-200 text-amber-900 rounded-full",
             }}
             className="rounded-md border border-gray-200 shadow"
           />
@@ -556,6 +607,9 @@ export default function AdminAppointmentsPage() {
               onClick={() => handleDownloadExcel(filteredAppointments)}
               className="group relative flex items-center gap-2 pl-3 pr-1 py-2 rounded-full border border-[#c8bfae] bg-white/70 backdrop-blur-md text-[#4c3f2c] shadow-sm hover:bg-[#ffcbab87] hover:shadow-md transition-all duration-300"
               title="Εξαγωγή σε Excel"
+              disabled={
+                !filteredAppointments || filteredAppointments.length === 0
+              }
             >
               <div className="flex items-center justify-center w-6 h-6">
                 <FileDown

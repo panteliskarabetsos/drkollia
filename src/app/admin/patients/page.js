@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { useRouter } from "next/navigation";
+import LiveClock from "../../components/LiveClock";
 import {
   FaArrowLeft,
   FaEdit,
