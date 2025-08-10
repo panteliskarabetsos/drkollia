@@ -385,6 +385,9 @@ export default function SchedulePage() {
         </h1>
       </div>
       <div className="mb-4 flex items-center justify-center gap-3 py-6">
+        <h3 className="text-lg font-semibold text-gray-800">
+          Ηλεκτρονικά ραντεβού
+        </h3>
         <label className="inline-flex items-center cursor-pointer">
           <input
             type="checkbox"
