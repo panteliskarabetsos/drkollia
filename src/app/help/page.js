@@ -128,93 +128,6 @@ const faqs = [
       "Το σύστημα διατειρεί τις πληροφορίες, στοιχεία επικοινωνίας καθώς και το ιστορικό επισκέψεων για κάθε ασθενή και διατηρείται εως ότου τα διαγράψετε. Τα ραντεβού διατηρούνται στο σύστημα για 1 μήνα και έπειτα διαγράφονται αυτόματα για εξοικονόμηση χώρου της βάσης δεδομένων. ",
   },
 ];
-const sections = [
-  {
-    title: "Γρήγορη Εκκίνηση (Onboarding)",
-    content: (
-      <ul className="list-disc pl-5 space-y-1 text-gray-600">
-        <li>Συνδεθείτε και ελέγξτε το profile σας.</li>
-        <li>Ρυθμίστε «Πρόγραμμα Ιατρείου» (βασικό ωράριο + εξαιρέσεις).</li>
-        <li>Καταχωρήστε ή εισάγετε ασθενείς.</li>
-        <li>Χειριστείτε ραντεβού (έγκριση/ακύρωση/ολοκλήρωση).</li>
-        <li>Χρησιμοποιήστε «Εξαγωγή σε Excel» για reporting.</li>
-      </ul>
-    ),
-  },
-  {
-    title: "Συντομεύσεις & Χρήσιμα Tips",
-    content: (
-      <ul className="list-disc pl-5 space-y-1 text-gray-600">
-        <li>
-          Αναζήτηση ασθενή με όνομα/τηλέφωνο/ΑΜΚΑ από το πεδίο αναζήτησης.
-        </li>
-        <li>
-          Κουμπιά-εικονίδια στη λίστα ραντεβού: σημειώσεις, έγκριση, απόρριψη,
-          ακύρωση.
-        </li>
-        <li>
-          Στη σελίδα ραντεβού, το φίλτρο ημερομηνιών επηρεάζει την εμφάνιση,
-          εκτός αν κάνετε αναζήτηση ασθενούς (τότε βλέπετε όλα τα ραντεβού του).
-        </li>
-        <li>
-          Στις εξαιρέσεις, απενεργοποιούνται αυτόματα τα slots για κρατήσεις.
-        </li>
-      </ul>
-    ),
-  },
-
-  {
-    title: "Ασφάλεια & Πρόσβαση",
-    content: (
-      <ul className="list-disc pl-5 space-y-1 text-gray-600">
-        <li>Κλείνετε πάντα τη συνεδρία σας σε κοινόχρηστο υπολογιστή.</li>
-        <li>
-          Διαχειριστές μπορούν να δημιουργούν/απενεργοποιούν λογαριασμούς.
-        </li>
-        <li>
-          Μην διαγράφετε ασθενείς με εγκεκριμένα μελλοντικά ραντεβού· το σύστημα
-          θα εμφανίσει προειδοποίηση/καταμέτρηση.
-        </li>
-      </ul>
-    ),
-  },
-  {
-    title: "Διαχείριση Δεδομένων & Εξαγωγές",
-    content: (
-      <ul className="list-disc pl-5 space-y-1 text-gray-600">
-        <li>
-          Εξαγωγή ραντεβού σε Excel από τη σελίδα «Ραντεβού». Το κουμπί
-          απενεργοποιείται όταν δεν υπάρχουν αποτελέσματα.
-        </li>
-
-        <li>
-          Στη σελίδα «Ασθενείς» φιλτράρετε/ταξινομείτε με βάση όνομα, ηλικία,
-          ΑΜΚΑ, ημερομηνία ενημέρωσης.
-        </li>
-        <li>
-          Η διαγραφή ασθενή προειδοποιεί αν υπάρχουν εγκριθέντα μελλοντικά
-          ραντεβού (και εμφανίζει πόσα).
-        </li>
-      </ul>
-    ),
-  },
-  {
-    title: "Λειτουργίες-Κλειδιά που Αυτοματοποιούν",
-    content: (
-      <ul className="list-disc pl-5 space-y-1 text-gray-600">
-        <li>Υπενθυμίσεις email πριν το ραντεβού.</li>
-        <li>
-          Πολιτική για slots: 30′ για «Εξέταση» στις :00/:30, 15′ για
-          «Αξιολόγηση Αποτελεσμάτων».
-        </li>
-        <li>
-          Ενημέρωση (σε πραγματικό χρόνο) κατάστασης ραντεβού και άμεση ανανέωση
-          λίστας.
-        </li>
-      </ul>
-    ),
-  },
-];
 
 export default function HelpPage() {
   const [openIndex, setOpenIndex] = useState(null);
@@ -266,32 +179,6 @@ export default function HelpPage() {
         <h1 className="text-3xl font-bold text-center mb-8">
           Οδηγός Διαχειριστή & Συχνές Ερωτήσεις
         </h1>
-
-        {/* Handbook Sections */}
-        <h2 className="text-xl font-semibold mb-3">Οδηγός Διαχειριστή</h2>
-        <div className="space-y-3 mb-8">
-          {sections.map((sec, i) => (
-            <div
-              key={i}
-              className="border border-gray-200 rounded-lg bg-white shadow-sm"
-            >
-              <button
-                onClick={() => toggleSection(i)}
-                className="w-full flex justify-between items-center p-4 text-left"
-              >
-                <span className="font-medium">{sec.title}</span>
-                <ChevronDown
-                  className={`w-5 h-5 transition-transform ${
-                    openSection === i ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-              {openSection === i && (
-                <div className="px-4 pb-4">{sec.content}</div>
-              )}
-            </div>
-          ))}
-        </div>
 
         {/* FAQ */}
         <h2 className="text-xl font-semibold mb-3">Συχνές Ερωτήσεις (FAQ)</h2>
