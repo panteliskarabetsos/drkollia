@@ -204,7 +204,10 @@ export default function AdminAppointmentsPage() {
           email,
           phone,
           amka
-        )
+        ),
+   creator:profiles!appointments_created_by_fkey (
+      id, name, email
+    )
       `
         )
         .order("appointment_time", { ascending: true });
@@ -867,9 +870,19 @@ export default function AdminAppointmentsPage() {
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
               Σημειώσεις Ραντεβού
             </h2>
+
+            <p className="text-sm text-gray-500 mb-2">
+              Το ραντεβού καταχωρήθηκε από:{" "}
+              <span className="font-medium text-gray-700">
+                {appointments.find((a) => a.id === selectedAppointmentId)
+                  ?.creator?.name || "Άγνωστος"}
+              </span>
+            </p>
+
             <p className="text-sm text-gray-700 whitespace-pre-wrap">
               {selectedAppointmentNote?.trim() || "Δεν υπάρχουν σημειώσεις."}
             </p>
+
             <div className="mt-6 flex justify-between items-center">
               <button
                 onClick={() => setAppointmentNoteModalOpen(false)}
@@ -886,7 +899,7 @@ export default function AdminAppointmentsPage() {
                     return;
                   }
                   setEditNoteModalOpen(true);
-                  setEditingAppointmentId(selectedAppointmentId); // ✅ use id, not note text
+                  setEditingAppointmentId(selectedAppointmentId);
                   setEditingNote(selectedAppointmentNote || "");
                   setAppointmentNoteModalOpen(false);
                 }}
@@ -898,6 +911,7 @@ export default function AdminAppointmentsPage() {
           </div>
         </div>
       )}
+
       {notesModalOpen && selectedPatient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-y-auto py-8 px-4">
           <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-4xl mx-auto">
