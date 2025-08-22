@@ -142,16 +142,16 @@ export default function Home() {
           {/* Ώρες */}
           <div className="text-lg text-[#4a4944] leading-relaxed space-y-1">
             <p>
-              <strong>Δευτέρα:</strong> 10:00 - 12:30 & 17:30 - 20:30
+              <strong>Δευτέρα:</strong> 10:00 - 13:00 & 17:30 - 21:00
             </p>
             <p>
-              <strong>Τρίτη:</strong> 17:30 - 20:30
+              <strong>Τρίτη:</strong> 17:30 - 21:00
             </p>
             <p>
-              <strong>Τετάρτη:</strong> 10:00 - 12:30
+              <strong>Τετάρτη:</strong> 10:00 - 13:00
             </p>
             <p>
-              <strong>Πέμπτη:</strong> 10:00 - 12:30 & 17:30 - 20:30
+              <strong>Πέμπτη:</strong> 10:00 - 13:00 & 17:30 - 21:00
             </p>
             <p>
               <strong>Παρασκευή, Σάββατο & Κυριακή:</strong> Κλειστά
