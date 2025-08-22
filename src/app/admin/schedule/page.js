@@ -152,63 +152,154 @@ export default function SchedulePage() {
       setFormError("Σφάλμα κατά την αποθήκευση ωραρίου.");
     }
   };
-  // Τελευταίο slot ξεκινά 15' πριν το end_time
-  const getAvailableTimeSlots = () => {
-    if (!selectedDate || !weeklySchedule.length) return [];
+  // Βοηθητικά για ώρα "HH:mm" <-> λεπτά
+  const toMin = (hhmm) => {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const toHHMM = (mins) => {
+    const h = String(Math.floor(mins / 60)).padStart(2, "0");
+    const m = String(mins % 60).padStart(2, "0");
+    return `${h}:${m}`;
+  };
 
-    const selectedWeekday =
-      selectedDate.getDay() === 0 ? 7 : selectedDate.getDay();
-    const daySchedules = weeklySchedule.filter(
-      (s) => s.weekday === selectedWeekday
+  // Επιστρέφει λίστα από [startMin, endMin) διαστήματα (σε λεπτά) για τη συγκεκριμένη ημέρα
+  const getWorkingRangesForDate = (date, weeklySchedule) => {
+    const weekday = date.getDay() === 0 ? 7 : date.getDay();
+    const daySchedules = weeklySchedule
+      .filter((s) => s.weekday === weekday)
+      .map((s) => [
+        toMin(s.start_time.slice(0, 5)),
+        toMin(s.end_time.slice(0, 5)),
+      ]);
+    return daySchedules;
+  };
+
+  // Επιστρέφει λίστα από [startMin, endMin) εξαιρέσεων για τη συγκεκριμένη ημέρα
+  const getExceptionRangesForDate = (date, exceptions) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    const sameDay = exceptions.filter(
+      (e) => format(new Date(e.exception_date), "yyyy-MM-dd") === dateStr
     );
+    // αν υπάρχει full-day, επιστρέφουμε ένα [0, 24*60) ώστε να κόψει τα πάντα
+    const fullDay = sameDay.some(
+      (e) => e.start_time === null && e.end_time === null
+    );
+    if (fullDay) return [[0, 24 * 60]];
 
-    const filteredSlots = [];
+    return sameDay
+      .filter((e) => e.start_time && e.end_time)
+      .map((e) => {
+        const st = new Date(e.start_time);
+        const en = new Date(e.end_time);
+        return [
+          st.getHours() * 60 + st.getMinutes(),
+          en.getHours() * 60 + en.getMinutes(),
+        ];
+      });
+  };
 
-    for (const slot of daySchedules) {
-      const start = slot.start_time.slice(0, 5); // π.χ. "10:00"
-      const end = slot.end_time.slice(0, 5);
+  // Αφαιρεί από τα workingRanges τις εξαιρέσεις και επιστρέφει τα «ελεύθερα» λεπτά
+  const subtractRanges = (workingRanges, exceptionRanges) => {
+    if (!exceptionRanges.length) return workingRanges.slice();
 
-      let [h, m] = start.split(":").map(Number);
-      const [eh, em] = end.split(":").map(Number);
-
-      // Ορισμός τελευταίου επιτρεπτού slot
-      let lastH = eh;
-      let lastM = em - 15;
-      if (lastM < 0) {
-        lastH -= 1;
-        lastM += 60;
-      }
-
-      const lastValidStart = `${String(lastH).padStart(2, "0")}:${String(
-        lastM
-      ).padStart(2, "0")}`;
-
-      let current = `${String(h).padStart(2, "0")}:${String(m).padStart(
-        2,
-        "0"
-      )}`;
-      while (current <= lastValidStart) {
-        filteredSlots.push(current);
-        m += 15;
-        if (m >= 60) {
-          h++;
-          m = 0;
+    let result = workingRanges.slice();
+    for (const [exS, exE] of exceptionRanges) {
+      const next = [];
+      for (const [wS, wE] of result) {
+        // καμία επικάλυψη
+        if (exE <= wS || exS >= wE) {
+          next.push([wS, wE]);
+          continue;
         }
-        current = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        // κόψιμο αριστερά
+        if (exS > wS) next.push([wS, Math.max(wS, exS)]);
+        // κόψιμο δεξιά
+        if (exE < wE) next.push([Math.min(wE, exE), wE]);
+      }
+      result = next.filter(([a, b]) => b - a >= 15); // κρατάμε διαστήματα >= 15'
+    }
+    return result;
+  };
+
+  // Τελευταίο slot ξεκινά 15' πριν το end_time
+  // const getAvailableTimeSlots = () => {
+  //   if (!selectedDate || !weeklySchedule.length) return [];
+
+  //   // 1) βασικά διαστήματα εργασίας της ημέρας (σε λεπτά)
+  //   const working = getWorkingRangesForDate(selectedDate, weeklySchedule);
+  //   if (!working.length) return []; // δεν έχει πρόγραμμα αυτή τη μέρα
+
+  //   // 2) εξαιρέσεις της ημέρας (σε λεπτά)
+  //   const exRanges = getExceptionRangesForDate(selectedDate, exceptions);
+
+  //   // 3) αφαίρεση εξαιρέσεων
+  //   const freeRanges = subtractRanges(working, exRanges);
+
+  //   // 4) παραγωγή «start times» ανά 15' από τα freeRanges
+  //   const startTimes = [];
+  //   for (const [s, e] of freeRanges) {
+  //     // τελευταίο επιτρεπτό start = e - 15
+  //     for (let m = s; m <= e - 15; m += 15) {
+  //       startTimes.push(toHHMM(m));
+  //     }
+  //   }
+  //   return startTimes;
+  // };
+
+  // const hasFullDayException = (date) => {
+  //   return exceptions.some(
+  //     (e) =>
+  //       format(new Date(e.exception_date), "yyyy-MM-dd") ===
+  //         format(date, "yyyy-MM-dd") &&
+  //       e.start_time === null &&
+  //       e.end_time === null
+  //   );
+  // };
+
+  // Start times: όπως πριν (τελευταίο start = e - 15)
+  const getAvailableExceptionStartTimes = () => {
+    if (!selectedDate || !weeklySchedule.length) return [];
+    const working = getWorkingRangesForDate(selectedDate, weeklySchedule);
+    if (!working.length) return [];
+    const exRanges = getExceptionRangesForDate(selectedDate, exceptions);
+    const freeRanges = subtractRanges(working, exRanges);
+
+    const starts = [];
+    for (const [s, e] of freeRanges) {
+      for (let m = s; m <= e - 15; m += 15) {
+        starts.push(toHHMM(m));
+      }
+    }
+    return starts;
+  };
+
+  // End times: επιτρέπουμε μέχρι ΚΑΙ το ακριβές e (π.χ. 20:30)
+  const getAvailableExceptionEndTimes = (selectedStartHHMM) => {
+    if (!selectedDate || !weeklySchedule.length) return [];
+    const working = getWorkingRangesForDate(selectedDate, weeklySchedule);
+    if (!working.length) return [];
+    const exRanges = getExceptionRangesForDate(selectedDate, exceptions);
+    const freeRanges = subtractRanges(working, exRanges);
+
+    const endTimes = [];
+    const startMin = selectedStartHHMM ? toMin(selectedStartHHMM) : null;
+
+    for (const [s, e] of freeRanges) {
+      // Για το συγκεκριμένο free range, τα end ticks είναι κάθε 15' ΑΠΟ s+15 ΜΕΧΡΙ ΚΑΙ e
+      // Αν έχει επιλεγεί start, περιορίζουμε σε end > start
+      let m = Math.max(s + 15, startMin !== null ? startMin + 15 : s + 15);
+      for (; m <= e; m += 15) {
+        endTimes.push(toHHMM(m));
       }
     }
 
-    return filteredSlots;
-  };
-
-  const hasFullDayException = (date) => {
-    return exceptions.some(
-      (e) =>
-        format(new Date(e.exception_date), "yyyy-MM-dd") ===
-          format(date, "yyyy-MM-dd") &&
-        e.start_time === null &&
-        e.end_time === null
-    );
+    // Αφαιρούμε όσα end <= start (ασφάλεια) και διπλότυπα
+    const filtered =
+      startMin !== null
+        ? endTimes.filter((t) => toMin(t) > startMin)
+        : endTimes;
+    return Array.from(new Set(filtered));
   };
 
   const deleteTimeSlot = async (id) => {
@@ -604,12 +695,13 @@ export default function SchedulePage() {
                       setExceptionTime((prev) => ({
                         ...prev,
                         start: e.target.value,
+                        end: "", // reset end όταν αλλάζει το start
                       }))
                     }
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   >
                     <option value="">-- Από --</option>
-                    {getAvailableTimeSlots().map((t) => (
+                    {getAvailableExceptionStartTimes().map((t) => (
                       <option key={t} value={t}>
                         {t}
                       </option>
@@ -621,7 +713,7 @@ export default function SchedulePage() {
                     Έως
                   </label>
                   <select
-                    disabled={isFullDay}
+                    disabled={isFullDay || !exceptionTime.start}
                     value={exceptionTime.end}
                     onChange={(e) =>
                       setExceptionTime((prev) => ({
@@ -632,11 +724,13 @@ export default function SchedulePage() {
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   >
                     <option value="">-- Έως --</option>
-                    {getAvailableTimeSlots().map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
+                    {getAvailableExceptionEndTimes(exceptionTime.start).map(
+                      (t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      )
+                    )}
                   </select>
                 </div>
               </div>

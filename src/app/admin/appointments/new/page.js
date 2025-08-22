@@ -79,6 +79,8 @@ export default function NewAppointmentPage() {
     );
   });
   const router = useRouter();
+  const isMedicalVisitor = formData.reason === "Ιατρικός Επισκέπτης";
+  const [visitorName, setVisitorName] = useState("");
 
   const greekLocale = {
     ...el,
@@ -712,17 +714,22 @@ export default function NewAppointmentPage() {
     );
   }
 
-  const isFormValid =
-    formData.reason &&
-    formData.appointment_date &&
-    formData.appointment_time &&
-    (!newPatientMode ||
-      (newPatientData.first_name?.trim() &&
-        newPatientData.last_name?.trim() &&
-        !errors.amka &&
-        !existingAmkaPatient &&
-        !errors.phone &&
-        !existingPhonePatient));
+  const hasDateTime =
+    Boolean(formData.appointment_date) && Boolean(formData.appointment_time); // τώρα γεμίζει από το handler
+
+  const isNewPatientValid =
+    Boolean(newPatientData.first_name?.trim()) &&
+    Boolean(newPatientData.last_name?.trim()) &&
+    !errors.amka &&
+    !existingAmkaPatient &&
+    !errors.phone &&
+    !existingPhonePatient;
+
+  const isFormValid = isMedicalVisitor
+    ? Boolean(visitorName?.trim()) // μόνο όνομα επισκέπτη
+    : Boolean(formData.appointment_date) &&
+      Boolean(formData.appointment_time) &&
+      (newPatientMode ? isNewPatientValid : Boolean(selectedPatient));
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-[#f9f9f9] px-14 py-22 ">
@@ -787,7 +794,6 @@ export default function NewAppointmentPage() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="px-4 py-2 border border-[#d6d3cb] rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#b5aa96] transition w-full"
-              required
             />
           </div>
         ) : newPatientMode ? (

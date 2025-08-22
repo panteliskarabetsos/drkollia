@@ -678,7 +678,7 @@ export default function PatientsPage() {
                     {selectedPatient.physical_exam || "-"}
                   </p>
                   <p>
-                    <strong>Προκλινικός Έλεγχος:</strong>{" "}
+                    <strong>Παρακλινικός Έλεγχος:</strong>{" "}
                     {selectedPatient.preclinical_screening || "-"}
                   </p>
                 </div>

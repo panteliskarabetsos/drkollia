@@ -3,13 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
-import { CalendarX } from "lucide-react";
-import { formatISO } from "date-fns";
-import { ArrowLeft } from "lucide-react";
-import { Search } from "lucide-react";
+import { CalendarX, ArrowLeft, Search, PlusCircle } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
-import { Switch } from "@/components/ui/switch"; // If you have a shadcn/ui Switch
-import { Label } from "@/components/ui/label";
 
 function generateTimeSlots(start, end, intervalMinutes) {
   const times = [];
@@ -33,6 +28,8 @@ export default function AddExceptionAppointmentPage() {
   const router = useRouter();
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // existing appointment form
   const [form, setForm] = useState({
     patient_id: "",
     reason: "",
@@ -40,6 +37,7 @@ export default function AddExceptionAppointmentPage() {
     duration_minutes: 30,
     notes: "",
   });
+
   const [message, setMessage] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState([]);
@@ -48,9 +46,19 @@ export default function AddExceptionAppointmentPage() {
   const [selectedTime, setSelectedTime] = useState("");
   const [isClient, setIsClient] = useState(false);
 
+  // NEW: toggle + state for "Νέος ασθενής"
+  const [newPatientMode, setNewPatientMode] = useState(false);
+  const [newPatient, setNewPatient] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    phone: "",
+    amka: "",
+  });
+
   useEffect(() => {
     setIsClient(true);
-    setSelectedDate(new Date()); // θέτουμε την ημερομηνία μόνο στον client
+    setSelectedDate(new Date()); // set date only on client
   }, []);
 
   useEffect(() => {
@@ -59,24 +67,28 @@ export default function AddExceptionAppointmentPage() {
       return;
     }
 
+    // Skip search while in "Νέος ασθενής" mode
+    if (newPatientMode) return;
+
     const fetchMatches = async () => {
       const { data, error } = await supabase
         .from("patients")
         .select("id, first_name, last_name, amka, phone")
         .or(
           `first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,amka.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`
-        );
+        )
+        .limit(10);
 
       if (!error) {
-        setSearchResults(data);
+        setSearchResults(data ?? []);
       }
     };
 
     fetchMatches();
-  }, [searchTerm]);
+  }, [searchTerm, newPatientMode]);
 
   useEffect(() => {
-    // Get authenticated session
+    // Auth check
     const checkAuth = async () => {
       const {
         data: { session },
@@ -88,16 +100,17 @@ export default function AddExceptionAppointmentPage() {
 
     checkAuth();
 
-    // Fetch patients
+    // Fetch patients (optional; you weren’t using it further)
     const fetchPatients = async () => {
       const { data, error } = await supabase
         .from("patients")
-        .select("id, first_name, last_name");
-      if (!error) setPatients(data);
+        .select("id, first_name, last_name")
+        .limit(20);
+      if (!error) setPatients(data ?? []);
     };
 
     fetchPatients();
-  }, []);
+  }, [router]);
 
   const handleChange = (e) => {
     setForm((prev) => ({
@@ -105,6 +118,93 @@ export default function AddExceptionAppointmentPage() {
       [e.target.name]: e.target.value,
     }));
   };
+
+  const handleNewPatientChange = (e) => {
+    const { name, value } = e.target;
+    setNewPatient((prev) => ({
+      ...prev,
+      [name]:
+        name === "phone"
+          ? value.replace(/[^\d+ ]/g, "")
+          : name === "amka"
+          ? value.replace(/\D/g, "")
+          : value,
+    }));
+  };
+
+  async function upsertOrGetPatientByAMKA({
+    first_name,
+    last_name,
+    email,
+    phone,
+    amka,
+  }) {
+    // --- normalize & validate ---
+    const clean = {
+      first_name: (first_name ?? "").trim(),
+      last_name: (last_name ?? "").trim(),
+      email: (email ?? "").trim() || null,
+      phone: (phone ?? "").replace(/[^\d+ ]/g, ""), // keep digits, + and spaces
+      amka: (amka ?? "").trim(),
+    };
+
+    // require valid AMKA (11 digits)
+    if (!/^\d{11}$/.test(clean.amka)) {
+      throw new Error("Το ΑΜΚΑ πρέπει να είναι 11 ψηφία.");
+    }
+
+    // --- 1) fast path: try to find existing by AMKA ---
+    const { data: existing, error: findErr } = await supabase
+      .from("patients")
+      .select("id")
+      .eq("amka", clean.amka)
+      .maybeSingle();
+
+    if (findErr) {
+      console.error("PATIENT FIND ERROR:", findErr);
+      throw findErr;
+    }
+    if (existing?.id) {
+      return existing.id;
+    }
+
+    // --- 2) try plain INSERT (no onConflict) ---
+    const { data: created, error: insertErr } = await supabase
+      .from("patients")
+      .insert([
+        {
+          first_name: clean.first_name,
+          last_name: clean.last_name,
+          email: clean.email,
+          phone: clean.phone,
+          amka: clean.amka,
+        },
+      ])
+      .select("id")
+      .single();
+
+    // If another request inserted the same AMKA concurrently and you DO have a UNIQUE(amka),
+    // you may see 23505. Handle it by re-fetching.
+    if (insertErr?.code === "23505") {
+      const { data: afterRace, error: refetchErr } = await supabase
+        .from("patients")
+        .select("id")
+        .eq("amka", clean.amka)
+        .maybeSingle();
+      if (refetchErr) {
+        console.error("PATIENT REFETCH AFTER 23505 ERROR:", refetchErr);
+        throw refetchErr;
+      }
+      if (afterRace?.id) return afterRace.id;
+    }
+
+    if (insertErr) {
+      console.error("PATIENT INSERT ERROR:", insertErr);
+      throw insertErr;
+    }
+
+    return created.id;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -120,7 +220,7 @@ export default function AddExceptionAppointmentPage() {
       return;
     }
 
-    // Ανάλυση ώρας
+    // Build final datetime (store as timestamptz)
     const [hours, minutes] = selectedTime.split(":");
     const finalDate = new Date(selectedDate);
     finalDate.setHours(Number(hours));
@@ -128,32 +228,105 @@ export default function AddExceptionAppointmentPage() {
     finalDate.setSeconds(0);
     finalDate.setMilliseconds(0);
 
-    const payload = {
-      ...form,
-      appointment_time: finalDate.toISOString(), // σωστό για timestamptz
-      is_exception: true,
-      status: "approved",
-    };
+    try {
+      // STEP 1: resolve patient_id
+      let patientId = form.patient_id;
 
-    const { error } = await supabase.from("appointments").insert([payload]);
+      if (newPatientMode) {
+        // minimal validation
+        if (
+          !newPatient.first_name ||
+          !newPatient.last_name ||
+          !newPatient.phone ||
+          !newPatient.amka
+        ) {
+          setMessage({
+            type: "error",
+            text: "Συμπληρώστε τα υποχρεωτικά πεδία ασθενούς: Όνομα, Επώνυμο, Τηλέφωνο, ΑΜΚΑ.",
+          });
+          setLoading(false);
+          return;
+        }
 
-    if (error) {
-      setMessage({ type: "error", text: "Σφάλμα κατά την αποθήκευση." });
-      console.error(error);
-    } else {
+        // Create or reuse by AMKA
+        patientId = await upsertOrGetPatientByAMKA(newPatient);
+      } else {
+        if (!selectedPatient?.id) {
+          setMessage({
+            type: "error",
+            text: "Επιλέξτε ασθενή ή χρησιμοποιήστε τη λειτουργία 'Νέος ασθενής'.",
+          });
+          setLoading(false);
+          return;
+        }
+        patientId = selectedPatient.id;
+      }
+
+      // STEP 2: (optional) simple overlap check inside the selected window
+      const startIso = finalDate.toISOString();
+      const end = new Date(
+        finalDate.getTime() + (Number(form.duration_minutes) || 30) * 60 * 1000
+      );
+      const { data: overlaps, error: overlapErr } = await supabase
+        .from("appointments")
+        .select("id, appointment_time, duration_minutes, status")
+        .gte(
+          "appointment_time",
+          new Date(finalDate.getTime() - 60 * 1000).toISOString()
+        )
+        .lt("appointment_time", end.toISOString());
+
+      if (overlapErr) {
+        throw overlapErr;
+      }
+      if (overlaps && overlaps.length > 0) {
+        setMessage({
+          type: "error",
+          text: "Υπάρχει ήδη ραντεβού σε αυτό το διάστημα. Επιλέξτε άλλη ώρα.",
+        });
+        setLoading(false);
+        return;
+      }
+
+      // STEP 3: create the EXCEPTION appointment
+      const payload = {
+        patient_id: patientId,
+        reason: form.reason || "Εξαίρεση",
+        appointment_time: startIso, // timestamptz in DB
+        duration_minutes: Number(form.duration_minutes) || 30,
+        notes: form.notes || null,
+        is_exception: true,
+        status: "approved", // change to "pending" if you prefer
+      };
+
+      const { error } = await supabase.from("appointments").insert([payload]);
+
+      if (error) {
+        setMessage({ type: "error", text: "Σφάλμα κατά την αποθήκευση." });
+        console.error(error);
+      } else {
+        setMessage({
+          type: "success",
+          text: newPatientMode
+            ? "Ο ασθενής και το ραντεβού εξαίρεσης καταχωρήθηκαν."
+            : "Το ραντεβού καταχωρήθηκε με εξαίρεση.",
+        });
+        router.push("/admin/appointments");
+      }
+    } catch (err) {
+      console.error("SUBMIT ERROR:", err);
       setMessage({
-        type: "success",
-        text: "Το ραντεβού καταχωρήθηκε με εξαίρεση.",
+        type: "error",
+        text: "Κάτι πήγε στραβά. Ελέγξτε τα στοιχεία και δοκιμάστε ξανά.",
+        text: `Σφάλμα: ${err?.message || "Άγνωστο σφάλμα"}`,
       });
-      router.push("/admin/appointments");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   function BackButton() {
-    const router = useRouter(); // Χρήση router εδώ
-
+    const router = useRouter();
     return (
       <button
         type="button"
@@ -175,51 +348,151 @@ export default function AddExceptionAppointmentPage() {
             Προσθήκη Ραντεβού με Εξαίρεση
           </h1>
         </div>
+
+        {/* Toggle row: Existing vs New patient */}
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-sm text-gray-600">
+            Επιλέξτε υπάρχοντα ασθενή ή δημιουργήστε νέο.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setNewPatientMode((v) => !v);
+              setSelectedPatient(null);
+              setSearchTerm("");
+              setForm((prev) => ({ ...prev, patient_id: "" }));
+            }}
+            className={`inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition ${
+              newPatientMode
+                ? "bg-[#2e2c28] text-white"
+                : "bg-gray-100 hover:bg-gray-200 text-gray-800"
+            }`}
+          >
+            <PlusCircle className="w-4 h-4" />
+            {newPatientMode ? "Ακύρωση νέου ασθενούς" : "Νέος ασθενής"}
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="relative">
-            <label className="block text-sm font-medium mb-1">
-              Αναζήτηση Ασθενή
-            </label>
+          {/* Existing patient search */}
+          {!newPatientMode && (
             <div className="relative">
-              <input
-                type="text"
-                placeholder="Αναζήτηση με όνομα, επώνυμο, ΑΜΚΑ ή τηλέφωνο"
-                value={
-                  selectedPatient
-                    ? `${selectedPatient.first_name} ${selectedPatient.last_name}`
-                    : searchTerm
-                }
-                onChange={(e) => {
-                  setSelectedPatient(null); // clear selection
-                  setSearchTerm(e.target.value);
-                }}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-              />
-              <Search className="absolute right-3 top-2.5 w-4 h-4 text-gray-400" />
+              <label className="block text-sm font-medium mb-1">
+                Αναζήτηση Ασθενή
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Αναζήτηση με όνομα, επώνυμο, ΑΜΚΑ ή τηλέφωνο"
+                  value={
+                    selectedPatient
+                      ? `${selectedPatient.last_name} ${selectedPatient.first_name}`
+                      : searchTerm
+                  }
+                  onChange={(e) => {
+                    setSelectedPatient(null);
+                    setForm((prev) => ({ ...prev, patient_id: "" }));
+                    setSearchTerm(e.target.value);
+                  }}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                />
+                <Search className="absolute right-3 top-2.5 w-4 h-4 text-gray-400" />
+              </div>
+
+              {searchResults.length > 0 && !selectedPatient && (
+                <ul className="absolute z-10 bg-white border border-gray-200 rounded-md mt-1 max-h-48 overflow-y-auto shadow-md w-full text-sm">
+                  {searchResults.map((p) => (
+                    <li
+                      key={p.id}
+                      onClick={() => {
+                        setSelectedPatient(p);
+                        setForm((prev) => ({ ...prev, patient_id: p.id }));
+                        setSearchResults([]);
+                      }}
+                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                    >
+                      {p.last_name} {p.first_name} —{" "}
+                      <span className="text-xs text-gray-500">
+                        ΑΜΚΑ: {p.amka} | Τηλ: {p.phone}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
+          )}
 
-            {searchResults.length > 0 && !selectedPatient && (
-              <ul className="absolute z-10 bg-white border border-gray-200 rounded-md mt-1 max-h-48 overflow-y-auto shadow-md w-full text-sm">
-                {searchResults.map((p) => (
-                  <li
-                    key={p.id}
-                    onClick={() => {
-                      setSelectedPatient(p);
-                      setForm((prev) => ({ ...prev, patient_id: p.id }));
-                      setSearchResults([]);
-                    }}
-                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                  >
-                    {p.last_name} {p.first_name} —{" "}
-                    <span className="text-xs text-gray-500">
-                      ΑΜΚΑ: {p.amka} | Τηλ: {p.phone}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          {/* New patient inline form */}
+          {newPatientMode && (
+            <div className="rounded-2xl border p-4 space-y-4">
+              <h2 className="text-sm font-semibold">Στοιχεία νέου ασθενούς</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Όνομα *
+                  </label>
+                  <input
+                    name="first_name"
+                    value={newPatient.first_name}
+                    onChange={handleNewPatientChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Επώνυμο *
+                  </label>
+                  <input
+                    name="last_name"
+                    value={newPatient.last_name}
+                    onChange={handleNewPatientChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={newPatient.email}
+                    onChange={handleNewPatientChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Τηλέφωνο *
+                  </label>
+                  <input
+                    name="phone"
+                    value={newPatient.phone}
+                    onChange={handleNewPatientChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium mb-1">
+                    ΑΜΚΑ *{" "}
+                  </label>
+                  <input
+                    name="amka"
+                    value={newPatient.amka}
+                    onChange={handleNewPatientChange}
+                    maxLength={11}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Αν υπάρχει ήδη ασθενής με αυτό το ΑΜΚΑ, θα χρησιμοποιηθεί ο
+                    υπάρχων.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
+          {/* Date picker */}
           {isClient && (
             <div className="flex justify-center">
               <div>
@@ -237,7 +510,8 @@ export default function AddExceptionAppointmentPage() {
               </div>
             </div>
           )}
-          {/* Ώρα με Dropdown */}
+
+          {/* Time */}
           <div>
             <label className="block text-sm font-medium mb-1 mt-4">Ώρα</label>
             <select
@@ -255,6 +529,7 @@ export default function AddExceptionAppointmentPage() {
             </select>
           </div>
 
+          {/* Duration */}
           <div>
             <label className="block text-sm font-medium mb-1">
               Διάρκεια (λεπτά)
@@ -269,6 +544,7 @@ export default function AddExceptionAppointmentPage() {
             />
           </div>
 
+          {/* Reason */}
           <div>
             <label className="block text-sm font-medium mb-1">
               Λόγος Ραντεβού
@@ -282,6 +558,7 @@ export default function AddExceptionAppointmentPage() {
             />
           </div>
 
+          {/* Notes */}
           <div>
             <label className="block text-sm font-medium mb-1">Σημειώσεις</label>
             <textarea
@@ -306,10 +583,15 @@ export default function AddExceptionAppointmentPage() {
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={loading || !selectedPatient}
+              // enabled if: have selectedPatient OR we’re in newPatientMode
+              disabled={loading || (!selectedPatient && !newPatientMode)}
               className="bg-[#2e2c28] hover:bg-[#1f1e1b] text-white px-6 py-2 rounded-lg text-sm font-semibold tracking-wide shadow-md hover:shadow-lg transition disabled:opacity-50"
             >
-              {loading ? "Καταχώρηση..." : "Καταχώρηση Ραντεβού"}
+              {loading
+                ? "Καταχώρηση..."
+                : newPatientMode
+                ? "Αποθήκευση Ασθενούς & Ραντεβού"
+                : "Καταχώρηση Ραντεβού"}
             </button>
           </div>
         </form>
