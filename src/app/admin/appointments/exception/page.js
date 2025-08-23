@@ -132,44 +132,78 @@ export default function AddExceptionAppointmentPage() {
     }));
   };
 
-  async function upsertOrGetPatientByAMKA({
+  async function resolveOrCreatePatient({
     first_name,
     last_name,
     email,
     phone,
     amka,
   }) {
-    // --- normalize & validate ---
     const clean = {
       first_name: (first_name ?? "").trim(),
       last_name: (last_name ?? "").trim(),
       email: (email ?? "").trim() || null,
-      phone: (phone ?? "").replace(/[^\d+ ]/g, ""), // keep digits, + and spaces
-      amka: (amka ?? "").trim(),
+      // keep digits/+ and a single space, then normalize spaces
+      phone: (phone ?? "")
+        .replace(/[^\d+ ]/g, "")
+        .replace(/\s+/g, " ")
+        .trim(),
+      amka: (amka ?? "").replace(/\D/g, ""),
     };
 
-    // require valid AMKA (11 digits)
-    if (!/^\d{11}$/.test(clean.amka)) {
-      throw new Error("Το ΑΜΚΑ πρέπει να είναι 11 ψηφία.");
+    if (!clean.first_name || !clean.last_name || !clean.phone) {
+      throw new Error("Απαιτούνται: Όνομα, Επώνυμο, Τηλέφωνο.");
     }
 
-    // --- 1) fast path: try to find existing by AMKA ---
-    const { data: existing, error: findErr } = await supabase
+    // --- Path A: AMKA provided & valid (11 digits) → use it as key
+    if (/^\d{11}$/.test(clean.amka)) {
+      const { data: existingByAmka, error: findA } = await supabase
+        .from("patients")
+        .select("id")
+        .eq("amka", clean.amka)
+        .maybeSingle();
+      if (findA) throw findA;
+      if (existingByAmka?.id) return existingByAmka.id;
+
+      const { data: createdA, error: insA } = await supabase
+        .from("patients")
+        .insert([
+          {
+            first_name: clean.first_name,
+            last_name: clean.last_name,
+            email: clean.email,
+            phone: clean.phone,
+            amka: clean.amka,
+          },
+        ])
+        .select("id")
+        .single();
+
+      if (insA?.code === "23505") {
+        const { data: afterRace, error: refetchErr } = await supabase
+          .from("patients")
+          .select("id")
+          .eq("amka", clean.amka)
+          .maybeSingle();
+        if (refetchErr) throw refetchErr;
+        if (afterRace?.id) return afterRace.id;
+      }
+      if (insA) throw insA;
+      return createdA.id;
+    }
+
+    // --- Path B: No/invalid AMKA → match by phone (and optionally name)
+    // 1) Try exact phone match first
+    const { data: existingByPhone, error: findP } = await supabase
       .from("patients")
       .select("id")
-      .eq("amka", clean.amka)
+      .eq("phone", clean.phone)
       .maybeSingle();
+    if (findP) throw findP;
+    if (existingByPhone?.id) return existingByPhone.id;
 
-    if (findErr) {
-      console.error("PATIENT FIND ERROR:", findErr);
-      throw findErr;
-    }
-    if (existing?.id) {
-      return existing.id;
-    }
-
-    // --- 2) try plain INSERT (no onConflict) ---
-    const { data: created, error: insertErr } = await supabase
+    // 3) Insert WITHOUT AMKA (null)
+    const { data: createdP, error: insP } = await supabase
       .from("patients")
       .insert([
         {
@@ -177,33 +211,13 @@ export default function AddExceptionAppointmentPage() {
           last_name: clean.last_name,
           email: clean.email,
           phone: clean.phone,
-          amka: clean.amka,
+          amka: null, // optional
         },
       ])
       .select("id")
       .single();
-
-    // If another request inserted the same AMKA concurrently and you DO have a UNIQUE(amka),
-    // you may see 23505. Handle it by re-fetching.
-    if (insertErr?.code === "23505") {
-      const { data: afterRace, error: refetchErr } = await supabase
-        .from("patients")
-        .select("id")
-        .eq("amka", clean.amka)
-        .maybeSingle();
-      if (refetchErr) {
-        console.error("PATIENT REFETCH AFTER 23505 ERROR:", refetchErr);
-        throw refetchErr;
-      }
-      if (afterRace?.id) return afterRace.id;
-    }
-
-    if (insertErr) {
-      console.error("PATIENT INSERT ERROR:", insertErr);
-      throw insertErr;
-    }
-
-    return created.id;
+    if (insP) throw insP;
+    return createdP.id;
   }
 
   const handleSubmit = async (e) => {
@@ -237,19 +251,18 @@ export default function AddExceptionAppointmentPage() {
         if (
           !newPatient.first_name ||
           !newPatient.last_name ||
-          !newPatient.phone ||
-          !newPatient.amka
+          !newPatient.phone
         ) {
           setMessage({
             type: "error",
-            text: "Συμπληρώστε τα υποχρεωτικά πεδία ασθενούς: Όνομα, Επώνυμο, Τηλέφωνο, ΑΜΚΑ.",
+            text: "Συμπληρώστε: Όνομα, Επώνυμο και Τηλέφωνο (το ΑΜΚΑ είναι προαιρετικό).",
           });
           setLoading(false);
           return;
         }
 
         // Create or reuse by AMKA
-        patientId = await upsertOrGetPatientByAMKA(newPatient);
+        patientId = await resolveOrCreatePatient(newPatient);
       } else {
         if (!selectedPatient?.id) {
           setMessage({
@@ -474,7 +487,8 @@ export default function AddExceptionAppointmentPage() {
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium mb-1">
-                    ΑΜΚΑ *{" "}
+                    ΑΜΚΑ{" "}
+                    <span className="text-gray-400 text-xs">(προαιρετικό)</span>
                   </label>
                   <input
                     name="amka"
@@ -482,6 +496,7 @@ export default function AddExceptionAppointmentPage() {
                     onChange={handleNewPatientChange}
                     maxLength={11}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    placeholder="π.χ. 01019912345"
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     Αν υπάρχει ήδη ασθενής με αυτό το ΑΜΚΑ, θα χρησιμοποιηθεί ο
