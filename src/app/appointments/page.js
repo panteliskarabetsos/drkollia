@@ -822,12 +822,38 @@ export default function NewAppointmentPage() {
             Νέο Ραντεβού
           </h2>
         </div>
-        <div className="mb-6 grid grid-cols-1 gap-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Στοιχεία Επικοινωνίας */}
+        {/* Στοιχεία Επικοινωνίας (blended) */}
+        <section
+          className="mb-8 rounded-2xl border border-[#e5e1d8] bg-white/80 p-4 md:p-6 shadow-sm"
+          role="group"
+          aria-labelledby="contact-heading"
+        >
+          <div className="mb-5 flex items-center gap-2 text-[#6b675f]">
+            <h3
+              id="contact-heading"
+              className="text-sm font-medium tracking-tight"
+            >
+              Στοιχεία Επικοινωνίας
+            </h3>
+            <span className="ml-2 hidden sm:inline text-xs text-[#9b968c]">
+              Συμπληρώστε τα βασικά στοιχεία για επικοινωνία &amp; επιβεβαίωση.
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {/* Όνομα */}
             <div>
+              <label
+                htmlFor="first_name"
+                className="mb-1 block text-xs font-medium text-[#6b675f]"
+              >
+                Όνομα
+              </label>
               <input
+                id="first_name"
                 type="text"
-                placeholder="Όνομα"
+                placeholder="π.χ. Μαρία"
                 value={newPatientData.first_name}
                 onChange={(e) =>
                   setNewPatientData({
@@ -835,20 +861,34 @@ export default function NewAppointmentPage() {
                     first_name: e.target.value,
                   })
                 }
-                className="p-2 border border-gray-300 rounded-lg w-full"
+                aria-invalid={!!formErrors?.first_name}
+                className={`w-full rounded-xl border bg-white/80 px-3 py-2.5 text-[15px] shadow-sm outline-none transition
+                    focus:ring-4 focus:ring-[#d7cfc2]/50 ${
+                      formErrors?.first_name
+                        ? "border-red-400"
+                        : "border-[#e5e1d8]"
+                    }`}
                 required
               />
               {formErrors?.first_name && (
-                <p className="text-red-500 text-sm mt-1">
+                <p className="mt-1 text-xs text-red-600">
                   {formErrors.first_name}
                 </p>
               )}
             </div>
 
+            {/* Επώνυμο */}
             <div>
+              <label
+                htmlFor="last_name"
+                className="mb-1 block text-xs font-medium text-[#6b675f]"
+              >
+                Επώνυμο
+              </label>
               <input
+                id="last_name"
                 type="text"
-                placeholder="Επώνυμο"
+                placeholder="π.χ. Καλογεροπούλου"
                 value={newPatientData.last_name}
                 onChange={(e) =>
                   setNewPatientData({
@@ -856,76 +896,120 @@ export default function NewAppointmentPage() {
                     last_name: e.target.value,
                   })
                 }
-                className="p-2 border border-gray-300 rounded-lg w-full"
+                aria-invalid={!!formErrors?.last_name}
+                className={`w-full rounded-xl border bg-white/80 px-3 py-2.5 text-[15px] shadow-sm outline-none transition
+                    focus:ring-4 focus:ring-[#d7cfc2]/50 ${
+                      formErrors?.last_name
+                        ? "border-red-400"
+                        : "border-[#e5e1d8]"
+                    }`}
                 required
               />
               {formErrors?.last_name && (
-                <p className="text-red-500 text-sm mt-1">
+                <p className="mt-1 text-xs text-red-600">
                   {formErrors.last_name}
                 </p>
               )}
             </div>
-          </div>
 
-          <div>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="Τηλέφωνο"
-              value={newPatientData.phone}
-              onChange={(e) => {
-                const onlyDigits = e.target.value.replace(/\D/g, "");
-                setNewPatientData({ ...newPatientData, phone: onlyDigits });
-              }}
-              onKeyDown={(e) => {
-                const allowedKeys = [
-                  "Backspace",
-                  "ArrowLeft",
-                  "ArrowRight",
-                  "Delete",
-                  "Tab",
-                ];
-                if (!/[0-9]/.test(e.key) && !allowedKeys.includes(e.key)) {
-                  e.preventDefault();
+            {/* Τηλέφωνο */}
+            <div>
+              <label
+                htmlFor="phone"
+                className="mb-1 block text-xs font-medium text-[#6b675f]"
+              >
+                Τηλέφωνο
+              </label>
+              <input
+                id="phone"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="69XXXXXXXX"
+                value={newPatientData.phone}
+                onChange={(e) => {
+                  const onlyDigits = e.target.value.replace(/\D/g, "");
+                  setNewPatientData({ ...newPatientData, phone: onlyDigits });
+                }}
+                onKeyDown={(e) => {
+                  const allowedKeys = [
+                    "Backspace",
+                    "ArrowLeft",
+                    "ArrowRight",
+                    "Delete",
+                    "Tab",
+                  ];
+                  if (!/[0-9]/.test(e.key) && !allowedKeys.includes(e.key))
+                    e.preventDefault();
+                }}
+                aria-invalid={!!formErrors?.phone}
+                className={`w-full rounded-xl border bg-white/80 px-3 py-2.5 text-[15px] shadow-sm outline-none transition
+                    focus:ring-4 focus:ring-[#d7cfc2]/50 ${
+                      formErrors?.phone ? "border-red-400" : "border-[#e5e1d8]"
+                    }`}
+                required
+              />
+              <p className="mt-1 text-xs text-[#9b968c]">
+                Μόνο αριθμοί, χωρίς κενά ή σύμβολα.
+              </p>
+              {formErrors?.phone && (
+                <p className="mt-1 text-xs text-red-600">{formErrors.phone}</p>
+              )}
+            </div>
+
+            {/* Email */}
+            <div>
+              <label
+                htmlFor="email"
+                className="mb-1 block text-xs font-medium text-[#6b675f]"
+              >
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                placeholder="name@example.com"
+                value={newPatientData.email}
+                onChange={(e) =>
+                  setNewPatientData({
+                    ...newPatientData,
+                    email: e.target.value,
+                  })
                 }
-              }}
-              className="p-2 border border-gray-300 rounded-lg w-full"
-              required
-            />
-            {formErrors?.phone && (
-              <p className="text-red-500 text-sm mt-1">{formErrors.phone}</p>
-            )}
-          </div>
+                aria-invalid={!!formErrors?.email}
+                className={`w-full rounded-xl border bg-white/80 px-3 py-2.5 text-[15px] shadow-sm outline-none transition
+                    focus:ring-4 focus:ring-[#d7cfc2]/50 ${
+                      formErrors?.email ? "border-red-400" : "border-[#e5e1d8]"
+                    }`}
+                required
+              />
+              {formErrors?.email && (
+                <p className="mt-1 text-xs text-red-600">{formErrors.email}</p>
+              )}
+            </div>
 
-          <div>
-            <input
-              type="email"
-              placeholder="Email"
-              value={newPatientData.email}
-              onChange={(e) =>
-                setNewPatientData({ ...newPatientData, email: e.target.value })
-              }
-              className={`p-2 border ${
-                formErrors?.email ? "border-red-500" : "border-gray-300"
-              } rounded-lg w-full`}
-              required
-            />
-            {formErrors?.email && (
-              <p className="text-red-500 text-sm mt-1">{formErrors.email}</p>
-            )}
+            {/* ΑΜΚΑ */}
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="amka"
+                className="mb-1 block text-xs font-medium text-[#6b675f]"
+              >
+                ΑΜΚΑ (προαιρετικό)
+              </label>
+              <input
+                id="amka"
+                type="text"
+                inputMode="numeric"
+                placeholder="π.χ. 01019912345"
+                value={newPatientData.amka}
+                onChange={(e) =>
+                  setNewPatientData({ ...newPatientData, amka: e.target.value })
+                }
+                className="w-full rounded-xl border border-[#e5e1d8] bg-white/80 px-3 py-2.5 text-[15px] shadow-sm outline-none transition focus:ring-4 focus:ring-[#d7cfc2]/50"
+              />
+            </div>
           </div>
-
-          <input
-            type="text"
-            placeholder="ΑΜΚΑ (προαιρετικό)"
-            value={newPatientData.amka}
-            onChange={(e) =>
-              setNewPatientData({ ...newPatientData, amka: e.target.value })
-            }
-            className="p-2 border border-gray-300 rounded-lg"
-          />
-        </div>
+        </section>
         {/* Λόγος Επίσκεψης */}
         <div className="mb-5">
           <label className="block text-sm mb-1 text-gray-600">
@@ -1139,24 +1223,27 @@ export default function NewAppointmentPage() {
                       <button
                         key={time}
                         type="button"
-                        onClick={() => {
-                          if (available)
-                            setFormData({
-                              ...formData,
-                              appointment_time: time,
-                            });
-                        }}
+                        onClick={() =>
+                          available &&
+                          setFormData({ ...formData, appointment_time: time })
+                        }
                         disabled={!available}
-                        className={`px-3 py-2 text-sm rounded-lg border transition-all ${
+                        aria-pressed={
                           formData.appointment_time === time && available
-                            ? "bg-gray-800 text-white"
+                        }
+                        className={
+                          `group relative flex items-center justify-center rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-4 focus:ring-[#d7cfc2]/40 ` +
+                          (formData.appointment_time === time && available
+                            ? "border-[#2f2e2b] bg-[#2f2e2b] text-white shadow"
                             : available
-                            ? "bg-white text-gray-800 border-gray-300 hover:bg-gray-100"
-                            : "bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed"
-                        }`}
+                            ? "border-[#e5e1d8] bg-white text-[#2f2e2b] shadow-sm hover:-translate-y-0.5 hover:shadow"
+                            : "cursor-not-allowed border-[#e8e4db] bg-[#f1eee7] text-[#a7a39a]")
+                        }
                         title={available ? "" : "Κλεισμένο ή μη διαθέσιμο"}
                       >
-                        {time}–{endTimeStr}
+                        <span className="tabular-nums">
+                          {time}–{endTimeStr}
+                        </span>
                       </button>
                     );
                   })}
@@ -1176,43 +1263,52 @@ export default function NewAppointmentPage() {
             className="w-full p-2 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-gray-500"
           />
         </div>
-        <button
-          type="submit"
-          disabled={isSubmitting || !isFormValid}
-          className={`w-full flex items-center justify-center bg-gray-800 text-white py-2 rounded-lg transition ${
-            isSubmitting || !isFormValid
-              ? "opacity-60 cursor-not-allowed"
-              : "hover:bg-gray-700"
-          }`}
-        >
-          {isSubmitting ? (
-            <>
-              <svg
-                className="animate-spin h-5 w-5 mr-2 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8v8H4z"
-                />
-              </svg>
-              Καταχώρηση...
-            </>
-          ) : (
-            "Κλείστε Ραντεβού (demo)"
+        <div className="sticky bottom-0 z-10 w-full border-t border-[#eee7db] bg-white/80 px-6 py-4 backdrop-blur">
+          <button
+            type="submit"
+            disabled={isSubmitting || !isFormValid}
+            className={
+              "w-full rounded-2xl px-4 py-3 text-sm font-medium tracking-tight text-white transition focus:outline-none focus:ring-4 focus:ring-[#d7cfc2]/50 " +
+              (isSubmitting || !isFormValid
+                ? "cursor-not-allowed bg-[#8e8a82]"
+                : "bg-[#2f2e2b] hover:-translate-y-0.5 hover:bg-black")
+            }
+          >
+            {isSubmitting ? (
+              <span className="inline-flex items-center justify-center">
+                <svg
+                  className="mr-2 h-5 w-5 animate-spin"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8v8H4z"
+                  />
+                </svg>
+                Καταχώρηση...
+              </span>
+            ) : (
+              "Κλείστε Ραντεβού (demo)"
+            )}
+          </button>
+
+          {submitError && (
+            <p className="mt-2 text-center text-sm text-red-600">
+              {submitError}
+            </p>
           )}
-        </button>
+        </div>
         {submitError && (
           <p className="text-red-500 text-sm mt-2 text-center">{submitError}</p>
         )}
