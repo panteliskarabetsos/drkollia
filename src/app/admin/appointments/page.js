@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { Calendar } from "@/components/ui/calendar";
@@ -79,7 +79,10 @@ export default function AdminAppointmentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
   const [selectedAppointmentNote, setSelectedAppointmentNote] = useState("");
-
+  const [editMounted, setEditMounted] = useState(false);
+  const editDialogRef = useRef(null);
+  const editCloseBtnRef = useRef(null);
+  const [isSaving, setIsSaving] = useState(false);
   const greekLocale = {
     ...el,
     options: {
@@ -258,6 +261,48 @@ export default function AdminAppointmentsPage() {
       };
     }
   }, [sessionExists]);
+
+  useEffect(() => {
+    if (!editNoteModalOpen) return;
+    setEditMounted(true);
+    // Focus close button for keyboard users
+    editCloseBtnRef.current?.focus();
+
+    // focus trap + ESC
+    const el = editDialogRef.current;
+    const sel =
+      'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])';
+    const getFocusable = () =>
+      Array.from(el?.querySelectorAll(sel) || []).filter(
+        (n) => !n.hasAttribute("disabled")
+      );
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setEditNoteModalOpen(false);
+        return;
+      }
+      if (e.key === "Tab") {
+        const f = getFocusable();
+        if (!f.length) return;
+        const first = f[0],
+          last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      setEditMounted(false);
+    };
+  }, [editNoteModalOpen]);
 
   // sendEmail comes from the modal checkbox (true/false)
   const updateStatus = async (id, status, sendEmail = false) => {
@@ -864,49 +909,99 @@ export default function AdminAppointmentsPage() {
           )}
         </div>
       </div>
+
       {appointmentNoteModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4 py-10">
-          <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md border border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Σημειώσεις Ραντεβού
-            </h2>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-10"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="appointment-note-title"
+          onKeyDown={(e) =>
+            e.key === "Escape" && setAppointmentNoteModalOpen(false)
+          }
+        >
+          {/* Overlay */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
+            onClick={() => setAppointmentNoteModalOpen(false)}
+          />
 
-            <p className="text-sm text-gray-500 mb-2">
-              Το ραντεβού καταχωρήθηκε από:{" "}
-              <span className="font-medium text-gray-700">
-                {appointments.find((a) => a.id === selectedAppointmentId)
-                  ?.creator?.name || "Άγνωστος"}
-              </span>
-            </p>
-
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">
-              {selectedAppointmentNote?.trim() || "Δεν υπάρχουν σημειώσεις."}
-            </p>
-
-            <div className="mt-6 flex justify-between items-center">
+          {/* Card */}
+          <div className="relative w-full max-w-lg rounded-2xl border border-[#e5e1d8] bg-white/90 shadow-[0_10px_40px_rgba(60,50,30,0.18)] backdrop-blur-xl">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-5">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#e7e1d6] bg-white text-xs text-[#6b675f]">
+                  <StickyNote className="w-4 h-4" />
+                </span>
+                <h2
+                  id="appointment-note-title"
+                  className="text-base font-semibold tracking-tight text-[#2f2e2b]"
+                >
+                  Σημειώσεις Ραντεβού
+                </h2>
+              </div>
               <button
                 onClick={() => setAppointmentNoteModalOpen(false)}
-                className="px-4 py-2 text-sm bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                className="rounded-lg px-2 py-1 text-sm text-[#6b675f] hover:bg-[#f3f0ea]"
+                aria-label="Κλείσιμο"
               >
-                Κλείσιμο
+                ✕
               </button>
+            </div>
+
+            {/* Meta */}
+            <div className="px-6 pt-3">
+              <p className="text-xs text-[#8c887f]">
+                Καταχωρήθηκε από{" "}
+                <span className="font-medium text-[#5a574f]">
+                  {appointments.find((a) => a.id === selectedAppointmentId)
+                    ?.creator?.name || "Άγνωστος"}
+                </span>
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="mt-4 h-px w-full bg-gradient-to-r from-transparent via-[#ece7de] to-transparent" />
+
+            {/* Content (scrollable) */}
+            <div className="px-6 py-4 max-h-[60vh] overflow-auto">
+              <p className="whitespace-pre-wrap text-sm leading-6 text-[#3b3a36]">
+                {selectedAppointmentNote?.trim() || "Δεν υπάρχουν σημειώσεις."}
+              </p>
+            </div>
+
+            {/* Footer actions */}
+            <div className="flex items-center justify-between gap-3 border-t border-[#eee7db] bg-white/70 px-6 py-4 backdrop-blur">
               <button
-                onClick={() => {
-                  if (!selectedAppointmentId) {
-                    console.warn(
-                      "No selectedAppointmentId — did you call openAppointmentNoteModal(appt)?"
-                    );
-                    return;
-                  }
-                  setEditNoteModalOpen(true);
-                  setEditingAppointmentId(selectedAppointmentId);
-                  setEditingNote(selectedAppointmentNote || "");
-                  setAppointmentNoteModalOpen(false);
-                }}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-500 no-print"
+                onClick={() =>
+                  navigator.clipboard?.writeText(selectedAppointmentNote || "")
+                }
+                className="text-xs text-[#6b675f] underline underline-offset-4 hover:text-black"
               >
-                Επεξεργασία
+                Αντιγραφή σημειώσεων
               </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setAppointmentNoteModalOpen(false)}
+                  className="rounded-xl border border-[#e5e1d8] bg-white px-4 py-2 text-sm text-[#3b3a36] shadow-sm hover:bg-[#f6f3ee]"
+                >
+                  Κλείσιμο
+                </button>
+                <button
+                  onClick={() => {
+                    if (!selectedAppointmentId) return;
+                    setEditNoteModalOpen(true);
+                    setEditingAppointmentId(selectedAppointmentId);
+                    setEditingNote(selectedAppointmentNote || "");
+                    setAppointmentNoteModalOpen(false);
+                  }}
+                  className="no-print rounded-xl bg-[#2f2e2b] px-4 py-2 text-sm text-white shadow-sm transition hover:bg-black"
+                >
+                  Επεξεργασία
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1063,23 +1158,82 @@ export default function AdminAppointmentsPage() {
           </div>
         </div>
       )}
-
       {editNoteModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4 py-10">
-          <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md border border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Επεξεργασία Σημειώσεων Ραντεβού
-            </h2>
-            <textarea
-              rows={5}
-              className="w-full border rounded-lg p-2 text-sm text-gray-700"
-              value={editingNote}
-              onChange={(e) => setEditingNote(e.target.value)}
-            />
-            <div className="mt-4 flex justify-end gap-3">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-10"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-note-title"
+        >
+          {/* Backdrop */}
+          <button
+            aria-label="Κλείσιμο"
+            onClick={() => setEditNoteModalOpen(false)}
+            className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-200 ${
+              editMounted ? "opacity-100" : "opacity-0"
+            }`}
+          />
+
+          {/* Card */}
+          <div
+            ref={editDialogRef}
+            className={`relative w-full max-w-lg rounded-2xl border border-[#e5e1d8] bg-white/90 shadow-[0_10px_40px_rgba(60,50,30,0.18)] backdrop-blur-xl transition-all duration-200 ease-out transform-gpu ${
+              editMounted
+                ? "opacity-100 translate-y-0 scale-100"
+                : "opacity-0 translate-y-3 scale-[.98]"
+            }`}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-5">
+              <h2
+                id="edit-note-title"
+                className="text-base font-semibold tracking-tight text-[#2f2e2b]"
+              >
+                Επεξεργασία Σημειώσεων Ραντεβού
+              </h2>
+              <button
+                ref={editCloseBtnRef}
+                onClick={() => setEditNoteModalOpen(false)}
+                className="rounded-lg px-2 py-1 text-sm text-[#6b675f] hover:bg-[#f3f0ea] focus:outline-none focus:ring-2 focus:ring-[#d7cfc2]/70"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 pt-3 pb-2">
+              <label htmlFor="note-textarea" className="sr-only">
+                Σημειώσεις
+              </label>
+              <textarea
+                id="note-textarea"
+                rows={6}
+                className="w-full resize-y rounded-xl border border-[#e5e1d8] bg-white/80 px-3 py-2.5 text-sm leading-6 text-[#3b3a36] shadow-sm outline-none transition placeholder:text-[#b7b2a9] focus:border-[#cfc7bb] focus:ring-4 focus:ring-[#d7cfc2]/50"
+                value={editingNote}
+                onChange={(e) => setEditingNote(e.target.value)}
+                placeholder="Προσθέστε ή επεξεργαστείτε σημειώσεις..."
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-[11px] text-[#8c887f]">
+                  {editingNote?.length || 0} χαρακτήρες
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigator.clipboard?.writeText(editingNote || "")
+                  }
+                  className="text-xs text-[#6b675f] underline underline-offset-4 hover:text-black"
+                >
+                  Αντιγραφή
+                </button>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 border-t border-[#eee7db] bg-white/70 px-6 py-4 backdrop-blur">
               <button
                 onClick={() => setEditNoteModalOpen(false)}
-                className="px-4 py-2 text-sm bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                className="rounded-xl border border-[#e5e1d8] bg-white px-4 py-2 text-sm text-[#3b3a36] shadow-sm hover:bg-[#f6f3ee] focus:outline-none focus:ring-2 focus:ring-[#d7cfc2]/70"
               >
                 Άκυρο
               </button>
@@ -1089,74 +1243,39 @@ export default function AdminAppointmentsPage() {
                     alert("Δεν βρέθηκε ραντεβού για επεξεργασία.");
                     return;
                   }
+                  try {
+                    setIsSaving(true);
+                    const { error } = await supabase
+                      .from("appointments")
+                      .update({ notes: editingNote })
+                      .eq("id", editingAppointmentId);
+                    if (error) throw error;
 
-                  const { error } = await supabase
-                    .from("appointments")
-                    .update({ notes: editingNote })
-                    .eq("id", editingAppointmentId);
-
-                  if (error) {
-                    console.error(error);
+                    // Optimistic update
+                    setAppointments((prev) =>
+                      prev.map((appt) =>
+                        appt.id === editingAppointmentId
+                          ? { ...appt, notes: editingNote }
+                          : appt
+                      )
+                    );
+                    if (selectedAppointmentId === editingAppointmentId) {
+                      setSelectedAppointmentNote(editingNote);
+                    }
+                    setEditNoteModalOpen(false);
+                  } catch (err) {
+                    console.error(err);
                     alert("Σφάλμα κατά την αποθήκευση σημειώσεων.");
-                    return;
+                  } finally {
+                    setIsSaving(false);
                   }
-
-                  // Optimistic local update
-                  setAppointments((prev) =>
-                    prev.map((appt) =>
-                      appt.id === editingAppointmentId
-                        ? { ...appt, notes: editingNote }
-                        : appt
-                    )
-                  );
-
-                  // Sync with selected note (if same appointment is open in view modal)
-                  if (selectedAppointmentId === editingAppointmentId) {
-                    setSelectedAppointmentNote(editingNote);
-                  }
-
-                  setEditNoteModalOpen(false);
                 }}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-500"
+                disabled={isSaving}
+                className={`inline-flex items-center justify-center rounded-xl bg-[#2f2e2b] px-4 py-2 text-sm text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-[#d7cfc2]/70 ${
+                  isSaving ? "opacity-60 cursor-wait" : "hover:bg-black"
+                }`}
               >
-                Αποθήκευση
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {deleteDialogOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4">
-          <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md border border-gray-200">
-            {/* Icon + Τίτλος */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="bg-red-100 text-red-600 p-2 rounded-full">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <h2 className="text-lg font-semibold text-gray-800">
-                Επιβεβαίωση Διαγραφής
-              </h2>
-            </div>
-
-            <p className="text-sm text-gray-600 mb-6">
-              Θέλετε σίγουρα να διαγράψετε αυτό το ραντεβού; Η ενέργεια δεν
-              μπορεί να αναιρεθεί.
-            </p>
-
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setDeleteDialogOpen(false)}
-                className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
-              >
-                Άκυρο
-              </button>
-              <button
-                onClick={handleDeleteAppointment}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-500 flex items-center gap-1"
-              >
-                <Trash2 className="w-4 h-4" />
-                Διαγραφή
+                {isSaving ? "Αποθήκευση..." : "Αποθήκευση"}
               </button>
             </div>
           </div>
