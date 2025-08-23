@@ -1241,9 +1241,7 @@ export default function NewAppointmentPage() {
                         }
                         title={available ? "" : "Κλεισμένο ή μη διαθέσιμο"}
                       >
-                        <span className="tabular-nums">
-                          {time}–{endTimeStr}
-                        </span>
+                        <span className="tabular-nums">{time}</span>
                       </button>
                     );
                   })}
