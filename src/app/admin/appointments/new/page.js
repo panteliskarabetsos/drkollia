@@ -315,6 +315,14 @@ export default function NewAppointmentPage() {
     fetchBookedSlots();
   }, [formData.appointment_date]);
 
+  useEffect(() => {
+    if (isMedicalVisitor) {
+      setSelectedPatient(null);
+      setNewPatientMode(false);
+      setVisitorName((v) => v); // προαιρετικό, κρατά το όνομα αν υπήρχε
+    }
+  }, [isMedicalVisitor]);
+
   const handleCancel = () => {
     // Καθαρίζει τη φόρμα
     setFormData({
@@ -416,19 +424,27 @@ export default function NewAppointmentPage() {
 
     checkPhone();
   }, [newPatientData.phone]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
+      const isMedicalVisitor = formData.reason === "Ιατρικός Επισκέπτης";
+
+      // ---- Έλεγχος διάρκειας
       const duration =
         formData.duration_minutes === "custom"
           ? parseInt(formData.customDuration || "", 10)
           : parseInt(formData.duration_minutes, 10);
 
-      if (isNaN(duration) || duration <= 0) {
+      if (!Number.isFinite(duration) || duration <= 0) {
         alert("Η διάρκεια του ραντεβού δεν είναι έγκυρη.");
+        return;
+      }
+
+      // ---- Έλεγχος ημερομηνίας/ώρας
+      if (!formData.appointment_date || !formData.appointment_time) {
+        alert("Πρέπει να συμπληρωθούν Ημερομηνία και Ώρα.");
         return;
       }
 
@@ -436,31 +452,31 @@ export default function NewAppointmentPage() {
       const combinedDate = new Date(formData.appointment_date);
       combinedDate.setHours(hour, minute, 0, 0);
 
-      // === Ειδικός έλεγχος για Ιατρικό Επισκέπτη ===
-      if (formData.reason === "Ιατρικός Επισκέπτης") {
-        if (
-          !formData.appointment_date ||
-          !formData.appointment_time ||
-          !searchTerm.trim()
-        ) {
-          alert(
-            "Πρέπει να συμπληρωθούν όλα τα απαραίτητα πεδία (Ημερομηνία, Ώρα, Όνομα Επισκέπτη)."
-          );
+      // =========================================================
+      // === ΚΛΑΔΟΣ: ΙΑΤΡΙΚΟΣ ΕΠΙΣΚΕΠΤΗΣ ========================
+      // =========================================================
+      if (isMedicalVisitor) {
+        const visitor =
+          (typeof visitorName !== "undefined" ? visitorName : searchTerm) || "";
+        const visitorTrimmed = visitor.trim();
+
+        if (!visitorTrimmed) {
+          alert("Πρέπει να συμπληρωθεί το Όνομα Επισκέπτη.");
           return;
         }
-        if (!validateForm()) {
-          setIsSubmitting(false);
-          return;
-        }
+
         const { error } = await supabase.from("appointments").insert([
           {
             patient_id: null,
             appointment_time: combinedDate.toISOString(),
             duration_minutes: duration,
-            reason: "Ιατρικός Επισκέπτης",
-            notes: `Εταιρεία: ${searchTerm.trim()}\n${
-              formData.notes || ""
-            }`.trim(),
+            reason:
+              formData.reason === "Προσαρμογή" && formData.customReason?.trim()
+                ? formData.customReason.trim()
+                : "Ιατρικός Επισκέπτης",
+            notes: [formData.notes, `Ιατρικός Επισκέπτης: ${visitorTrimmed}`]
+              .filter(Boolean)
+              .join(" • "),
             status: "approved",
           },
         ]);
@@ -468,15 +484,17 @@ export default function NewAppointmentPage() {
         if (error) {
           console.error("Appointment insert error:", error);
           alert("Σφάλμα κατά την καταχώρηση ραντεβού.");
-        } else {
-          toast.success("✅ Το ραντεβού καταχωρήθηκε επιτυχώς!");
-          router.push("/admin/appointments");
+          return;
         }
 
+        toast.success("✅ Το ραντεβού καταχωρήθηκε επιτυχώς!");
+        router.push("/admin/appointments");
         return;
       }
 
-      // === Δημιουργία νέου ασθενούς αν χρειάζεται ===
+      // =========================================================
+      // === ΚΛΑΔΟΣ: ΑΣΘΕΝΗΣ =====================================
+      // =========================================================
       let patientId = selectedPatient?.id;
       let email = null;
       let name = "";
@@ -520,17 +538,14 @@ export default function NewAppointmentPage() {
         email = newPatientData.email;
         name = `${newPatientData.first_name} ${newPatientData.last_name}`;
       } else {
-        email = selectedPatient?.email;
-        name = `${selectedPatient?.first_name} ${selectedPatient?.last_name}`;
+        email = selectedPatient?.email || null;
+        name = selectedPatient
+          ? `${selectedPatient.first_name} ${selectedPatient.last_name}`
+          : "";
       }
 
-      // === Έλεγχος πεδίων ===
-      if (
-        !patientId ||
-        !formData.appointment_date ||
-        !formData.appointment_time
-      ) {
-        alert("Πρέπει να συμπληρωθούν όλα τα απαραίτητα πεδία.");
+      if (!patientId) {
+        alert("Πρέπει να επιλεγεί/καταχωρηθεί ασθενής.");
         return;
       }
 
@@ -539,10 +554,10 @@ export default function NewAppointmentPage() {
           patient_id: patientId,
           appointment_time: combinedDate.toISOString(),
           duration_minutes: duration,
-          notes: formData.notes,
+          notes: formData.notes || null,
           reason:
-            formData.reason === "Προσαρμογή"
-              ? formData.customReason
+            formData.reason === "Προσαρμογή" && formData.customReason?.trim()
+              ? formData.customReason.trim()
               : formData.reason,
           status: "approved",
         },
@@ -551,27 +566,30 @@ export default function NewAppointmentPage() {
       if (error) {
         console.error("Appointment insert error:", error);
         alert("Σφάλμα κατά την καταχώρηση ραντεβού.");
-      } else {
-        //Αποστολή email επιβεβαίωσης σε ασθενή (νέο ή υπάρχον)
-        if (email) {
-          await fetch("/api/send-confirmation", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email,
-              name,
-              date: formData.appointment_date.toISOString(),
-              time: formData.appointment_time,
-              reason:
-                formData.reason === "Προσαρμογή"
-                  ? formData.customReason
-                  : formData.reason,
-            }),
-          });
-        }
-
-        router.push("/admin/appointments");
+        return;
       }
+
+      // Εμφάνιση toast επιτυχίας
+      toast.success("✅ Το ραντεβού καταχωρήθηκε επιτυχώς!");
+
+      if (email) {
+        await fetch("/api/send-confirmation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            name,
+            date: formData.appointment_date.toISOString(),
+            time: formData.appointment_time,
+            reason:
+              formData.reason === "Προσαρμογή" && formData.customReason?.trim()
+                ? formData.customReason.trim()
+                : formData.reason,
+          }),
+        });
+      }
+
+      router.push("/admin/appointments");
     } catch (err) {
       console.error("Σφάλμα:", err);
       alert("Προέκυψε σφάλμα.");
@@ -713,23 +731,25 @@ export default function NewAppointmentPage() {
       </div>
     );
   }
-
-  const hasDateTime =
-    Boolean(formData.appointment_date) && Boolean(formData.appointment_time); // τώρα γεμίζει από το handler
+  const hasDate = Boolean(formData.appointment_date);
+  const hasTime = Boolean(formData.appointment_time);
+  const resolvedDuration =
+    formData.duration_minutes === "custom"
+      ? parseInt(formData.customDuration || "", 10)
+      : parseInt(formData.duration_minutes || "", 10);
 
   const isNewPatientValid =
     Boolean(newPatientData.first_name?.trim()) &&
     Boolean(newPatientData.last_name?.trim()) &&
-    !errors.amka &&
-    !existingAmkaPatient &&
-    !errors.phone &&
-    !existingPhonePatient;
+    !errors.amka; // + ό,τι άλλο validation θες
+
+  const hasPatient = newPatientMode
+    ? isNewPatientValid
+    : Boolean(selectedPatient);
 
   const isFormValid = isMedicalVisitor
-    ? Boolean(visitorName?.trim()) // μόνο όνομα επισκέπτη
-    : Boolean(formData.appointment_date) &&
-      Boolean(formData.appointment_time) &&
-      (newPatientMode ? isNewPatientValid : Boolean(selectedPatient));
+    ? Boolean(visitorName?.trim()) && hasDate && hasTime
+    : hasPatient && hasDate && hasTime;
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-[#f9f9f9] px-14 py-22 ">
@@ -791,8 +811,8 @@ export default function NewAppointmentPage() {
             <input
               type="text"
               placeholder="π.χ. Αντιπρόσωπος εταιρείας Χ"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={visitorName}
+              onChange={(e) => setVisitorName(e.target.value)}
               className="px-4 py-2 border border-[#d6d3cb] rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#b5aa96] transition w-full"
             />
           </div>
@@ -1070,13 +1090,13 @@ export default function NewAppointmentPage() {
         {formData.duration_minutes === "custom" && (
           <div className="mb-5">
             <label className="block text-sm mb-1 text-gray-600">
-              Προσαρμοσμένη Διάρκεια (σε λεπτά)
+              Προσαρμοσμένη Διάρκεια (σε λεπτά ≥ 5)
             </label>
             <input
               type="number"
               min="5"
               step="5"
-              placeholder="π.χ. 20"
+              placeholder="π.χ. 15"
               value={formData.customDuration}
               onChange={(e) =>
                 setFormData({ ...formData, customDuration: e.target.value })
@@ -1088,7 +1108,7 @@ export default function NewAppointmentPage() {
         )}
         {/* Ώρες Διαθεσιμότητας */}
         {/* Ώρες Διαθεσιμότητας */}
-        {formData.appointment_date && (
+        {formData.appointment_date && resolvedDuration >= 5 && (
           <div className="mb-5">
             <label className="block text-sm mb-1 text-gray-600">
               Επιλογή Ώρας

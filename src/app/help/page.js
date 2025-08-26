@@ -177,7 +177,7 @@ export default function HelpPage() {
         </button>
 
         <h1 className="text-3xl font-bold text-center mb-8">
-          Οδηγός Διαχειριστή & Συχνές Ερωτήσεις
+          Οδηγός Διαχειριστή
         </h1>
 
         {/* FAQ */}
