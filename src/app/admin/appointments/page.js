@@ -200,6 +200,7 @@ export default function AdminAppointmentsPage() {
         notes,
         duration_minutes, 
         is_exception,
+        created_at,
         patients:patient_id (
           id,
           first_name,
@@ -303,6 +304,17 @@ export default function AdminAppointmentsPage() {
       setEditMounted(false);
     };
   }, [editNoteModalOpen]);
+
+  const formatDateTimeEl = (iso) => {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("el-GR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   // sendEmail comes from the modal checkbox (true/false)
   const updateStatus = async (id, status, sendEmail = false) => {
@@ -424,6 +436,7 @@ export default function AdminAppointmentsPage() {
 
     XLSX.writeFile(workbook, filename);
   };
+
   const handlePrint = () => {
     const originalContent = document.getElementById("printable-content");
     if (!originalContent) return;
@@ -952,13 +965,26 @@ export default function AdminAppointmentsPage() {
 
             {/* Meta */}
             <div className="px-6 pt-3">
-              <p className="text-xs text-[#8c887f]">
-                Καταχωρήθηκε από{" "}
-                <span className="font-medium text-[#5a574f]">
-                  {appointments.find((a) => a.id === selectedAppointmentId)
-                    ?.creator?.name || "Άγνωστος"}
-                </span>
-              </p>
+              {(() => {
+                const appt = appointments.find(
+                  (a) => a.id === selectedAppointmentId
+                );
+                const creatorName = appt?.creator?.name || "Άγνωστος";
+                const createdAtStr = formatDateTimeEl(appt?.created_at);
+
+                return (
+                  <p className="text-xs text-[#8c887f]">
+                    Καταχωρήθηκε από{" "}
+                    <span className="font-medium text-[#5a574f]">
+                      {creatorName}
+                    </span>{" "}
+                    στις{" "}
+                    <span className="font-medium text-[#5a574f]">
+                      {createdAtStr}
+                    </span>
+                  </p>
+                );
+              })()}
             </div>
 
             {/* Divider */}
