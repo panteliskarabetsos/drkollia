@@ -1281,6 +1281,42 @@ export default function AdminAppointmentsPage() {
           </div>
         </div>
       )}
+      {deleteDialogOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md border border-gray-200">
+            {/* Icon + Τίτλος */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-red-100 text-red-600 p-2 rounded-full">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <h2 className="text-lg font-semibold text-gray-800">
+                Επιβεβαίωση Διαγραφής
+              </h2>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-6">
+              Θέλετε σίγουρα να διαγράψετε αυτό το ραντεβού; Η ενέργεια δεν
+              μπορεί να αναιρεθεί.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteDialogOpen(false)}
+                className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+              >
+                Άκυρο
+              </button>
+              <button
+                onClick={handleDeleteAppointment}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-500 flex items-center gap-1"
+              >
+                <Trash2 className="w-4 h-4" />
+                Διαγραφή
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

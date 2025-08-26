@@ -819,7 +819,7 @@ export default function NewAppointmentPage() {
 
           {/* Τίτλος στο κέντρο */}
           <h2 className="text-center text-3xl font-serif font-semibold text-[#3b3a36] tracking-tight">
-            Νέο Ραντεβού
+            Κλείστε Ραντεβού
           </h2>
         </div>
         {/* Στοιχεία Επικοινωνίας */}
