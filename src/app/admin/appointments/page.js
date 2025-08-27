@@ -1211,16 +1211,6 @@ export default function AdminAppointmentsPage() {
               >
                 Επεξεργασία
               </button>
-              <button
-                onClick={() => {
-                  setNotesModalOpen(false);
-                  router.push(`/admin/patients/history/${selectedPatient.id}`);
-                }}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm text-white shadow-sm hover:bg-blue-700"
-              >
-                <ScrollText className="h-4 w-4" />
-                Ιστορικό Επισκέψεων
-              </button>
             </div>
           </div>
         </div>
