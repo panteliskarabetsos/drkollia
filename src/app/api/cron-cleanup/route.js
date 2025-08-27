@@ -26,37 +26,45 @@ export async function GET(req) {
   );
   const todayDateOnly = todayUtcStart.toISOString().split("T")[0];
 
-  // 1) Delete past appointments where status != completed (or is NULL)
-  const q1 = supabase
-    .from("appointments")
-    .delete()
-    .lt("appointment_time", nowISO)
-    .or("status.is.null,status.neq.completed")
-    .select();
+  // --- 1) Delete past appointments that are NOT completed (NULL OR any status != 'completed')
+  // We do this in two explicit steps to avoid any weird grouping/NULL issues.
 
-  // 2) Delete completed appointments older than 90 days
+  // 1a) Past with NULL status
+  const q1a = supabase
+    .from("appointments")
+    .delete({ count: "exact" })
+    .lt("appointment_time", nowISO)
+    .is("status", null);
+
+  // 1b) Past with status != 'completed'
+  const q1b = supabase
+    .from("appointments")
+    .delete({ count: "exact" })
+    .lt("appointment_time", nowISO)
+    .neq("status", "completed");
+
+  // --- 2) Delete completed appointments older than 90 days
   const q2 = supabase
     .from("appointments")
-    .delete()
+    .delete({ count: "exact" })
     .lt("appointment_time", cutoffISO)
-    .eq("status", "completed")
-    .select();
+    .eq("status", "completed");
 
-  // 3) Delete past schedule exceptions
+  // --- 3) Delete past schedule exceptions
   const q3 = supabase
     .from("schedule_exceptions")
-    .delete()
-    .lt("exception_date", todayDateOnly)
-    .select();
+    .delete({ count: "exact" })
+    .lt("exception_date", todayDateOnly);
 
   const [
-    { data: d1, error: e1 },
-    { data: d2, error: e2 },
-    { data: d3, error: e3 },
-  ] = await Promise.all([q1, q2, q3]);
+    { count: c1a, error: e1a },
+    { count: c1b, error: e1b },
+    { count: c2, error: e2 },
+    { count: c3, error: e3 },
+  ] = await Promise.all([q1a, q1b, q2, q3]);
 
-  if (e1 || e2 || e3) {
-    console.error("Cleanup errors:", { e1, e2, e3 });
+  if (e1a || e1b || e2 || e3) {
+    console.error("Cleanup errors:", { e1a, e1b, e2, e3 });
     return new NextResponse("Cleanup failed", { status: 500 });
   }
 
@@ -65,9 +73,10 @@ export async function GET(req) {
     now: nowISO,
     cutoff_90d: cutoffISO,
     deleted_counts: {
-      past_non_completed: d1?.length ?? 0,
-      completed_older_than_90d: d2?.length ?? 0,
-      exceptions_past: d3?.length ?? 0,
+      past_null_status: c1a ?? 0,
+      past_non_completed: c1b ?? 0,
+      completed_older_than_90d: c2 ?? 0,
+      exceptions_past: c3 ?? 0,
     },
   });
 }

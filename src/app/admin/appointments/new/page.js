@@ -737,7 +737,17 @@ export default function NewAppointmentPage() {
     formData.duration_minutes === "custom"
       ? parseInt(formData.customDuration || "", 10)
       : parseInt(formData.duration_minutes || "", 10);
-
+  const toDateOnly = (d) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const parseSelectedDate = (val) => {
+    if (val instanceof Date) return val;
+    // expect 'YYYY-MM-DD'
+    if (typeof val === "string") {
+      const [y, m, d] = val.split("-").map(Number);
+      return new Date(y, (m || 1) - 1, d || 1);
+    }
+    return new Date(); // fallback: today
+  };
   const isNewPatientValid =
     Boolean(newPatientData.first_name?.trim()) &&
     Boolean(newPatientData.last_name?.trim()) &&
@@ -1165,17 +1175,42 @@ export default function NewAppointmentPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {allScheduleSlots.map(({ time, available }) => {
                   const [hour, minute] = time.split(":").map(Number);
-                  const start = new Date();
-                  start.setHours(hour, minute, 0, 0);
+
+                  // selected date (no time)
+                  const selectedDate = parseSelectedDate(formData.date);
+                  const today = new Date();
+
+                  // slot start = selected date at HH:mm
+                  const start = new Date(
+                    selectedDate.getFullYear(),
+                    selectedDate.getMonth(),
+                    selectedDate.getDate(),
+                    hour,
+                    minute,
+                    0,
+                    0
+                  );
 
                   const duration = parseInt(
                     formData.duration_minutes === "custom"
                       ? formData.customDuration
-                      : formData.duration_minutes
+                      : formData.duration_minutes,
+                    10
                   );
 
-                  const end = new Date(start);
-                  end.setMinutes(end.getMinutes() + duration);
+                  const end = new Date(start.getTime() + duration * 60 * 1000);
+
+                  // Determine if this slot is in the past
+                  const selectedIsBeforeToday =
+                    toDateOnly(selectedDate) < toDateOnly(today);
+                  const selectedIsToday =
+                    toDateOnly(selectedDate).getTime() ===
+                    toDateOnly(today).getTime();
+                  const isPastTimeToday =
+                    selectedIsToday && start.getTime() <= today.getTime();
+                  const isPast = selectedIsBeforeToday || isPastTimeToday;
+
+                  const disabled = !available || isPast;
 
                   const endTimeStr = `${String(end.getHours()).padStart(
                     2,
@@ -1187,18 +1222,25 @@ export default function NewAppointmentPage() {
                       key={time}
                       type="button"
                       onClick={() => {
-                        if (available)
+                        if (!disabled) {
                           setFormData({ ...formData, appointment_time: time });
+                        }
                       }}
-                      disabled={!available}
+                      disabled={disabled}
                       className={`px-3 py-2 text-sm rounded-lg border transition-all ${
-                        formData.appointment_time === time && available
+                        formData.appointment_time === time && !disabled
                           ? "bg-gray-800 text-white"
-                          : available
+                          : !disabled
                           ? "bg-white text-gray-800 border-gray-300 hover:bg-gray-100"
                           : "bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed"
                       }`}
-                      title={available ? "" : "Κλεισμένο ή μη διαθέσιμο"}
+                      title={
+                        !available
+                          ? "Κλεισμένο ή μη διαθέσιμο"
+                          : isPast
+                          ? "Η ώρα έχει περάσει"
+                          : ""
+                      }
                     >
                       {time}–{endTimeStr}
                     </button>
