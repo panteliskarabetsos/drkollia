@@ -12,8 +12,8 @@ import {
   Loader2,
   LifeBuoy,
   LogOut,
-  Users,
   BarChart3,
+  Hourglass,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -23,6 +23,8 @@ export default function AdminPage() {
   const [loadingButton, setLoadingButton] = useState(null);
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState(null);
+  const [nextAppt, setNextAppt] = useState(null);
+  const [nextApptErr, setNextApptErr] = useState(null);
 
   useEffect(() => {
     const loadStats = async () => {
@@ -76,6 +78,53 @@ export default function AdminPage() {
 
     if (user) loadProfile();
   }, [user]);
+
+  useEffect(() => {
+    const loadNextAppointment = async () => {
+      setNextApptErr(null);
+      try {
+        const nowISO = new Date().toISOString();
+
+        // 1) Πάρε το πρώτο επερχόμενο (αποφεύγουμε cancelled/completed)
+        const { data, error } = await supabase
+          .from("appointments")
+          .select(
+            "id, appointment_time, status, duration_minutes, reason, patient_id"
+          )
+          .gte("appointment_time", nowISO)
+          .not("status", "in", "(cancelled,completed)")
+          .order("appointment_time", { ascending: true })
+          .limit(1);
+
+        if (error) throw error;
+
+        const appt = data?.[0] ?? null;
+        if (!appt) return setNextAppt(null);
+
+        // 2) Προαιρετικά: φέρε το όνομα ασθενή σε 2ο query (για να μη σπάει από RLS στο join)
+        if (appt.patient_id) {
+          const { data: p } = await supabase
+            .from("patients")
+            .select("first_name, last_name")
+            .eq("id", appt.patient_id)
+            .single();
+
+          appt.patient_name = p
+            ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()
+            : null;
+        }
+
+        setNextAppt(appt);
+      } catch (e) {
+        console.error("loadNextAppointment error", e);
+        setNextApptErr("Αδυναμία φόρτωσης επόμενου ραντεβού");
+        setNextAppt(null);
+      }
+    };
+
+    loadNextAppointment();
+  }, []);
+
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
@@ -230,6 +279,62 @@ export default function AdminPage() {
               className="inline-flex items-center justify-center gap-2 text-sm px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-[#3a3a38] hover:text-white transition font-medium shadow-sm"
             >
               Προβολή αναφορών
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+          {/* --- Next Appointment Card --- */}
+          <div className="group border border-gray-200 bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition duration-200 hover:scale-[1.01] flex flex-col justify-between">
+            <div className="flex items-center gap-2 mb-3">
+              <Hourglass className="w-5 h-5 text-[#3a3a38]  animate-pulse" />
+              <h2 className="text-lg font-semibold">Επόμενο ραντεβού</h2>
+            </div>
+
+            {nextApptErr ? (
+              <p className="text-sm text-red-600 mb-6">{nextApptErr}</p>
+            ) : nextAppt ? (
+              <div className="text-sm text-gray-700 space-y-2 mb-6">
+                <p>
+                  <span className="font-medium">Ώρα:</span>{" "}
+                  {new Date(nextAppt.appointment_time).toLocaleString("el-GR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    day: "2-digit",
+                    month: "2-digit",
+                  })}
+                </p>
+                <p>
+                  <span className="font-medium">Ασθενής:</span>{" "}
+                  {nextAppt.patient_name ?? "—"}
+                </p>
+                <p className="truncate">
+                  <span className="font-medium">Λόγος:</span>{" "}
+                  {nextAppt.reason || "—"}
+                </p>
+                <p>
+                  <span className="font-medium">Διάρκεια:</span>{" "}
+                  {nextAppt.duration_minutes ?? 30}′
+                </p>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border mt-1">
+                  {nextAppt.status}
+                </span>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 mb-6">
+                Δεν υπάρχει επόμενο ραντεβού.
+              </p>
+            )}
+
+            <button
+              onClick={() =>
+                router.push(
+                  nextAppt?.id
+                    ? `/admin/appointments?focus=${nextAppt.id}`
+                    : "/admin/appointments"
+                )
+              }
+              className="inline-flex items-center justify-center gap-2 text-sm px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-[#3a3a38] hover:text-white transition font-medium shadow-sm"
+            >
+              Προβολή
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
