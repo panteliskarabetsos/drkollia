@@ -282,19 +282,24 @@ export default function AdminPage() {
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
+
           {/* --- Next Appointment Card --- */}
-          <div className="group border border-gray-200 bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition duration-200 hover:scale-[1.01] flex flex-col justify-between">
-            <div className="flex items-center gap-2 mb-3">
-              <Hourglass className="w-5 h-5 text-[#3a3a38]  animate-pulse" />
-              <h2 className="text-lg font-semibold">Επόμενο ραντεβού</h2>
+          <div className="group border border-[#e5e1d8] bg-white/90 rounded-2xl p-6 shadow-sm hover:shadow-md hover:scale-[1.01] transition duration-300 flex flex-col justify-between backdrop-blur">
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-4">
+              <Hourglass className="w-5 h-5 text-[#8c7c68] animate-pulse" />
+              <h2 className="text-lg font-semibold text-[#2f2e2b]">
+                Επόμενο Ραντεβού
+              </h2>
             </div>
 
+            {/* Content */}
             {nextApptErr ? (
               <p className="text-sm text-red-600 mb-6">{nextApptErr}</p>
             ) : nextAppt ? (
-              <div className="text-sm text-gray-700 space-y-2 mb-6">
+              <div className="text-sm text-[#3b3a36] space-y-2 mb-6">
                 <p>
-                  <span className="font-medium">Ώρα:</span>{" "}
+                  <span className="font-medium text-[#6b675f]">Ώρα:</span>{" "}
                   {new Date(nextAppt.appointment_time).toLocaleString("el-GR", {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -303,20 +308,32 @@ export default function AdminPage() {
                   })}
                 </p>
                 <p>
-                  <span className="font-medium">Ασθενής:</span>{" "}
+                  <span className="font-medium text-[#6b675f]">Ασθενής:</span>{" "}
                   {nextAppt.patient_name ?? "—"}
                 </p>
                 <p className="truncate">
-                  <span className="font-medium">Λόγος:</span>{" "}
+                  <span className="font-medium text-[#6b675f]">Λόγος:</span>{" "}
                   {nextAppt.reason || "—"}
                 </p>
-                <p>
-                  <span className="font-medium">Διάρκεια:</span>{" "}
-                  {nextAppt.duration_minutes ?? 30}′
-                </p>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border mt-1">
-                  {nextAppt.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  <p>
+                    <span className="font-medium text-[#6b675f]">
+                      Διάρκεια:
+                    </span>{" "}
+                    {nextAppt.duration_minutes ?? 30}′
+                  </p>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium shadow-sm border ${
+                      nextAppt.status === "approved"
+                        ? "bg-green-50 border-green-200 text-green-700"
+                        : nextAppt.status === "pending"
+                        ? "bg-amber-50 border-amber-200 text-amber-700"
+                        : "bg-gray-50 border-gray-200 text-gray-600"
+                    }`}
+                  >
+                    {nextAppt.status}
+                  </span>
+                </div>
               </div>
             ) : (
               <p className="text-sm text-gray-500 mb-6">
@@ -324,6 +341,7 @@ export default function AdminPage() {
               </p>
             )}
 
+            {/* CTA */}
             <button
               onClick={() =>
                 router.push(
@@ -332,7 +350,7 @@ export default function AdminPage() {
                     : "/admin/appointments"
                 )
               }
-              className="inline-flex items-center justify-center gap-2 text-sm px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-[#3a3a38] hover:text-white transition font-medium shadow-sm"
+              className="inline-flex items-center justify-center gap-2 text-sm px-4 py-2 rounded-lg border border-[#e5e1d8] text-[#3b3a36] bg-white hover:bg-[#8c7c68] hover:text-white transition font-medium shadow-sm"
             >
               Προβολή
               <ArrowRight className="w-4 h-4" />
