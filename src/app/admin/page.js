@@ -207,7 +207,9 @@ export default function AdminPage() {
             {stats ? (
               <div className="text-sm text-gray-700 space-y-2 mb-6">
                 <p>
-                  <span className="font-medium">Ραντεβού σήμερα:</span>{" "}
+                  <span className="font-medium">
+                    Επερχόμενα Ραντεβού σήμερα:
+                  </span>{" "}
                   {stats.today}
                 </p>
                 <p>
