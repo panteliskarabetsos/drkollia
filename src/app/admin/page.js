@@ -121,7 +121,7 @@ export default function AdminPage() {
     },
     {
       title: "Πρόσβαση",
-      description: "Διαχείριση λογαριασμών διαχειριστών.",
+      description: "Διαχείριση και δημιουργίαλογαριασμών διαχειριστών.",
       href: "/admin/accounts",
       icon: <ShieldCheck className="w-5 h-5 text-[#3a3a38]" />,
     },
