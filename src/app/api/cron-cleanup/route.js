@@ -14,67 +14,42 @@ export async function GET(req) {
   }
 
   const now = new Date();
-  const nowISO = now.toISOString();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-  // 90 days ago (UTC)
+  // --- NEW: 90-day cutoff (UTC)
   const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
   const cutoffISO = new Date(now.getTime() - ninetyDaysMs).toISOString();
 
-  // Today UTC (date-only) for exceptions
-  const todayUtcStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  );
-  const todayDateOnly = todayUtcStart.toISOString().split("T")[0];
-
-  // --- 1) Delete past appointments that are explicitly NOT completed
-  // 1a) status IN (scheduled, approved, cancelled, rejected)
-  const q1a = supabase
+  // 1) Delete past appointments that are not completed or approved
+  const { error: appointmentsError } = await supabase
     .from("appointments")
-    .delete({ count: "exact" })
-    .lt("appointment_time", nowISO)
-    .in("status", ["scheduled", "approved", "cancelled", "rejected"]);
+    .delete()
+    .lt("appointment_time", todayStart.toISOString())
+    .in("status", ["pending", "cancelled", "scheduled", "rejected"]);
 
-  // 1b) status IS NULL
-  const q1b = supabase
-    .from("appointments")
-    .delete({ count: "exact" })
-    .lt("appointment_time", nowISO)
-    .is("status", null);
+  // 2) Delete past schedule exceptions
+  const { error: exceptionsError } = await supabase
+    .from("schedule_exceptions")
+    .delete()
+    .lt("exception_date", todayStart.toISOString().split("T")[0]); // date-only
 
-  // --- 2) Delete completed appointments older than 90 days
-  const q2 = supabase
+  // 3) Delete COMPLETED appointments older than 90 days
+  const { error: completed90dError } = await supabase
     .from("appointments")
-    .delete({ count: "exact" })
+    .delete()
     .lt("appointment_time", cutoffISO)
     .eq("status", "completed");
 
-  // --- 3) Delete past schedule exceptions
-  const q3 = supabase
-    .from("schedule_exceptions")
-    .delete({ count: "exact" })
-    .lt("exception_date", todayDateOnly);
-
-  const [
-    { count: c1a, error: e1a },
-    { count: c1b, error: e1b },
-    { count: c2, error: e2 },
-    { count: c3, error: e3 },
-  ] = await Promise.all([q1a, q1b, q2, q3]);
-
-  if (e1a || e1b || e2 || e3) {
-    console.error("Cleanup errors:", { e1a, e1b, e2, e3 });
+  if (appointmentsError || exceptionsError || completed90dError) {
+    console.error("Cleanup errors:", {
+      appointmentsError,
+      exceptionsError,
+      completed90dError,
+    });
     return new NextResponse("Cleanup failed", { status: 500 });
   }
 
   return NextResponse.json({
-    message: "Cleanup done",
-    now: nowISO,
-    cutoff_90d: cutoffISO,
-    deleted_counts: {
-      past_non_completed_known: c1a ?? 0,
-      past_null_status: c1b ?? 0,
-      completed_older_than_90d: c2 ?? 0,
-      exceptions_past: c3 ?? 0,
-    },
+    message: "Old appointments and exceptions cleaned",
   });
 }
