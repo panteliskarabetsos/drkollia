@@ -3,10 +3,10 @@ import Link from "next/link";
 export default function Footer() {
   return (
     <footer
-      className="py-10 px-4 bg-slate-950 text-slate-400 text-center text-sm border-t border-slate-800"
+      className="py-6 px-4 bg-slate-950 text-slate-400 text-center text-sm border-t border-slate-800"
       data-aos="fade-in"
     >
-      <div className="max-w-4xl mx-auto space-y-4">
+      <div className="max-w-4xl mx-auto space-y-3">
         {/* Copyright & Contact Info */}
         <div className="space-y-1">
           <p className="text-slate-500 tracking-wide">
@@ -44,6 +44,18 @@ export default function Footer() {
           >
             Είσοδος Διαχειριστή
           </Link>
+        </div>
+        {/* Developer Credit */}
+        <div className="mt-4 text-[10px] text-slate-600">
+          Developed by{" "}
+          <a
+            href="https://panteliskarabetsos.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-white hover:underline transition"
+          >
+            Pantelis Karabetsos
+          </a>
         </div>
       </div>
     </footer>
