@@ -1,18 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import {
   BarChart3,
   CalendarDays,
-  CheckCircle2,
   Clock,
   Download,
   Loader2,
   RefreshCcw,
   ShieldCheck,
-  Users,
   ArrowLeft,
 } from "lucide-react";
 
@@ -49,7 +47,6 @@ function exportCSV(filename, rows) {
 
 export default function ReportsPage() {
   const router = useRouter();
-  const params = useSearchParams();
 
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -100,17 +97,7 @@ export default function ReportsPage() {
     };
     run();
   }, [router]);
-  useEffect(() => {
-    const loadProfile = async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("name")
-        .eq("id", user.id)
-        .single();
-      setProfile(data);
-    };
-    if (user) loadProfile();
-  }, [user]);
+
   const loadStats = async () => {
     setBusy(true);
     try {
@@ -218,6 +205,17 @@ export default function ReportsPage() {
       setBusy(false);
     }
   };
+  useEffect(() => {
+    const loadProfile = async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("name")
+        .eq("id", user.id)
+        .single();
+      setProfile(data);
+    };
+    if (user) loadProfile();
+  }, [user]);
 
   useEffect(() => {
     if (!loading) loadStats();
