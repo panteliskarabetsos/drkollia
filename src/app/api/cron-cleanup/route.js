@@ -13,52 +13,62 @@ export async function GET(req) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  const now = new Date(); // current moment
+  const now = new Date();
   const nowISO = now.toISOString();
 
-  // Start of "today" for date-only comparisons (exceptions)
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const todayStartISO = todayStart.toISOString();
+  // 90 days ago (UTC)
+  const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+  const cutoffDate = new Date(now.getTime() - ninetyDaysMs);
+  const cutoffISO = cutoffDate.toISOString();
 
-  // Start of day, three months ago (for completed retention)
-  const threeMonthsAgoStart = new Date(todayStart);
-  threeMonthsAgoStart.setMonth(threeMonthsAgoStart.getMonth() - 3);
-  const threeMonthsAgoISO = threeMonthsAgoStart.toISOString();
+  // Today UTC (for date-only comparisons on exceptions)
+  const todayUtcStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+  const todayDateOnly = todayUtcStart.toISOString().split("T")[0];
 
-  // 1) Delete PAST appointments that should go away immediately:
-  //    pending / cancelled (and optionally scheduled / rejected)
-  const { error: pastNonFinalError } = await supabase
+  // 1) Delete past appointments where status != completed (or is NULL)
+  const q1 = supabase
     .from("appointments")
     .delete()
     .lt("appointment_time", nowISO)
-    .in("status", ["pending", "cancelled", "scheduled", "rejected"]);
+    .or("status.is.null,not.eq.status.completed")
+    .select();
 
-  // 2) Delete COMPLETED appointments older than 3 months
-  const { error: completedError } = await supabase
+  // 2) Delete completed appointments older than 90 days
+  const q2 = supabase
     .from("appointments")
     .delete()
-    .lt("appointment_time", threeMonthsAgoISO)
-    .eq("status", "completed");
+    .lt("appointment_time", cutoffISO)
+    .eq("status", "completed")
+    .select();
 
-  // 3) Delete past schedule exceptions (date-only)
-  const { error: exceptionsError } = await supabase
+  // 3) Delete past schedule exceptions
+  const q3 = supabase
     .from("schedule_exceptions")
     .delete()
-    .lt("exception_date", todayStartISO.split("T")[0]); // keep only date part
+    .lt("exception_date", todayDateOnly)
+    .select();
 
-  if (pastNonFinalError || completedError || exceptionsError) {
-    console.error("Cleanup errors:", {
-      pastNonFinalError,
-      completedError,
-      exceptionsError,
-    });
+  const [
+    { data: d1, error: e1 },
+    { data: d2, error: e2 },
+    { data: d3, error: e3 },
+  ] = await Promise.all([q1, q2, q3]);
+
+  if (e1 || e2 || e3) {
+    console.error("Cleanup errors:", { e1, e2, e3 });
     return new NextResponse("Cleanup failed", { status: 500 });
   }
 
   return NextResponse.json({
     message: "Cleanup done",
     now: nowISO,
-    deleted_past_statuses: ["pending", "cancelled", "scheduled", "rejected"],
-    kept_completed_until: threeMonthsAgoISO,
+    cutoff_90d: cutoffISO,
+    deleted_counts: {
+      past_non_completed: d1?.length ?? 0,
+      completed_older_than_90d: d2?.length ?? 0,
+      exceptions_past: d3?.length ?? 0,
+    },
   });
 }
