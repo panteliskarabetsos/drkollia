@@ -315,7 +315,14 @@ export default function AdminAppointmentsPage() {
       minute: "2-digit",
     });
   };
-
+  function formatDate(date) {
+    if (!date) return "—";
+    try {
+      return format(new Date(date), "dd/MM/yyyy", { locale: el });
+    } catch {
+      return "—";
+    }
+  }
   // sendEmail comes from the modal checkbox (true/false)
   const updateStatus = async (id, status, sendEmail = false) => {
     const appointment = appointments.find((app) => app.id === id);
@@ -1034,130 +1041,164 @@ export default function AdminAppointmentsPage() {
       )}
 
       {notesModalOpen && selectedPatient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-y-auto py-8 px-4">
-          <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-4xl mx-auto">
-            {/* Title */}
-            <h2 className="text-xl sm:text-2xl font-bold text-center text-gray-800 mb-6 flex items-center justify-center gap-2">
-              <UserCircle className="w-6 h-6 text-[#8c7c68]" />
-              Καρτέλα Ασθενούς
-            </h2>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-10"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="patient-card-title"
+        >
+          {/* Overlay */}
+          <button
+            aria-label="Κλείσιμο"
+            onClick={() => setNotesModalOpen(false)}
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+          />
 
-            {/* Contact Info */}
-            <div className="mb-6">
-              <h3 className="text-md font-semibold text-gray-700 mb-2 border-b pb-1">
-                Στοιχεία Ασθενούς
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-700">
-                <p>
-                  <strong>Ονοματεπώνυμο:</strong> {selectedPatient.first_name}{" "}
-                  {selectedPatient.last_name}
-                </p>
-                <p>
-                  <strong>ΑΜΚΑ:</strong> {selectedPatient.amka || "-"}
-                </p>
-                <p>
-                  <strong>Email:</strong> {selectedPatient.email || "-"}
-                </p>
-                <p>
-                  <strong>Τηλέφωνο:</strong> {selectedPatient.phone || "-"}
-                </p>
-                <p>
-                  <strong>Ημ. Γέννησης:</strong>{" "}
-                  {selectedPatient.birth_date || "-"}
-                </p>
-                <p>
-                  <strong>Ηλικία:</strong>{" "}
-                  {calculateAge(selectedPatient.birth_date)}
-                </p>
-                <p>
-                  <strong>Φύλο:</strong> {selectedPatient.gender || "-"}
-                </p>
-                <p>
-                  <strong>Επάγγελμα:</strong>{" "}
-                  {selectedPatient.occupation || "-"}
-                </p>
-              </div>
+          {/* Patient Card */}
+          <div className="relative w-full max-w-5xl rounded-2xl border border-[#e5e1d8] bg-gradient-to-b from-white/95 to-[#fdfcf9]/90 shadow-2xl backdrop-blur-xl overflow-hidden">
+            {/* Header */}
+            <div className="sticky top-0 flex items-center justify-between border-b border-[#eee7db] bg-white/80 px-6 sm:px-8 py-4 backdrop-blur">
+              <h2
+                id="patient-card-title"
+                className="flex items-center gap-2 text-lg sm:text-xl font-semibold tracking-tight text-[#2f2e2b]"
+              >
+                <UserCircle className="h-6 w-6 text-[#8c7c68]" />
+                Καρτέλα Ασθενούς
+              </h2>
+              <button
+                onClick={() => setNotesModalOpen(false)}
+                className="rounded-lg px-2 py-1 text-sm text-[#6b675f] hover:bg-[#f3f0ea] focus:outline-none focus:ring-2 focus:ring-[#d7cfc2]/70"
+              >
+                ✕
+              </button>
             </div>
 
-            {/* History */}
-            <div className="mb-6">
-              <h3 className="text-md font-semibold text-gray-700 mb-2 border-b pb-1">
-                Ιστορικό & Συνήθειες
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-700">
-                <p>
-                  <strong>Πρώτη Επίσκεψη:</strong>{" "}
-                  {selectedPatient.first_visit_date || "-"}
-                </p>
-                <p>
-                  <strong>Οικογενειακή Κατάσταση:</strong>{" "}
-                  {selectedPatient.marital_status || "-"}
-                </p>
-                <p>
-                  <strong>Τέκνα:</strong> {selectedPatient.children || "-"}
-                </p>
-                <p>
-                  <strong>Κάπνισμα:</strong> {selectedPatient.smoking || "-"}
-                </p>
-                <p>
-                  <strong>Αλκοόλ:</strong> {selectedPatient.alcohol || "-"}
-                </p>
-                <p>
-                  <strong>Φάρμακα:</strong> {selectedPatient.medications || "-"}
-                </p>
-              </div>
-            </div>
+            {/* Body */}
+            <div className="max-h-[75vh] overflow-auto px-6 sm:px-8 py-6 space-y-8">
+              {/* Contact Info */}
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#5f5b54]">
+                  <span className="w-1.5 h-1.5 bg-[#8c7c68] rounded-full" />
+                  Στοιχεία Ασθενούς
+                </h3>
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
+                  {[
+                    [
+                      "Ονοματεπώνυμο",
+                      `${selectedPatient.first_name} ${selectedPatient.last_name}`,
+                    ],
+                    ["ΑΜΚΑ", selectedPatient.amka],
+                    ["Email", selectedPatient.email],
+                    ["Τηλέφωνο", selectedPatient.phone],
+                    ["Ημ. Γέννησης", formatDate(selectedPatient.birth_date)],
+                    ["Ηλικία", calculateAge(selectedPatient.birth_date)],
+                    ["Φύλο", selectedPatient.gender],
+                    ["Επάγγελμα", selectedPatient.occupation],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-xl border border-[#eee7db] bg-white px-3 py-2 shadow-sm"
+                    >
+                      <dt className="text-xs text-[#8c887f]">{label}</dt>
+                      <dd className="font-medium text-[#2f2e2b]">
+                        {value || "—"}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
 
-            {/* Clinical */}
-            <div className="mb-6">
-              <h3 className="text-md font-semibold text-gray-700 mb-2 border-b pb-1">
-                Κλινικές Πληροφορίες
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-700">
-                <p>
-                  <strong>Γυναικολογικό Ιστορικό:</strong>{" "}
-                  {selectedPatient.gynecological_history || "-"}
-                </p>
-                <p>
-                  <strong>Κληρονομικό Ιστορικό:</strong>{" "}
-                  {selectedPatient.hereditary_history || "-"}
-                </p>
-                <p>
-                  <strong>Παρούσα Νόσος:</strong>{" "}
-                  {selectedPatient.current_disease || "-"}
-                </p>
-                <p>
-                  <strong>Αντικειμενική Εξέταση:</strong>{" "}
-                  {selectedPatient.physical_exam || "-"}
-                </p>
-                <p>
-                  <strong>Παρακλινικός Έλεγχος:</strong>{" "}
-                  {selectedPatient.preclinical_screening || "-"}
-                </p>
-              </div>
-            </div>
+              {/* History */}
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#5f5b54]">
+                  <span className="w-1.5 h-1.5 bg-[#8c7c68] rounded-full" />
+                  Ιστορικό & Συνήθειες
+                </h3>
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
+                  {[
+                    [
+                      "Πρώτη Επίσκεψη",
+                      formatDate(selectedPatient.first_visit_date),
+                    ],
+                    ["Οικ. Κατάσταση", selectedPatient.marital_status],
+                    ["Τέκνα", selectedPatient.children],
+                    ["Κάπνισμα", selectedPatient.smoking],
+                    ["Αλκοόλ", selectedPatient.alcohol],
+                    ["Φάρμακα", selectedPatient.medications],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-xl border border-[#eee7db] bg-white px-3 py-2 shadow-sm"
+                    >
+                      <dt className="text-xs text-[#8c887f]">{label}</dt>
+                      <dd className="font-medium text-[#2f2e2b]">
+                        {value || "—"}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
 
-            {/* Notes */}
-            <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700 mb-4">
-              <p className="font-semibold mb-2">Σημειώσεις:</p>
-              <p className="whitespace-pre-wrap text-gray-600">
-                {selectedPatient.notes?.trim() || "Δεν υπάρχουν σημειώσεις."}
+              {/* Clinical */}
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#5f5b54]">
+                  <span className="w-1.5 h-1.5 bg-[#8c7c68] rounded-full" />
+                  Κλινικές Πληροφορίες
+                </h3>
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
+                  {[
+                    [
+                      "Γυναικολογικό Ιστορικό",
+                      selectedPatient.gynecological_history,
+                    ],
+                    [
+                      "Κληρονομικό Ιστορικό",
+                      selectedPatient.hereditary_history,
+                    ],
+                    ["Παρούσα Νόσος", selectedPatient.current_disease],
+                    ["Αντικειμενική Εξέταση", selectedPatient.physical_exam],
+                    [
+                      "Παρακλινικός Έλεγχος",
+                      selectedPatient.preclinical_screening,
+                    ],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-xl border border-[#eee7db] bg-white px-3 py-2 shadow-sm"
+                    >
+                      <dt className="text-xs text-[#8c887f]">{label}</dt>
+                      <dd className="font-medium text-[#2f2e2b]">
+                        {value || "—"}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+
+              {/* Notes */}
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-[#5f5b54]">
+                  Σημειώσεις
+                </h3>
+                <div className="rounded-xl border border-[#eee7db] bg-[#fcfaf6] px-4 py-3 shadow-sm text-sm text-[#3b3a36]">
+                  {selectedPatient.notes?.trim() || "Δεν υπάρχουν σημειώσεις."}
+                </div>
+              </section>
+
+              {/* Updated At */}
+              <p className="text-right text-xs text-[#8c887f]">
+                Τελευταία ενημέρωση:{" "}
+                {selectedPatient.updated_at
+                  ? new Date(selectedPatient.updated_at).toLocaleString("el-GR")
+                  : "—"}
               </p>
             </div>
 
-            {/* Updated At */}
-            <p className="text-xs text-gray-400 text-right mb-4">
-              Τελευταία ενημέρωση:{" "}
-              {selectedPatient.updated_at
-                ? new Date(selectedPatient.updated_at).toLocaleString("el-GR")
-                : "-"}
-            </p>
-
-            {/* Buttons */}
-            <div className="flex flex-col sm:flex-row justify-end gap-3 mt-4">
+            {/* Footer */}
+            <div className="sticky bottom-0 flex flex-col sm:flex-row justify-end gap-3 border-t border-[#eee7db] bg-white/80 px-6 sm:px-8 py-4 backdrop-blur">
               <button
                 onClick={() => setNotesModalOpen(false)}
-                className="w-full sm:w-auto px-4 py-2 text-sm bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition"
+                className="w-full sm:w-auto rounded-xl border border-[#e5e1d8] bg-white px-4 py-2 text-sm text-[#3b3a36] shadow-sm hover:bg-[#f6f3ee]"
               >
                 Κλείσιμο
               </button>
@@ -1166,7 +1207,7 @@ export default function AdminAppointmentsPage() {
                   setNotesModalOpen(false);
                   router.push(`/admin/patients/${selectedPatient.id}`);
                 }}
-                className="w-full sm:w-auto px-4 py-2 text-sm bg-[#8c7c68] text-white rounded hover:bg-[#6f6253] transition"
+                className="w-full sm:w-auto rounded-xl bg-[#8c7c68] px-4 py-2 text-sm text-white shadow-sm transition hover:bg-[#6f6253]"
               >
                 Επεξεργασία
               </button>
@@ -1175,15 +1216,16 @@ export default function AdminAppointmentsPage() {
                   setNotesModalOpen(false);
                   router.push(`/admin/patients/history/${selectedPatient.id}`);
                 }}
-                className="w-full sm:w-auto px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition flex items-center gap-2"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm text-white shadow-sm hover:bg-blue-700"
               >
-                <ScrollText className="w-4 h-4" />
+                <ScrollText className="h-4 w-4" />
                 Ιστορικό Επισκέψεων
               </button>
             </div>
           </div>
         </div>
       )}
+
       {editNoteModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center px-4 py-10"
