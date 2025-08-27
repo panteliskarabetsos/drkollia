@@ -342,7 +342,7 @@ export default function AdminPage() {
             )}
 
             {/* CTA */}
-            <button
+            {/* <button
               onClick={() =>
                 router.push(
                   nextAppt?.id
@@ -354,7 +354,7 @@ export default function AdminPage() {
             >
               Προβολή
               <ArrowRight className="w-4 h-4" />
-            </button>
+            </button> */}
           </div>
         </div>
       </section>
