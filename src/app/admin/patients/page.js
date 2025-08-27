@@ -479,9 +479,12 @@ export default function PatientsPage() {
         {loading ? (
           <p className="text-center text-gray-500 text-sm">Φόρτωση...</p>
         ) : (
-          <div className="overflow-x-auto border border-gray-200 rounded-2xl shadow">
-            <table className="min-w-full text-sm text-left text-gray-700">
-              <thead className="bg-[#f3f3f2] text-gray-600 uppercase text-xs tracking-wider shadow-sm">
+          <div className="overflow-auto rounded-2xl border border-[#e5e1d8] shadow-sm">
+            <table className="min-w-full text-sm text-left text-[#3b3a36]">
+              <caption className="sr-only">Λίστα Ασθενών</caption>
+
+              {/* Sticky header */}
+              <thead className="sticky top-0 z-10 bg-[#f7f5f0] text-[#6b675f] uppercase text-xs tracking-wide border-b border-[#eee7db] shadow-[inset_0_-1px_0_#eee7db]">
                 <tr>
                   {[
                     "Όνομα",
@@ -494,86 +497,138 @@ export default function PatientsPage() {
                   ].map((h) => (
                     <th
                       key={h}
-                      className="px-4 py-3 text-left whitespace-nowrap"
+                      scope="col"
+                      className="px-4 py-3 font-medium whitespace-nowrap"
                     >
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-100">
-                {filtered.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="hover:bg-[#f9f9f8] transition duration-200"
-                  >
-                    <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
-                      {highlightMatch(`${p.first_name} ${p.last_name}`, search)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {highlightMatch(p.amka || "-", search)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {p.birth_date ? calculateAge(p.birth_date) : "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                        {p.gender === "male"
-                          ? "Άνδρας"
-                          : p.gender === "female"
-                          ? "Γυναίκα"
-                          : "Άλλο"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {highlightMatch(p.phone || "-", search)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {highlightMatch(p.email || "-", search)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        {/* Σημειώσεις */}
-                        <button
-                          onClick={() => handleViewNotes(p)}
-                          title="Σημειώσεις"
-                          className="p-2 rounded-full hover:bg-blue-100"
-                        >
-                          <IdCard className="text-blue-500 hover:text-blue-700 w-4 h-4" />
-                        </button>
 
-                        {/* Επεξεργασία */}
-                        <button
-                          onClick={() => handleEdit(p)}
-                          title="Επεξεργασία"
-                          className="p-2 rounded-full hover:bg-green-100"
-                        >
-                          <PencilLine className="text-green-500 hover:text-green-700 w-4 h-4" />
-                        </button>
-
-                        {/* Ιστορικό Επισκέψεων */}
-                        <button
-                          onClick={() =>
-                            router.push(`/admin/patients/history/${p.id}`)
-                          }
-                          title="Ιστορικό Επισκέψεων"
-                          className="p-2 rounded-full hover:bg-purple-100"
-                        >
-                          <ScrollText className="text-purple-500 hover:text-purple-700 w-4 h-4" />
-                        </button>
-
-                        {/* Διαγραφή */}
-                        <button
-                          onClick={() => handleDelete(p)}
-                          title="Διαγραφή"
-                          className="p-2 rounded-full hover:bg-red-100"
-                        >
-                          <Trash2 className="text-red-500 hover:text-red-700 w-4 h-4" />
-                        </button>
-                      </div>
+              <tbody className="bg-white">
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-4 py-10 text-center text-sm text-[#8c887f]"
+                    >
+                      Δεν βρέθηκαν αποτελέσματα.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filtered.map((p, i) => (
+                    <tr
+                      key={p.id}
+                      className={`transition ${
+                        i % 2 === 1 ? "bg-[#fafafa]" : "bg-white"
+                      } hover:bg-[#f5f5f5]`}
+                    >
+                      {/* Όνομα */}
+                      <td className="px-4 py-3 font-medium text-[#2f2e2b] whitespace-nowrap">
+                        {highlightMatch(
+                          `${p.first_name} ${p.last_name}`,
+                          search
+                        )}
+                      </td>
+
+                      {/* ΑΜΚΑ */}
+                      <td className="px-4 py-3 whitespace-nowrap font-mono tabular-nums text-[13px] text-[#4a473f]">
+                        {highlightMatch(p.amka || "—", search)}
+                      </td>
+
+                      {/* Ηλικία */}
+                      <td className="px-4 py-3 text-[#6b675f]">
+                        {p.birth_date ? calculateAge(p.birth_date) : "—"}
+                      </td>
+
+                      {/* Φύλο */}
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs border ${
+                            p.gender === "male"
+                              ? "bg-blue-50 text-blue-700 border-blue-100"
+                              : p.gender === "female"
+                              ? "bg-pink-50 text-pink-700 border-pink-100"
+                              : "bg-gray-100 text-gray-700 border-gray-200"
+                          }`}
+                          title="Φύλο"
+                        >
+                          {p.gender === "male"
+                            ? "Άνδρας"
+                            : p.gender === "female"
+                            ? "Γυναίκα"
+                            : "Άλλο"}
+                        </span>
+                      </td>
+
+                      {/* Τηλέφωνο */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {p.phone ? (
+                          <a
+                            href={`tel:${p.phone}`}
+                            className="hover:underline"
+                          >
+                            {highlightMatch(p.phone, search)}
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+
+                      {/* Email */}
+                      <td className="px-4 py-3 whitespace-nowrap max-w-[220px]">
+                        {p.email ? (
+                          <a
+                            href={`mailto:${p.email}`}
+                            className="hover:underline block truncate"
+                            title={p.email}
+                          >
+                            {highlightMatch(p.email, search)}
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+
+                      {/* Ενέργειες */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleViewNotes(p)}
+                            title="Καρτέλα"
+                            className="inline-flex items-center justify-center rounded-lg border border-[#e5e1d8] bg-white p-2 text-[#3b3a36] shadow-sm hover:bg-[#f6f3ee] focus:outline-none focus:ring-2 focus:ring-[#d7cfc2]/70"
+                          >
+                            <IdCard className="w-4 h-4 text-blue-600" />
+                          </button>
+                          <button
+                            onClick={() => handleEdit(p)}
+                            title="Επεξεργασία"
+                            className="inline-flex items-center justify-center rounded-lg border border-[#e5e1d8] bg-white p-2 text-[#3b3a36] shadow-sm hover:bg-[#f6f3ee] focus:outline-none focus:ring-2 focus:ring-[#d7cfc2]/70"
+                          >
+                            <PencilLine className="w-4 h-4 text-green-600" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              router.push(`/admin/patients/history/${p.id}`)
+                            }
+                            title="Ιστορικό Επισκέψεων"
+                            className="inline-flex items-center justify-center rounded-lg border border-[#e5e1d8] bg-white p-2 text-[#3b3a36] shadow-sm hover:bg-[#f6f3ee] focus:outline-none focus:ring-2 focus:ring-[#d7cfc2]/70"
+                          >
+                            <ScrollText className="w-4 h-4 text-purple-600" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(p)}
+                            title="Διαγραφή"
+                            className="inline-flex items-center justify-center rounded-lg border border-[#f0e6e6] bg-white p-2 text-red-600 shadow-sm hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
