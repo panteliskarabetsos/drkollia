@@ -15,75 +15,58 @@ export async function GET(req) {
 
   const now = new Date();
   const nowISO = now.toISOString();
+
+  // 90 days ago (UTC)
   const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
   const cutoffISO = new Date(now.getTime() - ninetyDaysMs).toISOString();
 
+  // Σημερινή UTC ημερομηνία για exceptions (date-only)
   const todayUtcStart = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
   );
   const todayDateOnly = todayUtcStart.toISOString().split("T")[0];
 
-  // --- (1) PROTECT: IDs of completed appointments within last 90 days
-  // Use a tolerant match: trim(lower(status)) = 'completed'
-  // Supabase JS doesn't support SQL functions in filters directly,
-  // so we fetch candidates and filter in a single RPC-like query using 'or' + ilike.
-  const { data: protectedRows, error: selErr } = await supabase
+  // --- 1) DELETE παρελθοντικά με status που ΔΕΝ είναι completed/approved
+  const delPastOther = supabase
     .from("appointments")
-    .select("id, status, appointment_time")
-    .gte("appointment_time", cutoffISO)
+    .delete({ count: "exact" })
     .lt("appointment_time", nowISO)
-    .ilike("status", "%completed%"); // covers 'completed', 'Completed', 'completed ' etc.
+    .in("status", ["pending", "scheduled", "cancelled", "rejected"]);
 
-  if (selErr) {
-    console.error("Select protected completed <90d failed:", selErr);
-    return new NextResponse("Cleanup failed", { status: 500 });
-  }
+  // --- 1b) DELETE παρελθοντικά με NULL status
+  const delPastNull = supabase
+    .from("appointments")
+    .delete({ count: "exact" })
+    .lt("appointment_time", nowISO)
+    .is("status", null);
 
-  const protectedIds = (protectedRows ?? [])
-    // extra guard in JS: accept only rows whose trimmed lower status === 'completed'
-    .filter((r) => (r.status ?? "").toLowerCase().trim() === "completed")
-    .map((r) => r.id);
-
-  // --- (2) Delete PAST appointments EXCEPT protected ones
-  // This removes approved/cancelled/rejected/scheduled/pending/NULL that are in the past,
-  // but will NOT touch the protected completed <90d.
-  // If there are no protected IDs, 'not in' is skipped.
-  let delPast;
-  if (protectedIds.length > 0) {
-    delPast = supabase
-      .from("appointments")
-      .delete({ count: "exact" })
-      .lt("appointment_time", nowISO)
-      .not("id", "in", `(${protectedIds.join(",")})`);
-  } else {
-    delPast = supabase
-      .from("appointments")
-      .delete({ count: "exact" })
-      .lt("appointment_time", nowISO);
-  }
-
-  // --- (3) Delete COMPLETED appointments older than 90 days
-  // Strict equality on cleaned status via JS not needed here; 90d+ completed can go.
-  const delCompleted90d = supabase
+  // --- 2) DELETE completed & approved παλαιότερα από 90 μέρες
+  const delOldCompleted = supabase
     .from("appointments")
     .delete({ count: "exact" })
     .lt("appointment_time", cutoffISO)
-    .eq("status", "completed");
+    .in("status", ["completed", "approved"]);
 
-  // --- (4) Delete past schedule exceptions (date-only column)
+  // --- 3) DELETE παλιές εξαιρέσεις
   const delExceptions = supabase
     .from("schedule_exceptions")
     .delete({ count: "exact" })
     .lt("exception_date", todayDateOnly);
 
   const [
-    { count: cPast, error: ePast },
-    { count: c90, error: e90 },
+    { count: cOther, error: eOther },
+    { count: cNull, error: eNull },
+    { count: cOld, error: eOld },
     { count: cExc, error: eExc },
-  ] = await Promise.all([delPast, delCompleted90d, delExceptions]);
+  ] = await Promise.all([
+    delPastOther,
+    delPastNull,
+    delOldCompleted,
+    delExceptions,
+  ]);
 
-  if (ePast || e90 || eExc) {
-    console.error("Cleanup errors:", { ePast, e90, eExc });
+  if (eOther || eNull || eOld || eExc) {
+    console.error("Cleanup errors:", { eOther, eNull, eOld, eExc });
     return new NextResponse("Cleanup failed", { status: 500 });
   }
 
@@ -91,10 +74,10 @@ export async function GET(req) {
     message: "Cleanup done",
     now: nowISO,
     cutoff_90d: cutoffISO,
-    protected_completed_last_90d: protectedIds.length,
     deleted_counts: {
-      past_except_protected: cPast ?? 0,
-      completed_older_than_90d: c90 ?? 0,
+      past_other_status: cOther ?? 0,
+      past_null_status: cNull ?? 0,
+      completed_or_approved_older_than_90d: cOld ?? 0,
       exceptions_past: cExc ?? 0,
     },
   });
