@@ -18,8 +18,7 @@ export async function GET(req) {
 
   // 90 days ago (UTC)
   const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
-  const cutoffDate = new Date(now.getTime() - ninetyDaysMs);
-  const cutoffISO = cutoffDate.toISOString();
+  const cutoffISO = new Date(now.getTime() - ninetyDaysMs).toISOString();
 
   // Today UTC (for date-only comparisons on exceptions)
   const todayUtcStart = new Date(
@@ -32,7 +31,7 @@ export async function GET(req) {
     .from("appointments")
     .delete()
     .lt("appointment_time", nowISO)
-    .or("status.is.null,not.eq.status.completed")
+    .or("status.is.null,status.neq.completed")
     .select();
 
   // 2) Delete completed appointments older than 90 days
