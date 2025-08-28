@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -18,6 +18,7 @@ import {
   CalendarRange,
   Sunrise,
   Sunset,
+  RefreshCcw,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -30,56 +31,82 @@ export default function AdminPage() {
   const [nextAppt, setNextAppt] = useState(null);
   const [nextApptErr, setNextApptErr] = useState(null);
   const [dayEdges, setDayEdges] = useState({ start: null, last: null });
+  const [refreshing, setRefreshing] = useState(false);
+  const loadStats = useCallback(async () => {
+    const today = new Date();
+    const start = new Date(
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())
+    );
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 1);
+
+    const nowISO = new Date().toISOString();
+
+    const [
+      { count: todayCount },
+      { count: completedTodayCount },
+      { count: patientsCount },
+    ] = await Promise.all([
+      // όλα τα σημερινά
+      supabase
+        .from("appointments")
+        .select("*", { count: "exact", head: true })
+        .gte("appointment_time", start.toISOString())
+        .lt("appointment_time", end.toISOString()),
+
+      // ολοκληρωμένα = approved + παρελθοντική ώρα
+      supabase
+        .from("appointments")
+        .select("*", { count: "exact", head: true })
+        .gte("appointment_time", start.toISOString())
+        .lt("appointment_time", nowISO)
+        .eq("status", "completed"),
+
+      // όλοι οι ασθενείς
+      supabase.from("patients").select("*", { count: "exact", head: true }),
+    ]);
+
+    setStats({
+      today: todayCount ?? 0,
+      completedToday: completedTodayCount ?? 0,
+      patients: patientsCount ?? 0,
+    });
+  }, []);
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+      setStats(null);
+      await loadStats();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    const loadStats = async () => {
-      const today = new Date();
-      const start = new Date(
-        Date.UTC(
-          today.getUTCFullYear(),
-          today.getUTCMonth(),
-          today.getUTCDate()
-        )
-      );
-      const end = new Date(start);
-      end.setUTCDate(end.getUTCDate() + 1);
+    // πρώτο load
+    handleRefresh();
 
-      const nowISO = new Date().toISOString();
+    // interval κάθε 5 λεπτά
+    const interval = setInterval(() => {
+      handleRefresh();
+    }, 5 * 60 * 1000);
 
-      const [
-        { count: todayCount },
-        { count: completedTodayCount },
-        { count: patientsCount },
-      ] = await Promise.all([
-        // όλα τα σημερινά
-        supabase
-          .from("appointments")
-          .select("*", { count: "exact", head: true })
-          .gte("appointment_time", start.toISOString())
-          .lt("appointment_time", end.toISOString())
-          .not("status", "eq", "cancelled"),
-
-        // ολοκληρωμένα = approved + παρελθοντική ώρα
-        supabase
-          .from("appointments")
-          .select("*", { count: "exact", head: true })
-          .gte("appointment_time", start.toISOString())
-          .lt("appointment_time", nowISO)
-          .eq("status", "completed"),
-
-        // όλοι οι ασθενείς
-        supabase.from("patients").select("*", { count: "exact", head: true }),
-      ]);
-
-      setStats({
-        today: todayCount ?? 0,
-        completedToday: completedTodayCount ?? 0,
-        patients: patientsCount ?? 0,
-      });
-    };
-
-    loadStats();
+    return () => clearInterval(interval); // καθάρισμα
   }, []);
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      const session = data?.session;
+      if (!session) {
+        router.push("/login");
+      } else {
+        setUser(session.user);
+        setLoading(false);
+        await loadStats(); // αρχικό φόρτωμα στατιστικών
+      }
+    };
+    checkSession();
+  }, [router, loadStats]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -281,7 +308,26 @@ export default function AdminPage() {
               </span>
               <span className="text-xs text-gray-500">{user?.email}</span>
             </div>
-
+            {/* Refresh button */}
+            <button
+              onClick={async () => {
+                try {
+                  setRefreshing(true);
+                  setStats(null); // προαιρετικά για skeleton state
+                  await loadStats(); // περιμένουμε να φορτώσει
+                } finally {
+                  setRefreshing(false);
+                }
+              }}
+              className="p-2 rounded-md hover:bg-gray-200 transition"
+              aria-label="Ανανέωση"
+            >
+              <RefreshCcw
+                className={`w-5 h-5 text-gray-600 hover:text-gray-900 ${
+                  refreshing ? "animate-spin" : ""
+                }`}
+              />
+            </button>
             {/* Logout Icon Button */}
             <button
               onClick={async () => {
