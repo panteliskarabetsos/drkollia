@@ -14,6 +14,10 @@ import {
   LogOut,
   BarChart3,
   Hourglass,
+  Users,
+  CalendarRange,
+  Sunrise,
+  Sunset,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -25,6 +29,7 @@ export default function AdminPage() {
   const [stats, setStats] = useState(null);
   const [nextAppt, setNextAppt] = useState(null);
   const [nextApptErr, setNextApptErr] = useState(null);
+  const [dayEdges, setDayEdges] = useState({ start: null, last: null });
 
   useEffect(() => {
     const loadStats = async () => {
@@ -39,26 +44,36 @@ export default function AdminPage() {
       const end = new Date(start);
       end.setUTCDate(end.getUTCDate() + 1);
 
+      const nowISO = new Date().toISOString();
+
       const [
         { count: todayCount },
-        { count: pendingCount },
+        { count: completedTodayCount },
         { count: patientsCount },
       ] = await Promise.all([
+        // όλα τα σημερινά
         supabase
           .from("appointments")
           .select("*", { count: "exact", head: true })
           .gte("appointment_time", start.toISOString())
-          .lt("appointment_time", end.toISOString()),
+          .lt("appointment_time", end.toISOString())
+          .not("status", "eq", "cancelled"),
+
+        // ολοκληρωμένα = approved + παρελθοντική ώρα
         supabase
           .from("appointments")
           .select("*", { count: "exact", head: true })
+          .gte("appointment_time", start.toISOString())
+          .lt("appointment_time", nowISO)
           .eq("status", "approved"),
+
+        // όλοι οι ασθενείς
         supabase.from("patients").select("*", { count: "exact", head: true }),
       ]);
 
       setStats({
         today: todayCount ?? 0,
-        pending: pendingCount ?? 0,
+        completedToday: completedTodayCount ?? 0,
         patients: patientsCount ?? 0,
       });
     };
@@ -83,15 +98,28 @@ export default function AdminPage() {
     const loadNextAppointment = async () => {
       setNextApptErr(null);
       try {
-        const nowISO = new Date().toISOString();
+        const now = new Date();
+        const nowISO = now.toISOString();
 
-        // 1) Πάρε το πρώτο επερχόμενο (αποφεύγουμε cancelled/completed)
+        // Υπολογισμός τέλους ημέρας (23:59:59.999)
+        const endOfDay = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        ).toISOString();
+
+        // 1) Πάρε το πρώτο επερχόμενο ΣΗΜΕΡΑ (0X00 έως 23:59)
         const { data, error } = await supabase
           .from("appointments")
           .select(
             "id, appointment_time, status, duration_minutes, reason, patient_id"
           )
           .gte("appointment_time", nowISO)
+          .lte("appointment_time", endOfDay)
           .not("status", "in", "(cancelled,completed)")
           .order("appointment_time", { ascending: true })
           .limit(1);
@@ -101,7 +129,7 @@ export default function AdminPage() {
         const appt = data?.[0] ?? null;
         if (!appt) return setNextAppt(null);
 
-        // 2) Προαιρετικά: φέρε το όνομα ασθενή σε 2ο query (για να μη σπάει από RLS στο join)
+        // 2) Φέρε όνομα ασθενή
         if (appt.patient_id) {
           const { data: p } = await supabase
             .from("patients")
@@ -140,6 +168,64 @@ export default function AdminPage() {
 
     checkSession();
   }, [router]);
+
+  useEffect(() => {
+    const loadDayEdges = async () => {
+      // Τοπικά μεσάνυχτα -> ακριβή UTC instants
+      const startLocal = new Date();
+      startLocal.setHours(0, 0, 0, 0);
+      const endLocal = new Date();
+      endLocal.setHours(23, 59, 59, 999);
+      const startISO = startLocal.toISOString();
+      const endISO = endLocal.toISOString();
+
+      // Earliest & latest για σήμερα (μη ακυρωμένα)
+      const [firstRes, lastRes] = await Promise.all([
+        supabase
+          .from("appointments")
+          .select("id, appointment_time, status, reason, patient_id")
+          .gte("appointment_time", startISO)
+          .lte("appointment_time", endISO)
+          .not("status", "eq", "cancelled")
+          .order("appointment_time", { ascending: true })
+          .limit(1),
+        supabase
+          .from("appointments")
+          .select("id, appointment_time, status, reason, patient_id")
+          .gte("appointment_time", startISO)
+          .lte("appointment_time", endISO)
+          .not("status", "eq", "cancelled")
+          .order("appointment_time", { ascending: false })
+          .limit(1),
+      ]);
+
+      const first = firstRes.data?.[0] ?? null;
+      const last = lastRes.data?.[0] ?? null;
+
+      // Φέρε ονόματα ασθενών (1 κλήση για όσα χρειάζεται)
+      const ids = Array.from(
+        new Set([first?.patient_id, last?.patient_id].filter(Boolean))
+      );
+      let namesById = {};
+      if (ids.length) {
+        const { data: pts } = await supabase
+          .from("patients")
+          .select("id, first_name, last_name")
+          .in("id", ids);
+        for (const p of pts ?? []) {
+          namesById[p.id] =
+            `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || null;
+        }
+      }
+
+      if (first) first.patient_name = namesById[first.patient_id] ?? null;
+      if (last) last.patient_name = namesById[last.patient_id] ?? null;
+
+      setDayEdges({ first, last });
+    };
+
+    loadDayEdges();
+  }, []);
 
   if (loading) {
     return (
@@ -247,114 +333,282 @@ export default function AdminPage() {
               </button>
             </div>
           ))}
-          {/* --- Extra Card with Stats --- */}
-          <div className="border border-gray-200 bg-white rounded-xl p-6 shadow-sm flex flex-col justify-between">
-            <div className="flex items-center gap-2 mb-3">
-              <BarChart3 className="w-5 h-5 text-[#3a3a38]" />
-              <h2 className="text-lg font-semibold">Σύνοψη</h2>
-            </div>
-            {stats ? (
-              <div className="text-sm text-gray-700 space-y-2 mb-6">
-                <p>
-                  <span className="font-medium">
-                    Επερχόμενα Ραντεβού σήμερα:
-                  </span>{" "}
-                  {stats.today}
-                </p>
-                <p>
-                  <span className="font-medium">Εγκεκριμένα:</span>{" "}
-                  {stats.pending}
-                </p>
-                <p>
-                  <span className="font-medium">Σύνολο ασθενών:</span>{" "}
-                  {stats.patients}
-                </p>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 mb-6">Φόρτωση...</p>
-            )}
 
+          {/* --- Extra Card with Stats --- */}
+
+          <div className="relative overflow-hidden border border-[#e5e1d8] bg-white/90 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col backdrop-blur">
+            {/* soft background accent */}
+            <div className="pointer-events-none absolute -top-16 -left-16 w-56 h-56 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#efece5] via-transparent to-transparent opacity-70" />
+
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-[#8c7c68]" />
+                <h2 className="text-lg font-semibold text-[#2f2e2b]">Σύνοψη</h2>
+              </div>
+
+              {/* subtle link to reports */}
+              <button
+                onClick={() => router.push("/admin/reports")}
+                className="text-xs rounded-full px-3 py-1 border border-[#e5e1d8] text-[#6b675f] bg-white/70 hover:bg-[#8c7c68] hover:text-white transition shadow-sm"
+                aria-label="Μετάβαση στις αναφορές"
+                title="Μετάβαση στις αναφορές"
+              >
+                Αναφορές
+              </button>
+            </div>
+
+            {/* Content */}
+            {stats ? (
+              <>
+                {/* KPI row */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Today */}
+                  <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CalendarDays className="w-4 h-4 text-[#8c7c68]" />
+                      <span className="text-xs font-medium text-[#6b675f]">
+                        Ραντεβού σήμερα
+                      </span>
+                    </div>
+                    <p className="text-2xl font-semibold text-[#2f2e2b] leading-tight">
+                      {stats.today}
+                    </p>
+
+                    {/* Real progress: completedToday / today */}
+                    <div className="mt-2 h-1.5 w-full bg-[#f3f1ec] rounded overflow-hidden">
+                      <div
+                        className="h-1.5 bg-[#8c7c68] transition-all"
+                        style={{
+                          width: `${
+                            stats.today > 0
+                              ? Math.round(
+                                  (stats.completedToday / stats.today) * 100
+                                )
+                              : 0
+                          }%`,
+                        }}
+                        aria-label="Πρόοδος ολοκλήρωσης σημερινών ραντεβού"
+                      />
+                    </div>
+                    <p className="mt-1 text-[11px] text-[#6b675f]">
+                      {stats.completedToday} από {stats.today} ολοκληρώθηκαν
+                    </p>
+                  </div>
+                  {/* First & Last Today (compact, matching design) */}
+                  <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <CalendarRange className="w-4 h-4 text-[#8c7c68]" />
+                        <span className="text-xs font-medium text-[#6b675f]">
+                          Πρώτο & Τελευταίο
+                        </span>
+                      </div>
+
+                      {dayEdges.first || dayEdges.last ? (
+                        <div className="mt-1 text-sm text-[#2f2e2b] space-y-1">
+                          {dayEdges.first && (
+                            <p>
+                              <span className="text-[11px] text-[#6b675f]">
+                                Πρ.:
+                              </span>{" "}
+                              {new Date(
+                                dayEdges.first.appointment_time
+                              ).toLocaleTimeString("el-GR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          )}
+                          {dayEdges.last && (
+                            <p>
+                              <span className="text-[11px] text-[#6b675f]">
+                                Τελ.:
+                              </span>{" "}
+                              {new Date(
+                                dayEdges.last.appointment_time
+                              ).toLocaleTimeString("el-GR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-gray-500">
+                          Δεν υπάρχουν
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Patients */}
+                  <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Users className="w-4 h-4 text-[#3a3a38]" />
+                      <span className="text-xs font-medium text-[#6b675f]">
+                        Σύνολο ασθενών
+                      </span>
+                    </div>
+                    <p className="text-2xl font-semibold text-[#2f2e2b] leading-tight">
+                      {stats.patients}
+                    </p>
+                    <p className="mt-2 text-[11px] text-[#6b675f]">
+                      ενεργό μητρώο
+                    </p>
+                  </div>
+                </div>
+
+                {/* fine divider */}
+                <div className="my-4 h-px bg-gradient-to-r from-transparent via-[#e5e1d8] to-transparent" />
+
+                {/* micro-footnotes */}
+                {/* <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#6b675f]">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="inline-block h-2 w-2 rounded-full bg-[#8c7c68]" />
+                    σήμερα
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="inline-block h-2 w-2 rounded-full bg-green-600" />
+                    ολοκληρωμένα
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="inline-block h-2 w-2 rounded-full bg-[#3a3a38]" />
+                    σύνολο ασθενών
+                  </span>
+                </div> */}
+              </>
+            ) : (
+              // Loading state
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm">
+                  <div className="h-4 w-28 bg-[#f2efe9] rounded mb-3 animate-pulse" />
+                  <div className="h-6 w-16 bg-[#f2efe9] rounded mb-2 animate-pulse" />
+                  <div className="h-1.5 w-full bg-[#f2efe9] rounded animate-pulse" />
+                </div>
+                <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm">
+                  <div className="h-4 w-24 bg-[#f2efe9] rounded mb-3 animate-pulse" />
+                  <div className="h-6 w-16 bg-[#f2efe9] rounded mb-2 animate-pulse" />
+                  <div className="h-3 w-20 bg-[#f2efe9] rounded animate-pulse" />
+                </div>
+                <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm">
+                  <div className="h-4 w-28 bg-[#f2efe9] rounded mb-3 animate-pulse" />
+                  <div className="h-6 w-16 bg-[#f2efe9] rounded mb-2 animate-pulse" />
+                  <div className="h-3 w-24 bg-[#f2efe9] rounded animate-pulse" />
+                </div>
+              </div>
+            )}
             <button
               onClick={() => router.push("/admin/reports")}
               className="inline-flex items-center justify-center gap-2 text-sm px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-[#3a3a38] hover:text-white transition font-medium shadow-sm"
             >
-              Προβολή αναφορών
+              Προβολή Αναφορών
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
 
-          {/* --- Next Appointment Card --- */}
-          <div className="group border border-[#e5e1d8] bg-white/90 rounded-2xl p-6 shadow-sm hover:shadow-md hover:scale-[1.01] transition duration-300 flex flex-col justify-between backdrop-blur">
-            {/* Header */}
-            <div className="flex items-center gap-2 mb-4">
-              <Hourglass className="w-5 h-5 text-[#8c7c68] animate-pulse" />
-              <h2 className="text-lg font-semibold text-[#2f2e2b]">
-                Επόμενο Ραντεβού
-              </h2>
+          {/* --- Next Appointment Card (polished) --- */}
+          <div className="group relative overflow-hidden border border-[#e5e1d8] bg-white/90 rounded-2xl p-5 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-300 flex flex-col justify-between backdrop-blur">
+            {/* Soft gradient accent */}
+            <div className="pointer-events-none absolute -top-20 -right-20 w-60 h-60 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#efece5] via-transparent to-transparent opacity-70" />
+
+            {/* Ribbon */}
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 mb-3">
+                <Hourglass className="w-5 h-5 text-[#8c7c68] animate-pulse" />
+                <h2 className="text-lg font-semibold text-[#2f2e2b]">
+                  Επόμενο ραντεβού
+                </h2>
+              </div>
+
+              {/* Time chip (today) */}
+              {nextAppt && (
+                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-[#f6f4ef] text-[#6b675f] border border-[#e5e1d8] shadow-sm">
+                  {new Date(nextAppt.appointment_time).toLocaleTimeString(
+                    "el-GR",
+                    {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }
+                  )}
+                </span>
+              )}
             </div>
 
             {/* Content */}
             {nextApptErr ? (
-              <p className="text-sm text-red-600 mb-6">{nextApptErr}</p>
+              <p className="text-sm text-red-600 mb-4">{nextApptErr}</p>
             ) : nextAppt ? (
-              <div className="text-sm text-[#3b3a36] space-y-2 mb-6">
-                <p>
-                  <span className="font-medium text-[#6b675f]">Ώρα:</span>{" "}
-                  {new Date(nextAppt.appointment_time).toLocaleString("el-GR", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    day: "2-digit",
-                    month: "2-digit",
-                  })}
-                </p>
-                <p>
-                  <span className="font-medium text-[#6b675f]">Ασθενής:</span>{" "}
-                  {nextAppt.patient_name ?? "—"}
-                </p>
-                <p className="truncate">
-                  <span className="font-medium text-[#6b675f]">Λόγος:</span>{" "}
-                  {nextAppt.reason || "—"}
-                </p>
-                <div className="flex items-center gap-2">
-                  <p>
-                    <span className="font-medium text-[#6b675f]">
-                      Διάρκεια:
-                    </span>{" "}
-                    {nextAppt.duration_minutes ?? 30}′
+              <div className="mb-4 space-y-3">
+                {/* Patient row */}
+                <div className="flex items-center gap-3">
+                  {/* Avatar / initials */}
+                  <div className="flex-shrink-0 grid place-items-center w-9 h-9 rounded-full bg-[#efece5] text-[#2f2e2b] font-semibold shadow-sm border border-[#e5e1d8]">
+                    {(nextAppt.patient_name || "—")
+                      .split(" ")
+                      .map((s) => s?.[0])
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase() || "?"}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[#2f2e2b] leading-tight truncate">
+                      {nextAppt.patient_name ?? "—"}
+                    </p>
+                    <p className="text-xs text-[#6b675f]">
+                      {new Date(nextAppt.appointment_time).toLocaleDateString(
+                        "el-GR",
+                        {
+                          day: "2-digit",
+                          month: "2-digit",
+                        }
+                      )}
+                      {" • "}
+                      Διάρκεια {nextAppt.duration_minutes ?? 30}′
+                    </p>
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-gradient-to-r from-transparent via-[#e5e1d8] to-transparent" />
+
+                {/* Reason + Status */}
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm text-[#3b3a36]">
+                    <span className="font-medium text-[#6b675f]">Λόγος:</span>{" "}
+                    <span className="truncate align-middle">
+                      {nextAppt.reason || "—"}
+                    </span>
                   </p>
+
                   <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium shadow-sm border ${
+                    className={[
+                      "w-fit inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border shadow-sm",
                       nextAppt.status === "approved"
                         ? "bg-green-50 border-green-200 text-green-700"
                         : nextAppt.status === "pending"
                         ? "bg-amber-50 border-amber-200 text-amber-700"
-                        : "bg-gray-50 border-gray-200 text-gray-600"
-                    }`}
+                        : "bg-gray-50 border-gray-200 text-gray-600",
+                    ].join(" ")}
                   >
                     {nextAppt.status}
                   </span>
                 </div>
+                <div className="h-8 " />
               </div>
             ) : (
-              <p className="text-sm text-gray-500 mb-6">
-                Δεν υπάρχει επόμενο ραντεβού.
-              </p>
+              <div className="mb-4 space-y-2">
+                <p className="text-sm text-gray-500">
+                  Δεν υπάρχει επόμενο ραντεβού.
+                </p>
+                {/* Skeleton for empty state to keep height stable */}
+                <div className="h-3 w-2/3 bg-[#f2efe9] rounded animate-pulse" />
+                <div className="h-3 w-1/2 bg-[#f2efe9] rounded animate-pulse" />
+                <div className="h-3 w-1/2 bg-[#f2efe9] rounded animate-pulse" />
+                <div className="h-8 " />
+              </div>
             )}
-
-            {/* CTA */}
-            {/* <button
-              onClick={() =>
-                router.push(
-                  nextAppt?.id
-                    ? `/admin/appointments?focus=${nextAppt.id}`
-                    : "/admin/appointments"
-                )
-              }
-              className="inline-flex items-center justify-center gap-2 text-sm px-4 py-2 rounded-lg border border-[#e5e1d8] text-[#3b3a36] bg-white hover:bg-[#8c7c68] hover:text-white transition font-medium shadow-sm"
-            >
-              Προβολή
-              <ArrowRight className="w-4 h-4" />
-            </button> */}
           </div>
         </div>
       </section>

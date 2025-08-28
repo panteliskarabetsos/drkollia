@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
+import VisitorCountChart from "../../components/VisitorCountChart";
+
 import {
   BarChart3,
   CalendarDays,
@@ -12,8 +14,20 @@ import {
   RefreshCcw,
   ShieldCheck,
   ArrowLeft,
+  Activity,
+  Calendar,
 } from "lucide-react";
 
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  Tooltip,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Legend,
+} from "recharts";
 // Utility helpers
 const toUTCDateStart = (d) =>
   new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -24,6 +38,68 @@ function csvEscape(value) {
   const s = String(value);
   if (/[\",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
   return s;
+}
+function AppointmentsChart({ data }) {
+  return (
+    <div className="bg-white border border-[#e5e1d8] rounded-2xl p-5 shadow-sm">
+      <h3 className="text-base font-semibold text-[#2f2e2b] mb-3">
+        Ραντεβού (Εγκεκριμένα vs Ολοκληρωμένα)
+      </h3>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data}>
+            <defs>
+              <linearGradient id="approvedFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#8c7c68" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#8c7c68" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="completedFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#2f2e2b" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#2f2e2b" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" />
+            <XAxis
+              dataKey="day"
+              tickFormatter={(d) =>
+                new Date(d).toLocaleDateString("el-GR", {
+                  day: "2-digit",
+                  month: "2-digit",
+                })
+              }
+              tick={{ fontSize: 11, fill: "#6b675f" }}
+            />
+            <YAxis
+              tick={{ fontSize: 11, fill: "#6b675f" }}
+              allowDecimals={false}
+            />
+            <Tooltip
+              labelFormatter={(d) => new Date(d).toLocaleDateString("el-GR")}
+              formatter={(v, name) => [
+                v,
+                name === "approved" ? "Εγκεκριμένα" : "Ολοκληρωμένα",
+              ]}
+            />
+            <Legend />
+            <Area
+              type="monotone"
+              dataKey="approved"
+              stroke="#8c7c68"
+              fill="url(#approvedFill)"
+              strokeWidth={2}
+            />
+            <Area
+              type="monotone"
+              dataKey="completed"
+              stroke="#2f2e2b"
+              fill="url(#completedFill)"
+              strokeWidth={2}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
 }
 
 function exportCSV(filename, rows) {
@@ -105,6 +181,20 @@ export default function ReportsPage() {
       const endISO = new Date(dateTo + "T00:00:00.000Z");
       endISO.setUTCDate(endISO.getUTCDate() + 1); // move to next day start for exclusive upper bound
       const endStr = endISO.toISOString();
+      const nowISO = new Date().toISOString();
+
+      const { data, error } = await supabase
+        .from("appointments")
+        .update({ status: "completed" })
+        .lte("appointment_time", nowISO)
+        .eq("status", "approved")
+        .select("id"); // just the ids that got updated
+
+      if (error) {
+        console.error("Failed to auto-complete appointments:", error);
+      } else {
+        console.log("Updated", data?.length ?? 0, "appointments to completed");
+      }
 
       const [
         totalQ,
@@ -270,30 +360,103 @@ export default function ReportsPage() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Από</label>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="border rounded-md px-3 py-2 text-sm"
-              />
+        <div className="bg-white/90 border border-[#e5e1d8] rounded-2xl p-4 md:p-5 shadow-sm mb-6">
+          {/* Top row: fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+            {/* Από */}
+            <div className="flex flex-col">
+              <label
+                htmlFor="dateFrom"
+                className="text-[11px] font-medium text-[#6b675f] mb-1"
+              >
+                Από
+              </label>
+              <div className="relative">
+                <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8c7c68]" />
+                <input
+                  id="dateFrom"
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-[#e5e1d8] bg-white focus:outline-none focus:ring-2 focus:ring-[#d9d3c7] focus:border-[#cfc8b9] placeholder:text-gray-400"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Έως</label>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="border rounded-md px-3 py-2 text-sm"
-              />
+
+            {/* Έως */}
+            <div className="flex flex-col">
+              <label
+                htmlFor="dateTo"
+                className="text-[11px] font-medium text-[#6b675f] mb-1"
+              >
+                Έως
+              </label>
+              <div className="relative">
+                <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8c7c68]" />
+                <input
+                  id="dateTo"
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-[#e5e1d8] bg-white focus:outline-none focus:ring-2 focus:ring-[#d9d3c7] focus:border-[#cfc8b9] placeholder:text-gray-400"
+                />
+              </div>
             </div>
-            <div className="flex gap-2">
+
+            {/* Quick ranges */}
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-[#6b675f] mb-1">
+                Γρήγορα φίλτρα
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    const iso = (x) => x.toISOString().slice(0, 10);
+                    setDateFrom(iso(d));
+                    setDateTo(iso(d));
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-full border border-[#e5e1d8] hover:bg-[#f6f4ef] text-[#2f2e2b] transition"
+                >
+                  Σήμερα
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    const end = new Date();
+                    d.setDate(d.getDate() - 6);
+                    const iso = (x) => x.toISOString().slice(0, 10);
+                    setDateFrom(iso(d));
+                    setDateTo(iso(end));
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-full border border-[#e5e1d8] hover:bg-[#f6f4ef] text-[#2f2e2b] transition"
+                >
+                  Τελευταίες 7 ημέρες
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    const start = new Date(d.getFullYear(), d.getMonth(), 1);
+                    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+                    const iso = (x) => x.toISOString().slice(0, 10);
+                    setDateFrom(iso(start));
+                    setDateTo(iso(end));
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-full border border-[#e5e1d8] hover:bg-[#f6f4ef] text-[#2f2e2b] transition"
+                >
+                  Τρέχων μήνας
+                </button>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex sm:items-end justify-start sm:justify-end gap-2">
               <button
                 onClick={() => startTransition(loadStats)}
-                className="px-4 py-2 text-sm rounded-md border hover:bg-gray-900 hover:text-white transition"
+                className="px-4 py-2 text-sm rounded-lg border border-[#2f2e2b] text-[#2f2e2b] hover:bg-[#2f2e2b] hover:text-white transition"
               >
                 Εφαρμογή
               </button>
@@ -311,12 +474,16 @@ export default function ReportsPage() {
                   ];
                   exportCSV(`stats_${dateFrom}_to_${dateTo}.csv`, rows);
                 }}
-                className="px-4 py-2 text-sm rounded-md border hover:bg-gray-100 transition inline-flex items-center gap-2"
+                className="px-4 py-2 text-sm rounded-lg border border-[#e5e1d8] hover:bg-[#f6f4ef] transition inline-flex items-center gap-2"
               >
-                <Download className="w-4 h-4" /> Εξαγωγή CSV
+                <Download className="w-4 h-4" />
+                Εξαγωγή CSV
               </button>
             </div>
           </div>
+
+          {/* subtle divider for structure */}
+          <div className="mt-4 border-t border-[#eeeae1]" />
         </div>
 
         {/* KPI Cards */}
@@ -395,8 +562,48 @@ export default function ReportsPage() {
           )}
         </div>
 
+        <div className="mt-8">
+          <div className="bg-white border border-gray-200 rounded-3xl shadow-md p-6 transition hover:shadow-lg">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-2">
+                <div className="p-2 bg-indigo-100 text-indigo-600 rounded-full">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <h2 className="text-lg font-semibold text-gray-800">
+                  Επισκεψιμότητα Ιατρείου
+                </h2>
+              </div>
+              <span className="text-sm text-gray-500">
+                Βάσει ραντεβού (
+                {new Date(dateFrom).toLocaleDateString("el-GR", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                })}
+                {" → "}
+                {new Date(dateTo).toLocaleDateString("el-GR", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                })}
+                )
+              </span>
+            </div>
+
+            {/* Chart */}
+            <div className="h-72">
+              <VisitorCountChart
+                from={dateFrom}
+                to={dateTo}
+                title="" // we already have a header above
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Upcoming */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mt-8">
           <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
             <Clock className="w-4 h-4" /> Επερχόμενα ραντεβού (επόμενα 5)
           </h3>
