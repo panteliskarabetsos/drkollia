@@ -188,7 +188,7 @@ export default function ReportsPage() {
     d.setUTCDate(d.getUTCDate() - 14); // default last 14 days
     return toUTCDateStart(d);
   }, []);
-  const [dateFrom, setDateFrom] = useState(fmtDate(initialStart));
+  const [dateFrom, setDateFrom] = useState(fmtDate(today));
   const [dateTo, setDateTo] = useState(fmtDate(toUTCDateStart(today))); // inclusive end handled below
 
   // Data
@@ -436,7 +436,24 @@ export default function ReportsPage() {
                   id="dateFrom"
                   type="date"
                   value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
+                  // min: 90 μέρες πίσω
+                  min={
+                    new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+                      .toISOString()
+                      .split("T")[0]
+                  }
+                  // max: είτε dateTo (αν έχει τιμή) είτε 90 μέρες μπροστά
+                  max={
+                    dateTo ||
+                    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+                      .toISOString()
+                      .split("T")[0]
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDateFrom(val);
+                    if (dateTo && val > dateTo) setDateTo(val); // auto-fix αν ξεπεράσει
+                  }}
                   className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-[#e5e1d8] bg-white focus:outline-none focus:ring-2 focus:ring-[#d9d3c7] focus:border-[#cfc8b9] placeholder:text-gray-400"
                 />
               </div>
@@ -456,7 +473,24 @@ export default function ReportsPage() {
                   id="dateTo"
                   type="date"
                   value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
+                  // min: είτε το dateFrom είτε 90 μέρες πριν
+                  min={
+                    dateFrom ||
+                    new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+                      .toISOString()
+                      .split("T")[0]
+                  }
+                  // max: 90 μέρες μπροστά
+                  max={
+                    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+                      .toISOString()
+                      .split("T")[0]
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDateTo(val);
+                    if (dateFrom && val < dateFrom) setDateFrom(val); // auto-fix αν πάει πίσω
+                  }}
                   className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-[#e5e1d8] bg-white focus:outline-none focus:ring-2 focus:ring-[#d9d3c7] focus:border-[#cfc8b9] placeholder:text-gray-400"
                 />
               </div>
@@ -494,6 +528,20 @@ export default function ReportsPage() {
                 >
                   Τελευταίες 7 ημέρες
                 </button>
+                {/* <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    const end = new Date();
+                    d.setDate(d.getDate() - 14);
+                    const iso = (x) => x.toISOString().slice(0, 10);
+                    setDateFrom(iso(d));
+                    setDateTo(iso(end));
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-full border border-[#e5e1d8] hover:bg-[#f6f4ef] text-[#2f2e2b] transition"
+                >
+                  Τελευταίες 14 ημέρες
+                </button> */}
                 <button
                   type="button"
                   onClick={() => {
