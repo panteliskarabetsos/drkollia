@@ -1,7 +1,7 @@
 // admin/appointments/new/page.js
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import { Calendar as CalendarIcon } from "lucide-react";
@@ -52,8 +52,6 @@ export default function NewAppointmentPage() {
   const [hasFullDayException, setHasFullDayException] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [nextAvailableDate, setNextAvailableDate] = useState(null);
-  const [nextAvailableTime, setNextAvailableTime] = useState(null);
-  const [isFindingNext, setIsFindingNext] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     appointment_date: null,
@@ -214,7 +212,14 @@ export default function NewAppointmentPage() {
             return cursor >= new Date(exc.start) && cursor < new Date(exc.end);
           });
 
-          const available = !overlapsBooked && !overlapsException;
+          //  Check για να μη δείχνει slots που έχουν περάσει
+          const now = new Date();
+          const isPastToday =
+            format(date, "yyyy-MM-dd") === format(now, "yyyy-MM-dd") &&
+            cursor.getTime() < now.getTime();
+
+          const available =
+            !overlapsBooked && !overlapsException && !isPastToday;
 
           if (available) slots.push(timeStr);
 
@@ -634,398 +639,98 @@ export default function NewAppointmentPage() {
 
     checkVisitors();
   }, [formData.appointment_date, formData.reason]);
-  const findNextAvailableSlot = async (startDate, durationMin) => {
-    // σκάναρε έως 30 μέρες μπροστά (εξαιρείς την ίδια ημέρα)
-    for (let i = 1; i <= 30; i++) {
-      const nextDate = new Date(startDate);
-      nextDate.setDate(startDate.getDate() + i);
-
-      const weekday = toDbWeekday(nextDate.getDay());
-
-      // 1) Ωράριο
-      const { data: scheduleData, error: schedErr } = await supabase
-        .from("clinic_schedule")
-        .select("start_time, end_time")
-        .eq("weekday", weekday);
-
-      if (schedErr) {
-        console.error(schedErr);
-        continue;
-      }
-      if (!scheduleData || scheduleData.length === 0) continue;
-
-      const workingPeriods = scheduleData
-        .map((s) => {
-          const start = dateAtTime(nextDate, s.start_time);
-          const end = dateAtTime(nextDate, s.end_time);
-          return start && end ? { start, end } : null;
-        })
-        .filter(Boolean);
-
-      // 2) Εξαιρέσεις για τη μέρα
-      const startOfDay = new Date(nextDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(nextDate);
-      endOfDay.setHours(23, 59, 59, 999);
-
-      const { data: exceptions, error: excErr } = await supabase
-        .from("schedule_exceptions")
-        .select("start_time, end_time, exception_date")
-        .eq("exception_date", format(nextDate, "yyyy-MM-dd"));
-
-      if (excErr) {
-        console.error(excErr);
-        continue;
-      }
-
-      // full-day exception
-      const fullDay = exceptions?.some((e) => !e.start_time && !e.end_time);
-      if (fullDay) continue;
-
-      const exceptionRanges =
-        exceptions?.map((e) => {
-          const s = e.start_time
-            ? dateAtTime(nextDate, e.start_time)
-            : startOfDay;
-          const eEnd = e.end_time ? dateAtTime(nextDate, e.end_time) : endOfDay;
-          return { start: s, end: eEnd };
-        }) ?? [];
-
-      // 3) Κλεισμένα της μέρας (ως διαστήματα)
-      const { data: bookedRaw, error: bookedErr } = await supabase
-        .from("appointments")
-        .select("appointment_time, duration_minutes, status")
-        .gte("appointment_time", startOfDay.toISOString())
-        .lt("appointment_time", endOfDay.toISOString())
-        .in("status", ["scheduled", "approved", "completed"]);
-
-      if (bookedErr) {
-        console.error(bookedErr);
-        continue;
-      }
-
-      const bookedRanges =
-        (bookedRaw ?? []).map((b) => {
-          const bs = new Date(b.appointment_time);
-          const be = new Date(bs);
-          be.setMinutes(be.getMinutes() + (b.duration_minutes ?? 0));
-          return { start: bs, end: be };
-        }) ?? [];
-
-      // 4) Σάρωση ανά 15'
-      for (const { start, end } of workingPeriods) {
-        const cursor = new Date(start);
-        while (cursor < end) {
-          const endSlot = new Date(cursor);
-          endSlot.setMinutes(endSlot.getMinutes() + durationMin);
-
-          // Πρέπει να χωράει ολόκληρο εντός ωραρίου
-          if (endSlot > end) break;
-
-          const overlapsException = exceptionRanges.some((exc) =>
-            rangesOverlap(cursor, endSlot, exc.start, exc.end)
-          );
-          if (overlapsException) {
-            cursor.setMinutes(cursor.getMinutes() + 15);
-            continue;
-          }
-
-          const overlapsBooked = bookedRanges.some((br) =>
-            rangesOverlap(cursor, endSlot, br.start, br.end)
-          );
-          if (!overlapsBooked) {
-            // Βρέθηκε πρώτο διαθέσιμο: επιστροφή date + time
-            return { date: nextDate, time: new Date(cursor) };
-          }
-
-          cursor.setMinutes(cursor.getMinutes() + 15);
-        }
-      }
-    }
-
-    // Δεν βρέθηκε στο παράθυρο
-    return null;
-  };
-
-  const resolvedDuration =
-    formData.duration_minutes === "custom"
-      ? parseInt(formData.customDuration || "", 10)
-      : parseInt(formData.duration_minutes || "", 10);
-  const toDateOnly = (d) =>
-    new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const parseSelectedDate = (val) => {
-    if (val instanceof Date) return val;
-    // expect 'YYYY-MM-DD'
-    if (typeof val === "string") {
-      const [y, m, d] = val.split("-").map(Number);
-      return new Date(y, (m || 1) - 1, d || 1);
-    }
-    return new Date(); // fallback: today
-  };
-  // helper: map JS getDay() -> DB weekday (1=Mon ... 7=Sun)
-  function toDbWeekday(jsDay /* 0=Sun..6=Sat */) {
-    // Αν στο DB έχεις 1=Mon..7=Sun:
-    // Mon=1 => js 1 -> 1, ..., Sun=7 => js 0 -> 7
-    return jsDay === 0 ? 7 : jsDay; // 1..7 με Δευ=1 ... Κυρ=7
-    // Αν στο DB έχεις 0=Sun..6=Sat, τότε απλώς: return jsDay;
-  }
-
-  // helper: δένει "HH:MM(:SS)?" πάνω σε συγκεκριμένη ημερομηνία
-  function dateAtTime(baseDate, timeStr) {
-    if (!timeStr) return null;
-    const [h, m = "0", s = "0"] = timeStr.split(":");
-    const d = new Date(baseDate);
-    d.setHours(Number(h), Number(m), Number(s), 0);
-    return d;
-  }
 
   const findNextAvailableDate = async (startDate, duration) => {
-    // σκάναρε έως 30 μέρες
     for (let i = 1; i <= 30; i++) {
       const nextDate = new Date(startDate);
       nextDate.setDate(startDate.getDate() + i);
 
-      // weekday (πρόσεξε mapping)
-      const weekday = toDbWeekday(nextDate.getDay());
+      const weekday = nextDate.getDay();
 
-      // 1) Βάση ωραρίου
-      const { data: scheduleData, error: schedErr } = await supabase
+      const { data: scheduleData } = await supabase
         .from("clinic_schedule")
         .select("start_time, end_time")
         .eq("weekday", weekday);
 
-      if (schedErr) {
-        console.error(schedErr);
-        continue;
-      }
       if (!scheduleData || scheduleData.length === 0) continue;
 
       const workingPeriods = scheduleData.map((s) => {
-        const start = dateAtTime(nextDate, s.start_time); // "HH:MM"
-        const end = dateAtTime(nextDate, s.end_time);
+        const [startHour, startMinute] = s.start_time.split(":").map(Number);
+        const [endHour, endMinute] = s.end_time.split(":").map(Number);
+
+        const start = new Date(nextDate);
+        start.setHours(startHour, startMinute, 0, 0);
+        const end = new Date(nextDate);
+        end.setHours(endHour, endMinute, 0, 0);
+
         return { start, end };
       });
 
-      // 2) Εξαιρέσεις (ολόκληρη μέρα ή τμήμα)
-      const { data: exceptions, error: excErr } = await supabase
+      const { data: exceptions } = await supabase
         .from("schedule_exceptions")
-        .select("start_time, end_time, exception_date")
-        // αν exception_date είναι DATE, η σύγκριση με "yyyy-MM-dd" είναι σωστή
+        .select("start_time, end_time")
         .eq("exception_date", format(nextDate, "yyyy-MM-dd"));
 
-      if (excErr) {
-        console.error(excErr);
-        continue;
-      }
-
-      // full-day: ούτε start ούτε end
       const fullDay = exceptions?.some((e) => !e.start_time && !e.end_time);
       if (fullDay) continue;
 
-      // μετέτρεψε τα time-only σε Date ranges πάνω στο nextDate
+      const exceptionRanges =
+        exceptions?.map((e) => ({
+          start: e.start_time ? new Date(e.start_time) : null,
+          end: e.end_time ? new Date(e.end_time) : null,
+        })) || [];
+
       const startOfDay = new Date(nextDate);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(nextDate);
       endOfDay.setHours(23, 59, 59, 999);
 
-      const exceptionRanges =
-        exceptions?.map((e) => {
-          // open-ended αρχή/τέλος
-          const start = e.start_time
-            ? dateAtTime(nextDate, e.start_time)
-            : startOfDay;
-          const end = e.end_time ? dateAtTime(nextDate, e.end_time) : endOfDay;
-          return { start, end };
-        }) || [];
-
-      // 3) Κλεισμένα ραντεβού της ημέρας (μόνο ενεργά/δεσμευτικά)
-      const { data: bookedRaw, error: bookedErr } = await supabase
+      const { data: booked } = await supabase
         .from("appointments")
-        .select("appointment_time, duration_minutes, status")
+        .select("appointment_time, duration_minutes")
         .gte("appointment_time", startOfDay.toISOString())
-        .lt("appointment_time", endOfDay.toISOString())
-        .in("status", ["scheduled", "approved", "completed"]); // προσαρμόσ’ το αν θες
+        .lte("appointment_time", endOfDay.toISOString());
 
-      if (bookedErr) {
-        console.error(bookedErr);
-        continue;
-      }
-
-      const booked = bookedRaw ?? [];
-
-      // αποτύπωσε σε βήμα 15' όλα τα κατειλημμένα start times
       const bookedSlots = [];
       booked.forEach(({ appointment_time, duration_minutes }) => {
         const start = new Date(appointment_time);
-        const count = Math.ceil((duration_minutes ?? 0) / 15);
-        for (let k = 0; k < count; k++) {
+        const slotsCount = Math.ceil(duration_minutes / 15);
+        for (let i = 0; i < slotsCount; i++) {
           const slot = new Date(start);
-          slot.setMinutes(start.getMinutes() + k * 15);
-          bookedSlots.push(slot.toTimeString().slice(0, 5)); // "HH:MM"
+          slot.setMinutes(start.getMinutes() + i * 15);
+          bookedSlots.push(slot.toTimeString().slice(0, 5));
         }
       });
 
-      // 4) Σάρωσε τα working periods ανά 15'
-      let found = false;
       for (const { start, end } of workingPeriods) {
-        if (!start || !end) continue;
-
         const cursor = new Date(start);
         while (cursor < end) {
           const endSlot = new Date(cursor);
           endSlot.setMinutes(endSlot.getMinutes() + duration);
-
-          // slot πρέπει να χωράει ΟΛΟ εντός ωραρίου
           if (endSlot > end) break;
 
-          const timeStr = cursor.toTimeString().slice(0, 5); // "HH:MM"
+          const timeStr = cursor.toTimeString().slice(0, 5);
 
           const overlapsBooked = bookedSlots.includes(timeStr);
-          const overlapsException = exceptionRanges.some(
-            (exc) => cursor < exc.end && endSlot > exc.start
-          );
+          const overlapsException = exceptionRanges.some((exc) => {
+            if (!exc.start || !exc.end) return true;
+            return cursor >= new Date(exc.start) && cursor < new Date(exc.end);
+          });
 
           if (!overlapsBooked && !overlapsException) {
-            setNextAvailableDate(nextDate); // ή κράτα κι ώρα αν θέλεις
-            found = true;
-            break;
+            setNextAvailableDate(nextDate);
+            return;
           }
 
           cursor.setMinutes(cursor.getMinutes() + 15);
         }
-        if (found) break;
       }
-
-      if (found) return;
     }
 
-    // Δεν βρέθηκε διαθέσιμη ημερομηνία στο παράθυρο αναζήτησης
-    setNextAvailableDate(null);
+    setNextAvailableDate(null); // Δεν βρέθηκε διαθέσιμη ημερομηνία
   };
 
-  function isSlotDisabled(time, available, formData) {
-    if (!available) return true;
-
-    const [hour, minute] = time.split(":").map(Number);
-
-    const selectedDate = parseSelectedDate(formData.date); // ίδια helper που ήδη χρησιμοποιείς
-    const today = new Date();
-
-    const start = new Date(
-      selectedDate.getFullYear(),
-      selectedDate.getMonth(),
-      selectedDate.getDate(),
-      hour,
-      minute,
-      0,
-      0
-    );
-
-    const selectedIsBeforeToday = toDateOnly(selectedDate) < toDateOnly(today);
-    const selectedIsToday =
-      toDateOnly(selectedDate).getTime() === toDateOnly(today).getTime();
-    const isPastTimeToday =
-      selectedIsToday && start.getTime() <= today.getTime();
-    const isPast = selectedIsBeforeToday || isPastTimeToday;
-
-    return isPast;
-  }
-
-  const selectableSlots = useMemo(() => {
-    return allScheduleSlots.filter(({ time, available }) => {
-      return !isSlotDisabled(time, available, formData);
-    });
-  }, [allScheduleSlots, formData.date]);
-  // compute selectedDate from formData.date
-  const selectedDate = useMemo(() => {
-    if (!formData.date) return null;
-    return parseSelectedDate(formData.date); // your existing helper
-  }, [formData.date]);
-
-  function toDateAtTime(baseDate, hhmm) {
-    const [h, m] = hhmm.split(":").map(Number);
-    const d = new Date(baseDate);
-    d.setHours(h || 0, m || 0, 0, 0);
-    return d;
-  }
-
-  async function findNextDateWithSlots(
-    fetchSelectableSlots,
-    startDate,
-    durationMin,
-    maxDaysLookahead = 90
-  ) {
-    const base = new Date(startDate);
-    base.setHours(0, 0, 0, 0);
-
-    for (let offset = 1; offset <= maxDaysLookahead; offset++) {
-      const d = new Date(base);
-      d.setDate(base.getDate() + offset);
-
-      let slots = await fetchSelectableSlots(d, durationMin);
-      if (!Array.isArray(slots)) slots = [];
-
-      // Αν επιστρέφεις strings "HH:MM", κάν' τα Date για ομοιομορφία
-      const normalized = slots.map((s) =>
-        typeof s === "string" ? toDateAtTime(d, s) : new Date(s)
-      );
-
-      // Βεβαιώσου ότι είναι ταξινομημένα
-      normalized.sort((a, b) => a - b);
-
-      if (normalized.length > 0) {
-        return { date: d, time: normalized[0] }; // πρώτο διαθέσιμο της ημέρας
-      }
-    }
-
-    return null;
-  }
-  useEffect(() => {
-    let cancelled = false;
-
-    // Μην ξεκινάς πριν επιλεγεί ημερομηνία & διάρκεια
-    if (!selectedDate || !resolvedDuration) return;
-
-    // Περιμένουμε να τελειώσει το φόρτωμα των slots της επιλεγμένης μέρας
-    if (loadingSlots) return;
-
-    // Αν έχεις slots, καθάρισε τα "επόμενο διαθέσιμο"
-    if (selectableSlots.length > 0) {
-      setNextAvailableDate(null);
-      setNextAvailableTime(null);
-      setIsFindingNext(false);
-      return;
-    }
-
-    // Δεν υπάρχουν slots -> βρες επόμενη μέρα με διαθέσιμα
-    (async () => {
-      setIsFindingNext(true);
-      setNextAvailableDate(null);
-      setNextAvailableTime(null);
-
-      const res = await findNextDateWithSlots(
-        fetchSelectableSlots, // η δική σου συνάρτηση που φέρνει ΟΛΑ τα slots για μια μέρα
-        selectedDate,
-        resolvedDuration,
-        90 // max μέρες μπροστά
-      );
-
-      if (!cancelled) {
-        if (res) {
-          setNextAvailableDate(res.date);
-          setNextAvailableTime(res.time);
-        } else {
-          setNextAvailableDate(null);
-          setNextAvailableTime(null);
-        }
-        setIsFindingNext(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedDate, resolvedDuration, loadingSlots, selectableSlots.length]);
+  // ❗️Το `if (loading)` πρέπει να είναι **μετά** από όλους τους hooks
   if (loading) {
     return (
       <div className="flex justify-center items-center h-screen bg-white">
@@ -1033,9 +738,12 @@ export default function NewAppointmentPage() {
       </div>
     );
   }
-
   const hasDate = Boolean(formData.appointment_date);
   const hasTime = Boolean(formData.appointment_time);
+  const resolvedDuration =
+    formData.duration_minutes === "custom"
+      ? parseInt(formData.customDuration || "", 10)
+      : parseInt(formData.duration_minutes || "", 10);
 
   const isNewPatientValid =
     Boolean(newPatientData.first_name?.trim()) &&
@@ -1447,22 +1155,14 @@ export default function NewAppointmentPage() {
               <p className="text-red-600 text-sm mt-2">
                 Εκτός ωραρίου Ιατρείου για την επιλεγμένη ημέρα.
               </p>
-            ) : selectableSlots.length === 0 ? (
+            ) : availableSlots.length === 0 ? (
               <p className="text-red-600 text-sm mt-2">
-                Δεν υπάρχει διαθέσιμο ραντεβού για την διάρκεια και ημερομηνία
-                που επιλέξατε.
-                {isFindingNext ? (
-                  <> Αναζήτηση επόμενου διαθέσιμου…</>
-                ) : nextAvailableDate ? (
+                Δεν υπάρχει διαθέσιμο ραντεβού για τη διάρκεια που επιλέξατε.
+                {nextAvailableDate ? (
                   <>
                     {" "}
                     Πρώτο διαθέσιμο:{" "}
-                    <strong>
-                      {format(nextAvailableDate, "dd/MM/yyyy")}
-                      {nextAvailableTime
-                        ? `, ${format(nextAvailableTime, "HH:mm")}`
-                        : ""}
-                    </strong>
+                    <strong>{format(nextAvailableDate, "dd/MM/yyyy")}</strong>
                   </>
                 ) : (
                   <> Δοκιμάστε άλλη ημερομηνία.</>
@@ -1472,42 +1172,17 @@ export default function NewAppointmentPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {allScheduleSlots.map(({ time, available }) => {
                   const [hour, minute] = time.split(":").map(Number);
-
-                  // selected date (no time)
-                  const selectedDate = parseSelectedDate(formData.date);
-                  const today = new Date();
-
-                  // slot start = selected date at HH:mm
-                  const start = new Date(
-                    selectedDate.getFullYear(),
-                    selectedDate.getMonth(),
-                    selectedDate.getDate(),
-                    hour,
-                    minute,
-                    0,
-                    0
-                  );
+                  const start = new Date();
+                  start.setHours(hour, minute, 0, 0);
 
                   const duration = parseInt(
                     formData.duration_minutes === "custom"
                       ? formData.customDuration
-                      : formData.duration_minutes,
-                    10
+                      : formData.duration_minutes
                   );
 
-                  const end = new Date(start.getTime() + duration * 60 * 1000);
-
-                  // Determine if this slot is in the past
-                  const selectedIsBeforeToday =
-                    toDateOnly(selectedDate) < toDateOnly(today);
-                  const selectedIsToday =
-                    toDateOnly(selectedDate).getTime() ===
-                    toDateOnly(today).getTime();
-                  const isPastTimeToday =
-                    selectedIsToday && start.getTime() <= today.getTime();
-                  const isPast = selectedIsBeforeToday || isPastTimeToday;
-
-                  const disabled = !available || isPast;
+                  const end = new Date(start);
+                  end.setMinutes(end.getMinutes() + duration);
 
                   const endTimeStr = `${String(end.getHours()).padStart(
                     2,
@@ -1519,25 +1194,18 @@ export default function NewAppointmentPage() {
                       key={time}
                       type="button"
                       onClick={() => {
-                        if (!disabled) {
+                        if (available)
                           setFormData({ ...formData, appointment_time: time });
-                        }
                       }}
-                      disabled={disabled}
+                      disabled={!available}
                       className={`px-3 py-2 text-sm rounded-lg border transition-all ${
-                        formData.appointment_time === time && !disabled
+                        formData.appointment_time === time && available
                           ? "bg-gray-800 text-white"
-                          : !disabled
+                          : available
                           ? "bg-white text-gray-800 border-gray-300 hover:bg-gray-100"
                           : "bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed"
                       }`}
-                      title={
-                        !available
-                          ? "Κλεισμένο ή μη διαθέσιμο"
-                          : isPast
-                          ? "Η ώρα έχει περάσει"
-                          : ""
-                      }
+                      title={available ? "" : "Κλεισμένο ή μη διαθέσιμο"}
                     >
                       {time}–{endTimeStr}
                     </button>
