@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import VisitorCountChart from "../../components/VisitorCountChart";
+import { exportExcel } from "../../components/ExportExcel";
 
 import {
   BarChart3,
@@ -33,12 +34,12 @@ const toUTCDateStart = (d) =>
   new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 const fmtDate = (d) => d.toISOString().split("T")[0];
 
-function csvEscape(value) {
-  if (value == null) return "";
-  const s = String(value);
-  if (/[\",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-  return s;
-}
+// function csvEscape(value) {
+//   if (value == null) return "";
+//   const s = String(value);
+//   if (/[\",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+//   return s;
+// }
 function AppointmentsChart({ data }) {
   return (
     <div className="bg-white border border-[#e5e1d8] rounded-2xl p-5 shadow-sm">
@@ -102,23 +103,74 @@ function AppointmentsChart({ data }) {
   );
 }
 
-function exportCSV(filename, rows) {
-  const header = Object.keys(rows[0] || { index: 0 }).join(",");
+function exportCSV(filename, rows, opts = {}) {
+  const {
+    delimiter = ",", // set ";" if your Excel expects semicolons
+    addSepHint = true, // prepends "sep=," (or ";") so Excel uses the right delimiter
+    includeBom = true, // prepends UTF-8 BOM to avoid garbled Greek
+    headers = null, // array of keys for order, or { key: "Label" } map
+  } = opts;
+
+  // Normalize rows
+  if (!Array.isArray(rows)) rows = [];
+  const fallback = { index: 0 };
+
+  // Determine keys (order) and labels (header row)
+  let keys, labels;
+  if (Array.isArray(headers)) {
+    keys = headers;
+    labels = headers;
+  } else if (headers && typeof headers === "object") {
+    keys = Object.keys(headers);
+    labels = keys.map((k) => headers[k] ?? k);
+  } else {
+    keys = Object.keys(rows[0] || fallback);
+    labels = keys;
+  }
+
+  const EOL = "\r\n";
+
+  // Build CSV
+  const headerLine = labels.join(delimiter);
   const body = rows
-    .map((r) =>
-      Object.keys(rows[0] || { index: 0 })
-        .map((k) => csvEscape(r[k]))
-        .join(",")
-    )
-    .join("\n");
-  const csv = header + "\n" + body;
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    .map((row) => keys.map((k) => csvEscape(row?.[k])).join(delimiter))
+    .join(EOL);
+
+  // Optional Excel delimiter hint line
+  const sepLine = addSepHint ? `sep=${delimiter}${EOL}` : "";
+
+  const csvText = sepLine + headerLine + (body ? EOL + body : "");
+
+  // Create Blob with UTF-8 BOM so Excel reads Greek correctly
+  const blobParts = includeBom ? ["\uFEFF", csvText] : [csvText];
+  const blob = new Blob(blobParts, { type: "text/csv;charset=utf-8" });
+
+  // Trigger download
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = filename.endsWith(".csv") ? filename : `${filename}.csv`;
+  document.body.appendChild(a);
   a.click();
+  a.remove();
   URL.revokeObjectURL(url);
+}
+
+// Keep this improved escaper with date + special chars support
+function csvEscape(value) {
+  if (value == null) return "";
+  if (value instanceof Date) {
+    return value.toLocaleDateString("el-GR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  }
+  if (typeof value === "object") value = JSON.stringify(value);
+  const s = String(value);
+  return /[",;\n\r]/.test(s) || /^\s|\s$/.test(s)
+    ? `"${s.replace(/"/g, '""')}"`
+    : s;
 }
 
 export default function ReportsPage() {
@@ -472,12 +524,20 @@ export default function ReportsPage() {
                     { metric: "Απορριφθέντα", value: kpis.rejected },
                     { metric: "Σύνολο Ασθενών", value: kpis.patients },
                   ];
-                  exportCSV(`stats_${dateFrom}_to_${dateTo}.csv`, rows);
+
+                  exportExcel(`stats_${dateFrom}_to_${dateTo}.xlsx`, rows, {
+                    headers: { metric: "Μετρική", value: "Τιμή" },
+                    sheetName: "Στατιστικά",
+                    dateFormat: "dd/mm/yyyy",
+                    from: dateFrom,
+                    to: dateTo,
+                    titlePrefix: "Εύρος ημερομηνιών",
+                  });
                 }}
                 className="px-4 py-2 text-sm rounded-lg border border-[#e5e1d8] hover:bg-[#f6f4ef] transition inline-flex items-center gap-2"
               >
                 <Download className="w-4 h-4" />
-                Εξαγωγή CSV
+                Εξαγωγή Excel
               </button>
             </div>
           </div>
