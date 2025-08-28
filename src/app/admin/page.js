@@ -65,7 +65,7 @@ export default function AdminPage() {
           .select("*", { count: "exact", head: true })
           .gte("appointment_time", start.toISOString())
           .lt("appointment_time", nowISO)
-          .eq("status", "approved"),
+          .eq("status", "completed"),
 
         // όλοι οι ασθενείς
         supabase.from("patients").select("*", { count: "exact", head: true }),
@@ -336,21 +336,30 @@ export default function AdminPage() {
 
           {/* --- Extra Card with Stats --- */}
 
-          <div className="relative overflow-hidden border border-[#e5e1d8] bg-white/90 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col backdrop-blur">
+          {/* --- Extra Card with Stats (enhanced) --- */}
+          <div className="relative overflow-hidden border border-[#e5e1d8] bg-white/90 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col backdrop-blur group">
             {/* soft background accent */}
-            <div className="pointer-events-none absolute -top-16 -left-16 w-56 h-56 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#efece5] via-transparent to-transparent opacity-70" />
+            <div className="pointer-events-none absolute -top-20 -left-24 w-64 h-64 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#f4f1ea] via-transparent to-transparent opacity-80" />
+            <div className="pointer-events-none absolute -bottom-20 -right-24 w-64 h-64 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#efece5] via-transparent to-transparent opacity-70" />
 
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-[#8c7c68]" />
-                <h2 className="text-lg font-semibold text-[#2f2e2b]">Σύνοψη</h2>
+                <div className="inline-flex items-center justify-center rounded-full border border-[#e5e1d8] bg-white/80 p-1 shadow-sm">
+                  <BarChart3
+                    className="w-4 h-4 text-[#8c7c68]"
+                    aria-hidden="true"
+                  />
+                </div>
+                <h2 className="text-lg font-semibold text-[#2f2e2b] tracking-tight">
+                  Σύνοψη
+                </h2>
               </div>
 
               {/* subtle link to reports */}
               <button
                 onClick={() => router.push("/admin/reports")}
-                className="text-xs rounded-full px-3 py-1 border border-[#e5e1d8] text-[#6b675f] bg-white/70 hover:bg-[#8c7c68] hover:text-white transition shadow-sm"
+                className="text-xs rounded-full px-3 py-1 border border-[#e5e1d8] text-[#6b675f] bg-white/80 hover:bg-[#8c7c68] hover:text-white transition shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8c7c68]/40"
                 aria-label="Μετάβαση στις αναφορές"
                 title="Μετάβαση στις αναφορές"
               >
@@ -364,42 +373,61 @@ export default function AdminPage() {
                 {/* KPI row */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* Today */}
-                  <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm">
+                  <div className="rounded-2xl border border-[#e5e1d8] bg-white/95 px-3 py-3 shadow-sm transition-transform duration-300 group-hover:translate-y-[-1px]">
                     <div className="flex items-center gap-2 mb-1">
-                      <CalendarDays className="w-4 h-4 text-[#8c7c68]" />
+                      <CalendarDays
+                        className="w-4 h-4 text-[#8c7c68]"
+                        aria-hidden="true"
+                      />
                       <span className="text-xs font-medium text-[#6b675f]">
                         Ραντεβού σήμερα
                       </span>
                     </div>
-                    <p className="text-2xl font-semibold text-[#2f2e2b] leading-tight">
+                    <p className="text-3xl font-semibold text-[#2f2e2b] leading-tight tabular-nums">
                       {stats.today}
                     </p>
 
                     {/* Real progress: completedToday / today */}
-                    <div className="mt-2 h-1.5 w-full bg-[#f3f1ec] rounded overflow-hidden">
+                    <div
+                      className="mt-2 h-2 w-full bg-[#f3f1ec] rounded-full overflow-hidden"
+                      aria-hidden="true"
+                    >
                       <div
-                        className="h-1.5 bg-[#8c7c68] transition-all"
+                        className="h-2 bg-[#8c7c68] transition-all"
                         style={{
                           width: `${
                             stats.today > 0
-                              ? Math.round(
-                                  (stats.completedToday / stats.today) * 100
+                              ? Math.min(
+                                  100,
+                                  Math.max(
+                                    0,
+                                    Math.round(
+                                      (stats.completedToday / stats.today) * 100
+                                    )
+                                  )
                                 )
                               : 0
                           }%`,
                         }}
-                        aria-label="Πρόοδος ολοκλήρωσης σημερινών ραντεβού"
                       />
                     </div>
                     <p className="mt-1 text-[11px] text-[#6b675f]">
-                      {stats.completedToday} από {stats.today} ολοκληρώθηκαν
+                      <span className="font-medium">
+                        {stats.completedToday}
+                      </span>{" "}
+                      από <span className="font-medium">{stats.today}</span>{" "}
+                      ολοκληρώθηκαν
                     </p>
                   </div>
-                  {/* First & Last Today (compact, matching design) */}
-                  <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm flex flex-col justify-between">
+
+                  {/* First & Last Today */}
+                  <div className="rounded-2xl border border-[#e5e1d8] bg-white/95 px-3 py-3 shadow-sm flex flex-col justify-between transition-transform duration-300 group-hover:translate-y-[-1px]">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <CalendarRange className="w-4 h-4 text-[#8c7c68]" />
+                        <CalendarRange
+                          className="w-4 h-4 text-[#8c7c68]"
+                          aria-hidden="true"
+                        />
                         <span className="text-xs font-medium text-[#6b675f]">
                           Πρώτο & Τελευταίο
                         </span>
@@ -408,29 +436,33 @@ export default function AdminPage() {
                       {dayEdges.first || dayEdges.last ? (
                         <div className="mt-1 text-sm text-[#2f2e2b] space-y-1">
                           {dayEdges.first && (
-                            <p>
+                            <p className="flex items-center justify-between">
                               <span className="text-[11px] text-[#6b675f]">
                                 Πρ.:
-                              </span>{" "}
-                              {new Date(
-                                dayEdges.first.appointment_time
-                              ).toLocaleTimeString("el-GR", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                              </span>
+                              <span className="font-medium tabular-nums">
+                                {new Date(
+                                  dayEdges.first.appointment_time
+                                ).toLocaleTimeString("el-GR", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
                             </p>
                           )}
                           {dayEdges.last && (
-                            <p>
+                            <p className="flex items-center justify-between">
                               <span className="text-[11px] text-[#6b675f]">
                                 Τελ.:
-                              </span>{" "}
-                              {new Date(
-                                dayEdges.last.appointment_time
-                              ).toLocaleTimeString("el-GR", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                              </span>
+                              <span className="font-medium tabular-nums">
+                                {new Date(
+                                  dayEdges.last.appointment_time
+                                ).toLocaleTimeString("el-GR", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
                             </p>
                           )}
                         </div>
@@ -442,27 +474,62 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* Patients */}
-                  <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm">
+                  {/* Utilization (bonus mini-KPI) */}
+                  <div className="rounded-2xl border border-[#e5e1d8] bg-white/95 px-3 py-3 shadow-sm transition-transform duration-300 group-hover:translate-y-[-1px]">
                     <div className="flex items-center gap-2 mb-1">
-                      <Users className="w-4 h-4 text-[#3a3a38]" />
+                      <svg
+                        className="w-4 h-4 text-[#8c7c68]"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M4 12h4v8H4v-8Zm6-6h4v14h-4V6Zm6 3h4v11h-4V9Z"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        />
+                      </svg>
                       <span className="text-xs font-medium text-[#6b675f]">
-                        Σύνολο ασθενών
+                        Πληρότητα
                       </span>
                     </div>
-                    <p className="text-2xl font-semibold text-[#2f2e2b] leading-tight">
-                      {stats.patients}
-                    </p>
-                    <p className="mt-2 text-[11px] text-[#6b675f]">
-                      ενεργό μητρώο
-                    </p>
+                    {(() => {
+                      const pct =
+                        stats.capacityTotal > 0
+                          ? Math.round(
+                              (stats.bookedToday / stats.capacityTotal) * 100
+                            )
+                          : 0;
+                      return (
+                        <>
+                          <p className="text-2xl font-semibold text-[#2f2e2b] leading-tight tabular-nums">
+                            {pct}%
+                          </p>
+                          <p className="mt-1 text-[11px] text-[#6b675f]">
+                            {stats.bookedToday ?? 0} /{" "}
+                            {stats.capacityTotal ?? 0} slots
+                          </p>
+                          <div
+                            className="mt-2 h-2 w-full bg-[#f3f1ec] rounded-full overflow-hidden"
+                            aria-hidden="true"
+                          >
+                            <div
+                              className="h-2 bg-[#8c7c68] transition-all"
+                              style={{
+                                width: `${Math.min(100, Math.max(0, pct))}%`,
+                              }}
+                            />
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
                 {/* fine divider */}
                 <div className="my-4 h-px bg-gradient-to-r from-transparent via-[#e5e1d8] to-transparent" />
 
-                {/* micro-footnotes */}
+                {/* micro-footnotes (optional) */}
                 {/* <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#6b675f]">
                   <span className="inline-flex items-center gap-1">
                     <span className="inline-block h-2 w-2 rounded-full bg-[#8c7c68]" />
@@ -481,29 +548,27 @@ export default function AdminPage() {
             ) : (
               // Loading state
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm">
-                  <div className="h-4 w-28 bg-[#f2efe9] rounded mb-3 animate-pulse" />
-                  <div className="h-6 w-16 bg-[#f2efe9] rounded mb-2 animate-pulse" />
-                  <div className="h-1.5 w-full bg-[#f2efe9] rounded animate-pulse" />
-                </div>
-                <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm">
-                  <div className="h-4 w-24 bg-[#f2efe9] rounded mb-3 animate-pulse" />
-                  <div className="h-6 w-16 bg-[#f2efe9] rounded mb-2 animate-pulse" />
-                  <div className="h-3 w-20 bg-[#f2efe9] rounded animate-pulse" />
-                </div>
-                <div className="rounded-2xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm">
-                  <div className="h-4 w-28 bg-[#f2efe9] rounded mb-3 animate-pulse" />
-                  <div className="h-6 w-16 bg-[#f2efe9] rounded mb-2 animate-pulse" />
-                  <div className="h-3 w-24 bg-[#f2efe9] rounded animate-pulse" />
-                </div>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-2xl border border-[#e5e1d8] bg-white/90 px-3 py-3 shadow-sm"
+                  >
+                    <div className="h-4 w-28 bg-[#f2efe9] rounded mb-3 animate-pulse" />
+                    <div className="h-7 w-20 bg-[#f2efe9] rounded mb-2 animate-pulse" />
+                    <div className="h-2 w-full bg-[#f2efe9] rounded animate-pulse" />
+                  </div>
+                ))}
               </div>
             )}
+
             <button
               onClick={() => router.push("/admin/reports")}
-              className="inline-flex items-center justify-center gap-2 text-sm px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-[#3a3a38] hover:text-white transition font-medium shadow-sm"
+              className="mt-2 inline-flex items-center justify-center gap-2 text-sm px-4 py-2 rounded-md border border-[#e5e1d8] text-[#2f2e2b] bg-white/80 hover:bg-[#3a3a38] hover:text-white transition font-medium shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8c7c68]/40"
+              aria-label="Προβολή Αναφορών"
+              title="Προβολή Αναφορών"
             >
               Προβολή Αναφορών
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-4 h-4" aria-hidden="true" />
             </button>
           </div>
 
@@ -600,7 +665,7 @@ export default function AdminPage() {
             ) : (
               <div className="mb-4 space-y-2">
                 <p className="text-sm text-gray-500">
-                  Δεν υπάρχει επόμενο ραντεβού.
+                  Δεν υπάρχει επόμενο ραντεβού για σήμερα.
                 </p>
                 {/* Skeleton for empty state to keep height stable */}
                 <div className="h-3 w-2/3 bg-[#f2efe9] rounded animate-pulse" />
