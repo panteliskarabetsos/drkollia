@@ -392,14 +392,21 @@ export default function ReportsPage() {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <button
-              onClick={() => startTransition(loadStats)}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await loadStats(); // make sure loadStats is async
+                } finally {
+                  setBusy(false);
+                }
+              }}
               className="p-2 rounded-md hover:bg-gray-200 transition"
               aria-label="Ανανέωση"
             >
               {busy ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="w-5 h-5 animate-spin text-gray-600" />
               ) : (
-                <RefreshCcw className="w-5 h-5" />
+                <RefreshCcw className="w-5 h-5 text-gray-600" />
               )}
             </button>
           </div>
