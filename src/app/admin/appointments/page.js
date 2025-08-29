@@ -799,7 +799,7 @@ export default function AdminAppointmentsPage() {
                             <td className="px-4 py-2">
                               <strong>
                                 {appt.patients
-                                  ? `${appt.patients.first_name} ${appt.patients.last_name}`
+                                  ? `${appt.patients.last_name} ${appt.patients.first_name}`
                                   : "-"}
                               </strong>
 

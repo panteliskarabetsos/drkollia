@@ -146,11 +146,13 @@ export default function PatientsPage() {
     });
 
     if (sortOption === "name") {
-      results.sort((a, b) =>
-        `${a.first_name} ${a.last_name}`.localeCompare(
-          `${b.first_name} ${b.last_name}`
-        )
-      );
+      results.sort((a, b) => {
+        const lastNameCompare = (a.last_name || "").localeCompare(
+          b.last_name || ""
+        );
+        if (lastNameCompare !== 0) return lastNameCompare;
+        return (a.first_name || "").localeCompare(b.first_name || "");
+      });
     } else if (sortOption === "age") {
       const getAge = (date) => {
         if (!date) return 0;
@@ -283,7 +285,7 @@ export default function PatientsPage() {
   }, [patientToDelete]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#f7f5f2] via-[#ece9e6] to-[#dcd8d3] text-[#3a3a38] font-sans">
+    <main className="min-h-screen w-full bg-gradient-to-br  text-[#3a3a38] font-sans">
       <section className="max-w-7xl mx-auto px-6 py-26">
         {/* Header Actions */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6 mb-10">
@@ -334,7 +336,7 @@ export default function PatientsPage() {
           />
         </div>
         {showFilters && (
-          <div className="relative bg-white/70 backdrop-blur-md border border-[#e1dfda] rounded-2xl p-6 mb-10 shadow transition-all">
+          <div className="relative bg-white/80 backdrop-blur-md border border-[#e1dfda] rounded-2xl p-6 mb-10 shadow-md transition-all">
             {/* X close button */}
             <button
               onClick={() => setShowFilters(false)}
@@ -345,20 +347,22 @@ export default function PatientsPage() {
             </button>
 
             {/* Header */}
-            <h3 className="text-base font-semibold text-[#4a4947] mb-8 tracking-tight flex items-center gap-2">
+            <h3 className="text-base font-semibold text-[#2f2e2b] mb-8 tracking-tight flex items-center gap-2">
               <HiAdjustmentsHorizontal className="text-[#8c7c68] w-5 h-5" />
               Φίλτρα Αναζήτησης
             </h3>
 
             {/* Filter Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 items-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 items-start">
               {/* Gender */}
               <div className="flex flex-col gap-2">
-                <label className="text-sm text-gray-600">Φύλο</label>
+                <label className="text-sm font-medium text-[#6b675f]">
+                  Φύλο
+                </label>
                 <select
                   value={genderFilter}
                   onChange={(e) => setGenderFilter(e.target.value)}
-                  className="w-full px-4 py-2 text-sm rounded-xl border border-gray-300 bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-[#8c7c68] transition"
+                  className="w-full px-4 py-2 text-sm rounded-xl border border-[#e5e1d8] bg-white focus:outline-none focus:ring-2 focus:ring-[#8c7c68] transition"
                 >
                   <option value="">Όλα</option>
                   <option value="male">Άνδρας</option>
@@ -369,87 +373,144 @@ export default function PatientsPage() {
 
               {/* Age Range */}
               <div className="flex flex-col gap-2">
-                <label className="text-sm text-gray-600">Ηλικία</label>
-                <div className="flex items-end gap-6">
-                  {/* Από */}
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="text-xs text-gray-500">Από</span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onMouseDown={() => handleHold("min", "dec")}
-                        onMouseUp={() => clearHold("min")}
-                        onMouseLeave={() => clearHold("min")}
-                        className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
-                      >
-                        <FiMinus className="text-sm" />
-                      </button>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={ageRange[0]}
-                        onChange={(e) => {
-                          const newMin = +e.target.value;
-                          if (newMin <= ageRange[1])
-                            setAgeRange([newMin, ageRange[1]]);
-                        }}
-                        className="w-14 px-2 py-1 text-center text-sm border border-gray-300 rounded-xl bg-white/70 backdrop-blur"
-                      />
-                      <button
-                        onMouseDown={() => handleHold("min", "inc")}
-                        onMouseUp={() => clearHold("min")}
-                        onMouseLeave={() => clearHold("min")}
-                        className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
-                      >
-                        <FiPlus className="text-sm" />
-                      </button>
+                <label className="text-sm font-medium text-[#6b675f] flex items-center gap-2">
+                  Ηλικία
+                  <span className="text-[11px] text-gray-500">
+                    (εύρος σε έτη)
+                  </span>
+                </label>
+
+                <div className="rounded-xl border border-[#e5e1d8] bg-white px-3 py-3 shadow-sm">
+                  {/* Inputs row */}
+                  <div className="flex flex-wrap items-center gap-4">
+                    {/* Από */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-8">Από</span>
+
+                      <div className="flex items-stretch rounded-lg border border-gray-300 overflow-hidden">
+                        <button
+                          onMouseDown={() => handleHold("min", "dec")}
+                          onMouseUp={() => clearHold("min")}
+                          onMouseLeave={() => clearHold("min")}
+                          className="px-2 bg-gray-50 hover:bg-gray-100 transition"
+                          type="button"
+                        >
+                          <FiMinus className="text-sm" />
+                        </button>
+
+                        <input
+                          type="number"
+                          min="0"
+                          max="120"
+                          value={ageRange[0]}
+                          onChange={(e) => {
+                            const newMin = +e.target.value;
+                            if (newMin <= ageRange[1])
+                              setAgeRange([newMin, ageRange[1]]);
+                          }}
+                          className="w-16 px-2 py-1 text-center text-sm focus:outline-none"
+                        />
+
+                        <button
+                          onMouseDown={() => handleHold("min", "inc")}
+                          onMouseUp={() => clearHold("min")}
+                          onMouseLeave={() => clearHold("min")}
+                          className="px-2 bg-gray-50 hover:bg-gray-100 transition"
+                          type="button"
+                        >
+                          <FiPlus className="text-sm" />
+                        </button>
+                      </div>
+
+                      <span className="text-xs text-gray-500">ετών</span>
+                    </div>
+
+                    <span className="text-gray-300">—</span>
+
+                    {/* Έως */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-8">Έως</span>
+
+                      <div className="flex items-stretch rounded-lg border border-gray-300 overflow-hidden">
+                        <button
+                          onMouseDown={() => handleHold("max", "dec")}
+                          onMouseUp={() => clearHold("max")}
+                          onMouseLeave={() => clearHold("max")}
+                          className="px-2 bg-gray-50 hover:bg-gray-100 transition"
+                          type="button"
+                        >
+                          <FiMinus className="text-sm" />
+                        </button>
+
+                        <input
+                          type="number"
+                          min="0"
+                          max="120"
+                          value={ageRange[1]}
+                          onChange={(e) => {
+                            const newMax = +e.target.value;
+                            if (newMax >= ageRange[0])
+                              setAgeRange([ageRange[0], newMax]);
+                          }}
+                          className="w-16 px-2 py-1 text-center text-sm focus:outline-none"
+                        />
+
+                        <button
+                          onMouseDown={() => handleHold("max", "inc")}
+                          onMouseUp={() => clearHold("max")}
+                          onMouseLeave={() => clearHold("max")}
+                          className="px-2 bg-gray-50 hover:bg-gray-100 transition"
+                          type="button"
+                        >
+                          <FiPlus className="text-sm" />
+                        </button>
+                      </div>
+
+                      <span className="text-xs text-gray-500">ετών</span>
                     </div>
                   </div>
 
-                  {/* Έως */}
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="text-xs text-gray-500">Έως</span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onMouseDown={() => handleHold("max", "dec")}
-                        onMouseUp={() => clearHold("max")}
-                        onMouseLeave={() => clearHold("max")}
-                        className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
-                      >
-                        <FiMinus className="text-sm" />
-                      </button>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={ageRange[1]}
-                        onChange={(e) => {
-                          const newMax = +e.target.value;
-                          if (newMax >= ageRange[0])
-                            setAgeRange([ageRange[0], newMax]);
-                        }}
-                        className="w-14 px-2 py-1 text-center text-sm border border-gray-300 rounded-xl bg-white/70 backdrop-blur"
-                      />
-                      <button
-                        onMouseDown={() => handleHold("max", "inc")}
-                        onMouseUp={() => clearHold("max")}
-                        onMouseLeave={() => clearHold("max")}
-                        className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
-                      >
-                        <FiPlus className="text-sm" />
-                      </button>
-                    </div>
+                  {/* Presets */}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {[
+                      { label: "Όλες", range: [0, 120] },
+                      { label: "0–18", range: [0, 18] },
+                      { label: "19–40", range: [19, 40] },
+                      { label: "41–65", range: [41, 65] },
+                      { label: "66+", range: [66, 120] },
+                    ].map((p) => {
+                      const active =
+                        ageRange[0] === p.range[0] &&
+                        ageRange[1] === p.range[1];
+                      return (
+                        <button
+                          key={p.label}
+                          onClick={() => setAgeRange(p.range)}
+                          type="button"
+                          className={`px-3 py-1 rounded-full text-xs border transition
+                    ${
+                      active
+                        ? "bg-[#f6f4ef] border-[#e5e1d8] text-[#2f2e2b]"
+                        : "bg-white border-[#e5e1d8] text-[#3a3a38] hover:bg-[#f6f4ef]"
+                    }`}
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
 
               {/* Sort */}
               <div className="flex flex-col gap-2">
-                <label className="text-sm text-gray-600">Ταξινόμηση</label>
+                <label className="text-sm font-medium text-[#6b675f]">
+                  Ταξινόμηση
+                </label>
                 <select
                   value={sortOption}
                   onChange={(e) => setSortOption(e.target.value)}
-                  className="w-full px-4 py-2 text-sm rounded-xl border border-gray-300 bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-[#8c7c68] transition"
+                  className="w-full px-4 py-2 text-sm rounded-xl border border-[#e5e1d8] bg-white focus:outline-none focus:ring-2 focus:ring-[#8c7c68] transition"
                 >
                   <option value="">Καμία</option>
                   <option value="name">Αλφαβητικά</option>
@@ -468,7 +529,7 @@ export default function PatientsPage() {
                   setAgeRange([0, 100]);
                   setSortOption("");
                 }}
-                className="px-5 py-2 text-sm text-gray-600 border border-gray-300 bg-white rounded-xl hover:bg-gray-100 transition"
+                className="px-5 py-2 text-sm text-gray-600 border border-[#e5e1d8] bg-white rounded-xl hover:bg-gray-100 transition"
               >
                 Επαναφορά Φίλτρων
               </button>
@@ -527,7 +588,7 @@ export default function PatientsPage() {
                       {/* Όνομα */}
                       <td className="px-4 py-3 font-medium text-[#2f2e2b] whitespace-nowrap">
                         {highlightMatch(
-                          `${p.first_name} ${p.last_name}`,
+                          `${p.last_name} ${p.first_name}`,
                           search
                         )}
                       </td>
@@ -679,7 +740,7 @@ export default function PatientsPage() {
                     {[
                       [
                         "Ονοματεπώνυμο",
-                        `${selectedPatient.first_name} ${selectedPatient.last_name}`,
+                        `${selectedPatient.last_name} ${selectedPatient.first_name}`,
                       ],
                       ["ΑΜΚΑ", selectedPatient.amka],
                       ["Email", selectedPatient.email],
