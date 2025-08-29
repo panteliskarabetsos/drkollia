@@ -33,46 +33,62 @@ export default function AdminPage() {
   const [dayEdges, setDayEdges] = useState({ start: null, last: null });
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const loadStats = useCallback(async () => {
-    const today = new Date();
-    const start = new Date(
-      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())
-    );
-    const end = new Date(start);
-    end.setUTCDate(end.getUTCDate() + 1);
 
-    const nowISO = new Date().toISOString();
+  const loadStats = useCallback(async () => {
+    // Use local day window (clinic local time)
+    const now = new Date();
+    const startLocal = new Date(now);
+    startLocal.setHours(0, 0, 0, 0);
+    const endLocal = new Date(now);
+    endLocal.setHours(23, 59, 59, 999);
+
+    const startISO = startLocal.toISOString(); // DB is UTC (timestamptz), ISO is fine
+    const endISO = endLocal.toISOString();
+    const nowISO = now.toISOString();
 
     const [
+      // all of today (any status)
       { count: todayCount },
-      { count: completedTodayCount },
+      // already flipped to completed within today window
+      { count: completedFlipped },
+      // approved for today but already in the past (not flipped yet)
+      { count: approvedPastNow },
+      // total patients
       { count: patientsCount },
     ] = await Promise.all([
-      // όλα τα σημερινά
       supabase
         .from("appointments")
         .select("*", { count: "exact", head: true })
-        .gte("appointment_time", start.toISOString())
-        .lt("appointment_time", end.toISOString()),
+        .gte("appointment_time", startISO)
+        .lte("appointment_time", endISO),
 
-      // ολοκληρωμένα = approved + παρελθοντική ώρα
       supabase
         .from("appointments")
         .select("*", { count: "exact", head: true })
-        .gte("appointment_time", start.toISOString())
+        .gte("appointment_time", startISO)
+        .lte("appointment_time", endISO)
+        .eq("status", "completed"),
+
+      supabase
+        .from("appointments")
+        .select("*", { count: "exact", head: true })
+        .gte("appointment_time", startISO)
         .lt("appointment_time", nowISO)
-        .eq("status", "approved", "completed"),
+        .eq("status", "approved"),
 
-      // όλοι οι ασθενείς
       supabase.from("patients").select("*", { count: "exact", head: true }),
     ]);
 
+    // Combine both buckets to show real-world “completed today”
+    const completedToday = (completedFlipped || 0) + (approvedPastNow || 0);
+
     setStats({
       today: todayCount ?? 0,
-      completedToday: completedTodayCount ?? 0,
+      completedToday,
       patients: patientsCount ?? 0,
     });
   }, []);
+
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
