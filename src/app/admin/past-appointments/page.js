@@ -113,6 +113,7 @@ export default function PastAppointmentsPage() {
       setLoading(false);
     }
   }, [dateFrom, dateTo, status, page]);
+
   const formatRowForXlsx = (r) => {
     const d = new Date(r.appointment_time);
     const dateStr = d.toLocaleDateString("el-GR", {
@@ -134,7 +135,11 @@ export default function PastAppointmentsPage() {
       Κατάσταση: r.status,
     };
   };
-
+  useEffect(() => {
+    const onRefresh = () => loadData();
+    window.addEventListener("admin:refresh", onRefresh);
+    return () => window.removeEventListener("admin:refresh", onRefresh);
+  }, [loadData]);
   // Auto-fit columns by content length
   const autoCols = (jsonRows) => {
     const headers = Object.keys(jsonRows[0] || {});
