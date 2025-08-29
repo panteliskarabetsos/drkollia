@@ -1054,7 +1054,7 @@ export default function NewAppointmentPage() {
               <Button
                 variant="outline"
                 className="w-full justify-start text-left font-normal"
-                disabled={!formData.reason || !acceptNewAppointments} // 🔹 disable when clinic OFF
+                disabled={!formData.reason || !acceptNewAppointments} //disable when clinic OFF
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {formData.appointment_date
@@ -1160,7 +1160,7 @@ export default function NewAppointmentPage() {
               </p>
             ) : allScheduleSlots.length === 0 ? (
               <p className="text-red-600 text-sm mt-2">
-                Εκτός ωραρίου Ιατρείου για την επιλεγμένη ημέρα.
+                Το ιατρείο ειναι κλειστό για την επιλεγμένη μέρα.
               </p>
             ) : availableSlots.length === 0 ? (
               <p className="text-red-600 text-sm mt-2">

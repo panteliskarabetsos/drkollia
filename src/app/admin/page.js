@@ -32,6 +32,7 @@ export default function AdminPage() {
   const [nextApptErr, setNextApptErr] = useState(null);
   const [dayEdges, setDayEdges] = useState({ start: null, last: null });
   const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const loadStats = useCallback(async () => {
     const today = new Date();
     const start = new Date(
@@ -60,7 +61,7 @@ export default function AdminPage() {
         .select("*", { count: "exact", head: true })
         .gte("appointment_time", start.toISOString())
         .lt("appointment_time", nowISO)
-        .eq("status", "completed"),
+        .eq("status", "approved", "completed"),
 
       // όλοι οι ασθενείς
       supabase.from("patients").select("*", { count: "exact", head: true }),
@@ -76,11 +77,34 @@ export default function AdminPage() {
     try {
       setRefreshing(true);
       setStats(null);
+
       await loadStats();
     } finally {
       setRefreshing(false);
     }
   };
+
+  const syncCompleted = useCallback(async () => {
+    try {
+      setSyncing(true);
+      await fetch("/api/mark-completed", {
+        method: "POST",
+        headers: {
+          // Only include if you set ADMIN_SYNC_KEY on the server
+          "x-admin-key": process.env.NEXT_PUBLIC_ADMIN_SYNC_KEY || "",
+        },
+        cache: "no-store",
+      });
+    } catch (e) {
+      console.error("syncCompleted failed", e);
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+  useEffect(() => {
+    // Run once when /admin loads
+    syncCompleted();
+  }, [syncCompleted]);
 
   useEffect(() => {
     // πρώτο load
@@ -324,7 +348,7 @@ export default function AdminPage() {
             >
               <RefreshCcw
                 className={`w-5 h-5 text-gray-600 hover:text-gray-900 ${
-                  refreshing ? "animate-spin" : ""
+                  refreshing ? "animate-spin " : ""
                 }`}
               />
             </button>
@@ -599,8 +623,8 @@ export default function AdminPage() {
                     key={i}
                     className="rounded-2xl border border-[#e5e1d8] bg-white/90 px-3 py-3 shadow-sm"
                   >
-                    <div className="h-4 w-28 bg-[#f2efe9] rounded mb-3 animate-pulse" />
-                    <div className="h-7 w-20 bg-[#f2efe9] rounded mb-2 animate-pulse" />
+                    <div className="h-4 w-18 bg-[#f2efe9] rounded mb-3 animate-pulse" />
+                    <div className="h-4 w-20 bg-[#f2efe9] rounded mb-2 animate-pulse" />
                     <div className="h-2 w-full bg-[#f2efe9] rounded animate-pulse" />
                   </div>
                 ))}

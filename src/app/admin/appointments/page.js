@@ -22,7 +22,7 @@ import {
   IdCard,
   FileDown,
   Printer,
-  ScrollText,
+  History,
 } from "lucide-react";
 import { el } from "date-fns/locale";
 
@@ -680,8 +680,24 @@ export default function AdminAppointmentsPage() {
             </svg>
           </div>
 
-          {/* Export button */}
+          {/* History button */}
           <div className="flex gap-3 justify-end items-center mb-6">
+            <button
+              onClick={() => router.push("/admin/past-appointments")}
+              className="group relative flex items-center gap-2 pl-3 pr-1 py-2 rounded-full border border-[#c8bfae] bg-white/70 backdrop-blur-md text-[#4c3f2c] shadow-sm hover:bg-[#f3899ea3] hover:shadow-md transition-all duration-300"
+              title="Ιστορικό Ραντεβού"
+            >
+              <div className="flex items-center justify-center w-6 h-6">
+                <History
+                  size={18}
+                  className="text-[#7b6a55] group-hover:text-[#4c3f2c] transition-colors duration-200"
+                />
+              </div>
+              <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 group-hover:max-w-[200px] group-hover:opacity-100 transition-all duration-300 text-sm font-medium tracking-wide">
+                Ιστορικό Ραντεβού
+              </span>
+            </button>
+
             {/* Excel Export Button */}
             <button
               onClick={() => handleDownloadExcel(filteredAppointments)}
