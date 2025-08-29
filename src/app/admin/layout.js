@@ -60,7 +60,7 @@ export default function AdminLayout({ children }) {
 
       {/* Admin Header */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur border-b border-[#e5e1d8] shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 py-6 flex items-center justify-between">
           {/* Left: Logo / Title */}
           <div
             className="flex items-center gap-2 cursor-pointer hover:opacity-90 transition"
@@ -87,7 +87,7 @@ export default function AdminLayout({ children }) {
               { href: "/admin/reports", label: "Αναφορές", icon: BarChart3 },
               {
                 href: "/admin/past-appointments",
-                label: "Παλαιά (90ημ)",
+                label: "Ιστορικό Ραντεβού",
                 icon: History,
               },
             ].map(({ href, label, icon: Icon }) => (
@@ -128,11 +128,12 @@ export default function AdminLayout({ children }) {
           {/* Right: Quick actions */}
           <div className="flex items-center gap-2">
             {/* Sync past → completed (optional: requires /api/mark-completed as we built) */}
-            <button
+            {/* <button
               onClick={handleSync}
               disabled={syncing}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#e5e1d8] bg-white text-sm hover:bg-[#f6f4ef] transition disabled:opacity-50"
-              title="Ενημέρωση παρελθόντων ραντεβού σε ολοκληρωμένα"
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-[#e5e1d8] bg-white text-sm transition disabled:opacity-50
+    ${syncing ? "animate-pulse scale-95" : "hover:bg-[#f6f4ef]"}`}
+              title="Συγχρονισμός ραντεβού & ασθενών"
             >
               <RefreshCcw
                 className={`w-4 h-4 text-[#8c7c68] ${
@@ -142,17 +143,18 @@ export default function AdminLayout({ children }) {
               <span className="hidden sm:inline">
                 {syncing ? "Συγχρονισμός…" : "Συγχρονισμός"}
               </span>
-            </button>
+              <span className="sr-only">Συγχρονισμός ραντεβού & ασθενών</span>
+            </button> */}
 
             {/* Help */}
-            <button
+            {/* <button
               onClick={() => router.push("/help")}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-transparent hover:border-[#e5e1d8] hover:bg-[#f6f4ef] text-sm transition"
               title="Βοήθεια"
             >
               <LifeBuoy className="w-4 h-4 text-[#8c7c68]" />
               <span className="hidden sm:inline">Βοήθεια</span>
-            </button>
+            </button> */}
 
             {/* Logout */}
             <button
