@@ -127,7 +127,6 @@ export default function AdminLayout({ children }) {
 
           {/* Right: Quick actions */}
           <div className="flex items-center gap-2">
-            {/* Sync past → completed (optional: requires /api/mark-completed as we built) */}
             {/* <button
               onClick={handleSync}
               disabled={syncing}

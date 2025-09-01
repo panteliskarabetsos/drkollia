@@ -369,7 +369,7 @@ export default function AdminPage() {
               />
             </button>
             {/* Logout Icon Button */}
-            <button
+            {/* <button
               onClick={async () => {
                 await supabase.auth.signOut();
                 router.push("/login");
@@ -378,7 +378,7 @@ export default function AdminPage() {
               aria-label="Logout"
             >
               <LogOut className="w-5 h-5 text-gray-600 hover:text-gray-900" />
-            </button>
+            </button> */}
           </div>
         </header>
 
@@ -457,7 +457,7 @@ export default function AdminPage() {
             {stats ? (
               <>
                 {/* KPI row */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* Today */}
                   <div className="rounded-2xl border border-[#e5e1d8] bg-white/95 px-3 py-3 shadow-sm transition-transform duration-300 group-hover:translate-y-[-1px]">
                     <div className="flex items-center gap-2 mb-1">
@@ -507,26 +507,26 @@ export default function AdminPage() {
                   </div>
 
                   {/* First & Last Today */}
-                  <div className="rounded-2xl border border-[#e5e1d8] bg-white/95 px-3 py-3 shadow-sm flex flex-col justify-between transition-transform duration-300 group-hover:translate-y-[-1px]">
+                  <div className="rounded-xl border border-[#e5e1d8] bg-white/95 p-3 shadow-sm flex flex-col justify-between transition-transform duration-300 group-hover:translate-y-[-1px]">
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
+                      {/* Header */}
+                      <div className="flex items-center gap-1.5 mb-2">
                         <CalendarRange
                           className="w-4 h-4 text-[#8c7c68]"
                           aria-hidden="true"
                         />
-                        <span className="text-xs font-medium text-[#6b675f]">
+                        <span className="text-[11px] font-semibold tracking-wide text-[#5c5345] uppercase">
                           Πρώτο & Τελευταίο
                         </span>
                       </div>
 
+                      {/* Times */}
                       {dayEdges.first || dayEdges.last ? (
-                        <div className="mt-1 text-sm text-[#2f2e2b] space-y-1">
+                        <div className="space-y-1.5">
                           {dayEdges.first && (
-                            <p className="flex items-center justify-between">
-                              <span className="text-[11px] text-[#6b675f]">
-                                Πρ.:
-                              </span>
-                              <span className="font-medium tabular-nums">
+                            <div className="flex items-center justify-between text-[12px]">
+                              <span className="text-[#7a7468]">Πρ.</span>
+                              <span className="font-semibold tabular-nums text-[#2f2e2b]">
                                 {new Date(
                                   dayEdges.first.appointment_time
                                 ).toLocaleTimeString("el-GR", {
@@ -534,14 +534,12 @@ export default function AdminPage() {
                                   minute: "2-digit",
                                 })}
                               </span>
-                            </p>
+                            </div>
                           )}
                           {dayEdges.last && (
-                            <p className="flex items-center justify-between">
-                              <span className="text-[11px] text-[#6b675f]">
-                                Τελ.:
-                              </span>
-                              <span className="font-medium tabular-nums">
+                            <div className="flex items-center justify-between text-[12px]">
+                              <span className="text-[#7a7468]">Τελ.</span>
+                              <span className="font-semibold tabular-nums text-[#2f2e2b]">
                                 {new Date(
                                   dayEdges.last.appointment_time
                                 ).toLocaleTimeString("el-GR", {
@@ -549,66 +547,15 @@ export default function AdminPage() {
                                   minute: "2-digit",
                                 })}
                               </span>
-                            </p>
+                            </div>
                           )}
                         </div>
                       ) : (
-                        <p className="mt-2 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-gray-400 italic">
                           Δεν υπάρχουν
                         </p>
                       )}
                     </div>
-                  </div>
-
-                  {/* Utilization (bonus mini-KPI) */}
-                  <div className="rounded-2xl border border-[#e5e1d8] bg-white/95 px-3 py-3 shadow-sm transition-transform duration-300 group-hover:translate-y-[-1px]">
-                    <div className="flex items-center gap-2 mb-1">
-                      <svg
-                        className="w-4 h-4 text-[#8c7c68]"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M4 12h4v8H4v-8Zm6-6h4v14h-4V6Zm6 3h4v11h-4V9Z"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                      </svg>
-                      <span className="text-xs font-medium text-[#6b675f]">
-                        Πληρότητα
-                      </span>
-                    </div>
-                    {(() => {
-                      const pct =
-                        stats.capacityTotal > 0
-                          ? Math.round(
-                              (stats.bookedToday / stats.capacityTotal) * 100
-                            )
-                          : 0;
-                      return (
-                        <>
-                          <p className="text-2xl font-semibold text-[#2f2e2b] leading-tight tabular-nums">
-                            {pct}%
-                          </p>
-                          <p className="mt-1 text-[11px] text-[#6b675f]">
-                            {stats.bookedToday ?? 0} /{" "}
-                            {stats.capacityTotal ?? 0} slots
-                          </p>
-                          <div
-                            className="mt-2 h-2 w-full bg-[#f3f1ec] rounded-full overflow-hidden"
-                            aria-hidden="true"
-                          >
-                            <div
-                              className="h-2 bg-[#8c7c68] transition-all"
-                              style={{
-                                width: `${Math.min(100, Math.max(0, pct))}%`,
-                              }}
-                            />
-                          </div>
-                        </>
-                      );
-                    })()}
                   </div>
                 </div>
 
@@ -617,24 +564,24 @@ export default function AdminPage() {
 
                 {/* micro-footnotes (optional) */}
                 {/* <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#6b675f]">
-                  <span className="inline-flex items-center gap-1">
-                    <span className="inline-block h-2 w-2 rounded-full bg-[#8c7c68]" />
-                    σήμερα
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="inline-block h-2 w-2 rounded-full bg-green-600" />
-                    ολοκληρωμένα
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="inline-block h-2 w-2 rounded-full bg-[#3a3a38]" />
-                    σύνολο ασθενών
-                  </span>
-                </div> */}
+      <span className="inline-flex items-center gap-1">
+        <span className="inline-block h-2 w-2 rounded-full bg-[#8c7c68]" />
+        σήμερα
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <span className="inline-block h-2 w-2 rounded-full bg-green-600" />
+        ολοκληρωμένα
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <span className="inline-block h-2 w-2 rounded-full bg-[#3a3a38]" />
+        σύνολο ασθενών
+      </span>
+    </div> */}
               </>
             ) : (
               // Loading state
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {Array.from({ length: 3 }).map((_, i) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {Array.from({ length: 2 }).map((_, i) => (
                   <div
                     key={i}
                     className="rounded-2xl border border-[#e5e1d8] bg-white/90 px-3 py-3 shadow-sm"
@@ -658,7 +605,7 @@ export default function AdminPage() {
             </button>
           </div>
 
-          {/* --- Next Appointment Card (polished) --- */}
+          {/* --- Next Appointment Card--- */}
           <div className="group relative overflow-hidden border border-[#e5e1d8] bg-white/90 rounded-2xl p-5 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-300 flex flex-col justify-between backdrop-blur">
             {/* Soft gradient accent */}
             <div className="pointer-events-none absolute -top-20 -right-20 w-60 h-60 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#efece5] via-transparent to-transparent opacity-70" />
