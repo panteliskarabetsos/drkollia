@@ -13,10 +13,8 @@ import {
   CalendarDays,
   Users,
   Clock,
-  BarChart3,
-  RefreshCcw,
-  LifeBuoy,
-  History,
+  X,
+  Menu,
   ChevronDown,
   CircleUserRound,
 } from "lucide-react";
@@ -34,6 +32,7 @@ export default function AdminLayout({ children }) {
   const [me, setMe] = useState(null);
   const [profile, setProfile] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
@@ -101,135 +100,202 @@ export default function AdminLayout({ children }) {
       <Toaster position="top-right" richColors expand offset={80} />
 
       {/* Admin Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-b border-[#e5e1d8]">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          {/* Brand / Home */}
-          <button
-            onClick={() => router.push("/admin")}
-            className="inline-flex items-center gap-2 hover:opacity-90 transition"
-            title="Πίνακας Διαχείρισης"
-            aria-label="Πίνακας Διαχείρισης"
-          >
-            <LayoutDashboard className="w-6 h-6 text-[#8c7c68]" />
-            <span className="font-semibold text-lg tracking-tight text-[#2f2e2b]">
-              Πίνακας Διαχείρισης
-            </span>
-          </button>
+      <header className="fixed top-0 left-0 right-0 z-50">
+        {/* Accent line */}
+        <div className="h-[2px] w-full bg-gradient-to-r from-[#d9d3c7] via-[#bfb7a9] to-[#d9d3c7]" />
 
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1">
-            {nav.map(({ href, label, Icon }) => (
-              <button
-                key={href}
-                onClick={() => router.push(href)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition
-                  ${
-                    isActive(href)
-                      ? "bg-[#f6f4ef] border border-[#e5e1d8] text-[#2f2e2b]"
-                      : "border border-transparent text-[#3a3a38] hover:bg-[#f6f4ef] hover:border-[#e5e1d8]"
-                  }`}
-                title={label}
-              >
-                <Icon className="w-4 h-4 text-[#8c7c68]" />
-                <span>{label}</span>
-              </button>
-            ))}
-          </nav>
-
-          {/* Right: User menu */}
-          <div className="flex items-center gap-2">
-            {/* Optional Sync button */}
-            {/* <button
-              onClick={handleSync}
-              disabled={syncing}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-[#e5e1d8] bg-white text-sm transition disabled:opacity-50 ${
-                syncing ? "animate-pulse scale-95" : "hover:bg-[#f6f4ef]"
-              }`}
-              title="Συγχρονισμός ραντεβού & ασθενών"
+        {/* Bar */}
+        <div className="bg-white/90 backdrop-blur-xl border-b border-[#e5e1d8] shadow-[0_1px_0_0_#eee]">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+            {/* Brand */}
+            <button
+              onClick={() => router.push("/admin")}
+              className="group inline-flex items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-[#f6f4ef] hover:scale-[1.02]"
+              title="Πίνακας Διαχείρισης"
+              aria-label="Πίνακας Διαχείρισης"
             >
-              <RefreshCcw className={`w-4 h-4 text-[#8c7c68] ${syncing ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">
-                {syncing ? "Συγχρονισμός…" : "Συγχρονισμός"}
+              <LayoutDashboard className="w-6 h-6 text-[#8c7c68] transition-transform group-hover:-translate-y-0.5" />
+              <span className="font-semibold text-lg tracking-tight text-[#2f2e2b]">
+                Πίνακας Διαχείρισης
               </span>
-            </button> */}
+            </button>
 
-            <div className="relative">
-              <button
-                onClick={() => setMenuOpen((v) => !v)}
-                onBlur={() => setTimeout(() => setMenuOpen(false), 150)}
-                className="inline-flex items-center gap-2 rounded-full border border-[#e5e1d8] bg-white px-2.5 py-1.5 shadow-sm hover:bg-[#f6f4ef] transition"
-                title={profile?.name || me?.email || "Λογαριασμός"}
-              >
-                {profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt="avatar"
-                    className="w-7 h-7 rounded-full object-cover"
-                  />
-                ) : (
+            {/* Desktop nav */}
+            <nav className="hidden md:flex items-center gap-2">
+              {nav.map(({ href, label, Icon }) => {
+                const active = isActive(href);
+                return (
+                  <button
+                    key={href}
+                    onClick={() => router.push(href)}
+                    aria-current={active ? "page" : undefined}
+                    className={[
+                      "relative inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm transition",
+                      active
+                        ? "bg-[#f6f4ef] border border-[#e5e1d8] text-[#2f2e2b]"
+                        : "border border-transparent text-[#3a3a38] hover:text-[#2f2e2b] hover:bg-[#f6f4ef] hover:border-[#e5e1d8] hover:shadow-sm",
+                    ].join(" ")}
+                    title={label}
+                  >
+                    <Icon
+                      className={[
+                        "w-4 h-4",
+                        active ? "text-[#8c7c68]" : "text-[#9a8f7d]",
+                      ].join(" ")}
+                    />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Right: user + mobile toggle */}
+            <div className="flex items-center gap-2">
+              {/* User chip */}
+              <div className="relative hidden sm:block">
+                <button
+                  onClick={() => setMenuOpen((v) => !v)}
+                  onBlur={() => setTimeout(() => setMenuOpen(false), 150)}
+                  className="inline-flex items-center gap-2 rounded-full border border-[#e5e1d8] bg-white/90 px-3 py-1.5 shadow-sm hover:bg-[#f6f4ef] hover:shadow-md hover:scale-[1.02] transition"
+                  title={profile?.name || me?.email || "Λογαριασμός"}
+                >
                   <div className="w-7 h-7 rounded-full grid place-items-center bg-[#efece5] text-[#2f2e2b] text-xs font-semibold border border-[#e5e1d8]">
                     {initials}
                   </div>
-                )}
-                <div className="hidden sm:flex flex-col text-left leading-tight">
-                  <span className="text-[13px] font-medium text-[#2f2e2b] truncate max-w-[160px]">
+                  <span className="text-sm font-medium text-[#2f2e2b] truncate max-w-[160px]">
                     {profile?.name || me?.email || "Χρήστης"}
                   </span>
-                </div>
-                <ChevronDown className="w-4 h-4 text-[#8c7c68]" />
-              </button>
+                  <ChevronDown className="w-4 h-4 text-[#8c7c68]" />
+                </button>
 
-              {menuOpen && (
-                <div className="absolute right-0 mt-2 w-56 rounded-xl border border-[#e5e1d8] bg-white shadow-lg overflow-hidden">
-                  <div className="px-3 py-2 border-b border-[#eeeae2]">
-                    <div className="flex items-center gap-2">
-                      <CircleUserRound className="w-4 h-4 text-[#8c7c68]" />
-                      <span className="text-sm font-medium text-[#2f2e2b]">
-                        {profile?.name || "Λογαριασμός"}
-                      </span>
+                {/* Dropdown */}
+                {menuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-[#e5e1d8] bg-white/95 backdrop-blur shadow-lg overflow-hidden animate-fadeIn">
+                    <div className="px-3 py-2 border-b border-[#eeeae2]">
+                      <div className="flex items-center gap-2">
+                        <CircleUserRound className="w-4 h-4 text-[#8c7c68]" />
+                        <span className="text-sm font-medium text-[#2f2e2b]">
+                          {profile?.name || "Λογαριασμός"}
+                        </span>
+                      </div>
+                      {me?.email && (
+                        <p className="mt-1 text-xs text-[#6b675f] truncate">
+                          {me.email}
+                        </p>
+                      )}
                     </div>
-                    {me?.email && (
-                      <p className="mt-1 text-xs text-[#6b675f] truncate">
-                        {me.email}
-                      </p>
-                    )}
+                    <button
+                      onClick={async () => {
+                        await supabase.auth.signOut();
+                        router.push("/login");
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#f6f4ef] hover:pl-4 transition-all"
+                    >
+                      <LogOut className="w-4 h-4 text-red-600" />
+                      <span className="text-[#3a3a38]">Αποσύνδεση</span>
+                    </button>
                   </div>
+                )}
+              </div>
 
-                  <button
-                    onClick={async () => {
-                      await supabase.auth.signOut();
-                      router.push("/login");
-                    }}
-                    className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#f6f4ef] transition"
-                  >
-                    <LogOut className="w-4 h-4 text-red-600" />
-                    <span className="text-[#3a3a38]">Αποσύνδεση</span>
-                  </button>
-                </div>
-              )}
+              {/* Mobile hamburger */}
+              <button
+                className="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg border border-[#e5e1d8] bg-white/90 shadow-sm hover:bg-[#f6f4ef] transition"
+                aria-label="Άνοιγμα μενού"
+                aria-expanded={mobileOpen}
+                onClick={() => setMobileOpen((o) => !o)}
+              >
+                {mobileOpen ? (
+                  <X className="w-5 h-5" />
+                ) : (
+                  <Menu className="w-5 h-5" />
+                )}
+              </button>
             </div>
           </div>
-        </div>
 
-        {/* Mobile scrollable pills */}
-        <div className="md:hidden border-t border-[#eeeae2]">
-          <div className="px-3 py-2 -mx-1 overflow-x-auto no-scrollbar">
-            <div className="flex items-center gap-2">
-              {nav.map(({ href, label }) => (
-                <button
-                  key={href}
-                  onClick={() => router.push(href)}
-                  className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition
-                    ${
-                      isActive(href)
-                        ? "bg-[#f6f4ef] border border-[#e5e1d8] text-[#2f2e2b]"
-                        : "bg-white border border-[#e5e1d8] text-[#3a3a38] hover:bg-[#f6f4ef]"
-                    }`}
-                  title={label}
-                >
-                  {label}
-                </button>
-              ))}
+          {/* Mobile drawer */}
+          <div
+            className={[
+              "md:hidden border-t border-[#eeeae2] bg-white/95 backdrop-blur transition-[max-height,opacity] duration-300 overflow-hidden",
+              mobileOpen ? "max-h-[60vh] opacity-100" : "max-h-0 opacity-0",
+            ].join(" ")}
+          >
+            {/* user row on mobile */}
+            <div className="px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-full grid place-items-center bg-[#efece5] text-[#2f2e2b] text-xs font-semibold border border-[#e5e1d8]">
+                  {initials}
+                </div>
+                <span className="text-sm font-medium text-[#2f2e2b] truncate">
+                  {profile?.name || me?.email || "Χρήστης"}
+                </span>
+              </div>
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  router.push("/login");
+                }}
+                className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-transparent hover:border-red-200 hover:bg-red-50 text-gray-700 hover:text-red-600 transition"
+              >
+                <LogOut className="w-4 h-4" />
+                Έξοδος
+              </button>
+            </div>
+
+            {/* nav pills */}
+            <div className="px-3 py-2 -mx-1 overflow-x-auto no-scrollbar">
+              <div className="flex items-center gap-2 px-1">
+                {nav.map(({ href, label }) => {
+                  const active = isActive(href);
+                  return (
+                    <button
+                      key={href}
+                      onClick={() => {
+                        setMobileOpen(false);
+                        router.push(href);
+                      }}
+                      className={[
+                        "px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition border",
+                        active
+                          ? "bg-[#f6f4ef] border-[#e5e1d8] text-[#2f2e2b]"
+                          : "bg-white border-[#e5e1d8] text-[#3a3a38] hover:bg-[#f6f4ef]",
+                      ].join(" ")}
+                      title={label}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* stacked nav for accessibility (large tap targets) */}
+            <div className="px-3 pb-3 space-y-2">
+              {nav.map(({ href, label, Icon }) => {
+                const active = isActive(href);
+                return (
+                  <button
+                    key={href + "-stack"}
+                    onClick={() => {
+                      setMobileOpen(false);
+                      router.push(href);
+                    }}
+                    className={[
+                      "w-full flex items-center justify-between rounded-xl px-3 py-3 text-sm transition border",
+                      active
+                        ? "bg-[#f6f4ef] border-[#e5e1d8] text-[#2f2e2b]"
+                        : "bg-white border-[#e5e1d8] text-[#3a3a38] hover:bg-[#f6f4ef]",
+                    ].join(" ")}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Icon className="w-4 h-4 text-[#8c7c68]" />
+                      {label}
+                    </span>
+                    <span className="text-[#8c7c68]">›</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
