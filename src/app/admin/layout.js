@@ -6,9 +6,10 @@ import "../globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/app/lib/supabaseClient";
 import { useRouter, usePathname } from "next/navigation";
-import { useState } from "react";
-import { LogOut, LayoutDashboard } from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
 import {
+  LogOut,
+  LayoutDashboard,
   CalendarDays,
   Users,
   Clock,
@@ -16,6 +17,8 @@ import {
   RefreshCcw,
   LifeBuoy,
   History,
+  ChevronDown,
+  CircleUserRound,
 } from "lucide-react";
 
 const inter = Inter({
@@ -26,22 +29,61 @@ const inter = Inter({
 
 export default function AdminLayout({ children }) {
   const router = useRouter();
-
   const pathname = usePathname();
+
+  const [me, setMe] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    const run = async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user || null;
+      setMe(user);
+
+      if (user?.id) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("name, email, phone, role") // avatar_url not in schema; remove
+          .eq("id", user.id)
+          .single();
+        setProfile(prof || null);
+      }
+    };
+    run();
+  }, []);
+
+  const initials = useMemo(() => {
+    return (profile?.name || profile?.email || me?.email || "U")
+      .split(" ")
+      .map((s) => s?.[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+  }, [profile?.name, profile?.email, me?.email]);
+
+  const nav = useMemo(
+    () => [
+      { href: "/admin/appointments", label: "Ραντεβού", Icon: CalendarDays },
+      { href: "/admin/patients", label: "Ασθενείς", Icon: Users },
+      { href: "/admin/schedule", label: "Πρόγραμμα", Icon: Clock },
+    ],
+    []
+  );
+
+  const isActive = (href) => pathname?.startsWith(href);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
   };
-  const [syncing, setSyncing] = useState(false);
 
   const handleSync = async () => {
     try {
       setSyncing(true);
-
-      // tell all admin pages to refresh their client-side data
       window.dispatchEvent(new CustomEvent("admin:refresh"));
-
-      // also useful if you have any server components inside pages
       router.refresh();
     } finally {
       setSyncing(false);
@@ -59,42 +101,33 @@ export default function AdminLayout({ children }) {
       <Toaster position="top-right" richColors expand offset={80} />
 
       {/* Admin Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur border-b border-[#e5e1d8] shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-6 flex items-center justify-between">
-          {/* Left: Logo / Title */}
-          <div
-            className="flex items-center gap-2 cursor-pointer hover:opacity-90 transition"
+      <header className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-b border-[#e5e1d8]">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          {/* Brand / Home */}
+          <button
             onClick={() => router.push("/admin")}
-            title="Μετάβαση στον πίνακα"
+            className="inline-flex items-center gap-2 hover:opacity-90 transition"
+            title="Πίνακας Διαχείρισης"
             aria-label="Πίνακας Διαχείρισης"
           >
             <LayoutDashboard className="w-6 h-6 text-[#8c7c68]" />
-            <span className="font-semibold text-lg text-[#2f2e2b] tracking-tight">
+            <span className="font-semibold text-lg tracking-tight text-[#2f2e2b]">
               Πίνακας Διαχείρισης
             </span>
-          </div>
+          </button>
 
-          {/* Center: Quick Nav (scrollable on mobile) */}
+          {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
-            {[
-              {
-                href: "/admin/appointments",
-                label: "Ραντεβού",
-                icon: CalendarDays,
-              },
-              { href: "/admin/patients", label: "Ασθενείς", icon: Users },
-              { href: "/admin/schedule", label: "Πρόγραμμα", icon: Clock },
-              { href: "/admin/reports", label: "Αναφορές", icon: BarChart3 },
-              {
-                href: "/admin/past-appointments",
-                label: "Ιστορικό Ραντεβού",
-                icon: History,
-              },
-            ].map(({ href, label, icon: Icon }) => (
+            {nav.map(({ href, label, Icon }) => (
               <button
                 key={href}
                 onClick={() => router.push(href)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-transparent hover:border-[#e5e1d8] hover:bg-[#f6f4ef] text-sm text-[#3a3a38] transition"
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition
+                  ${
+                    isActive(href)
+                      ? "bg-[#f6f4ef] border border-[#e5e1d8] text-[#2f2e2b]"
+                      : "border border-transparent text-[#3a3a38] hover:bg-[#f6f4ef] hover:border-[#e5e1d8]"
+                  }`}
                 title={label}
               >
                 <Icon className="w-4 h-4 text-[#8c7c68]" />
@@ -103,67 +136,101 @@ export default function AdminLayout({ children }) {
             ))}
           </nav>
 
-          {/* Mobile: condensed scrollable pills */}
-          <nav className="md:hidden -mx-2 overflow-x-auto no-scrollbar">
-            <div className="flex items-center gap-2 px-2">
-              {[
-                { href: "/admin/appointments", label: "Ραντεβού" },
-                { href: "/admin/patients", label: "Ασθενείς" },
-                { href: "/admin/schedule", label: "Πρόγραμμα" },
-                { href: "/admin/reports", label: "Αναφορές" },
-                { href: "/admin/past-appointments", label: "Παλαιά" },
-              ].map(({ href, label }) => (
+          {/* Right: User menu */}
+          <div className="flex items-center gap-2">
+            {/* Optional Sync button */}
+            {/* <button
+              onClick={handleSync}
+              disabled={syncing}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-[#e5e1d8] bg-white text-sm transition disabled:opacity-50 ${
+                syncing ? "animate-pulse scale-95" : "hover:bg-[#f6f4ef]"
+              }`}
+              title="Συγχρονισμός ραντεβού & ασθενών"
+            >
+              <RefreshCcw className={`w-4 h-4 text-[#8c7c68] ${syncing ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">
+                {syncing ? "Συγχρονισμός…" : "Συγχρονισμός"}
+              </span>
+            </button> */}
+
+            <div className="relative">
+              <button
+                onClick={() => setMenuOpen((v) => !v)}
+                onBlur={() => setTimeout(() => setMenuOpen(false), 150)}
+                className="inline-flex items-center gap-2 rounded-full border border-[#e5e1d8] bg-white px-2.5 py-1.5 shadow-sm hover:bg-[#f6f4ef] transition"
+                title={profile?.name || me?.email || "Λογαριασμός"}
+              >
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt="avatar"
+                    className="w-7 h-7 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full grid place-items-center bg-[#efece5] text-[#2f2e2b] text-xs font-semibold border border-[#e5e1d8]">
+                    {initials}
+                  </div>
+                )}
+                <div className="hidden sm:flex flex-col text-left leading-tight">
+                  <span className="text-[13px] font-medium text-[#2f2e2b] truncate max-w-[160px]">
+                    {profile?.name || me?.email || "Χρήστης"}
+                  </span>
+                </div>
+                <ChevronDown className="w-4 h-4 text-[#8c7c68]" />
+              </button>
+
+              {menuOpen && (
+                <div className="absolute right-0 mt-2 w-56 rounded-xl border border-[#e5e1d8] bg-white shadow-lg overflow-hidden">
+                  <div className="px-3 py-2 border-b border-[#eeeae2]">
+                    <div className="flex items-center gap-2">
+                      <CircleUserRound className="w-4 h-4 text-[#8c7c68]" />
+                      <span className="text-sm font-medium text-[#2f2e2b]">
+                        {profile?.name || "Λογαριασμός"}
+                      </span>
+                    </div>
+                    {me?.email && (
+                      <p className="mt-1 text-xs text-[#6b675f] truncate">
+                        {me.email}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      await supabase.auth.signOut();
+                      router.push("/login");
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#f6f4ef] transition"
+                  >
+                    <LogOut className="w-4 h-4 text-red-600" />
+                    <span className="text-[#3a3a38]">Αποσύνδεση</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile scrollable pills */}
+        <div className="md:hidden border-t border-[#eeeae2]">
+          <div className="px-3 py-2 -mx-1 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-2">
+              {nav.map(({ href, label }) => (
                 <button
                   key={href}
                   onClick={() => router.push(href)}
-                  className="px-3 py-1.5 rounded-full border border-[#e5e1d8] bg-white text-xs text-[#3a3a38] whitespace-nowrap hover:bg-[#f6f4ef] transition"
+                  className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition
+                    ${
+                      isActive(href)
+                        ? "bg-[#f6f4ef] border border-[#e5e1d8] text-[#2f2e2b]"
+                        : "bg-white border border-[#e5e1d8] text-[#3a3a38] hover:bg-[#f6f4ef]"
+                    }`}
                   title={label}
                 >
                   {label}
                 </button>
               ))}
             </div>
-          </nav>
-
-          {/* Right: Quick actions */}
-          <div className="flex items-center gap-2">
-            {/* <button
-              onClick={handleSync}
-              disabled={syncing}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-[#e5e1d8] bg-white text-sm transition disabled:opacity-50
-    ${syncing ? "animate-pulse scale-95" : "hover:bg-[#f6f4ef]"}`}
-              title="Συγχρονισμός ραντεβού & ασθενών"
-            >
-              <RefreshCcw
-                className={`w-4 h-4 text-[#8c7c68] ${
-                  syncing ? "animate-spin" : ""
-                }`}
-              />
-              <span className="hidden sm:inline">
-                {syncing ? "Συγχρονισμός…" : "Συγχρονισμός"}
-              </span>
-              <span className="sr-only">Συγχρονισμός ραντεβού & ασθενών</span>
-            </button> */}
-
-            {/* Help */}
-            {/* <button
-              onClick={() => router.push("/help")}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-transparent hover:border-[#e5e1d8] hover:bg-[#f6f4ef] text-sm transition"
-              title="Βοήθεια"
-            >
-              <LifeBuoy className="w-4 h-4 text-[#8c7c68]" />
-              <span className="hidden sm:inline">Βοήθεια</span>
-            </button> */}
-
-            {/* Logout */}
-            <button
-              onClick={handleLogout}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-transparent hover:border-red-200 hover:bg-red-50 text-sm text-gray-700 hover:text-red-600 transition"
-              title="Αποσύνδεση"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Αποσύνδεση</span>
-            </button>
           </div>
         </div>
       </header>

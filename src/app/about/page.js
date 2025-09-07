@@ -20,8 +20,7 @@ export default function AboutPage() {
             Σχετικά με τη Δρ. Κόλλια
           </h1>
           <p className="text-lg md:text-xl text-[#f4f0e8] max-w-2xl mx-auto">
-            Επιστημονική ακρίβεια με ανθρώπινο πρόσωπο. Μια ολιστική προσέγγιση
-            στην υγεία.
+            Επιστημονική ακρίβεια με ανθρώπινο πρόσωπο.
           </p>
         </div>
       </section>

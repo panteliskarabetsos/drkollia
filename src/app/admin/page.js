@@ -331,56 +331,8 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-[#fafafa] text-[#333] font-sans relative">
-      <section className="py-22 px-4 max-w-6xl mx-auto">
-        <header className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-start">
-          <div className="flex items-center gap-3">
-            {/* User Circle Avatar */}
-            <div className="w-9 h-9 rounded-full bg-gray-300 flex items-center justify-center text-sm font-semibold text-gray-700">
-              {profile?.name?.[0]?.toUpperCase() ??
-                user?.email?.[0]?.toUpperCase() ??
-                "U"}
-            </div>
-
-            {/* Name + Email */}
-            <div className="flex flex-col">
-              <span className="text-sm font-medium text-gray-800">
-                {profile?.name ?? "Χρήστης"}
-              </span>
-              <span className="text-xs text-gray-500">{user?.email}</span>
-            </div>
-            {/* Refresh button */}
-            <button
-              onClick={async () => {
-                try {
-                  setRefreshing(true);
-                  setStats(null); // προαιρετικά για skeleton state
-                  await loadStats(); // περιμένουμε να φορτώσει
-                } finally {
-                  setRefreshing(false);
-                }
-              }}
-              className="p-2 rounded-md hover:bg-gray-200 transition"
-              aria-label="Ανανέωση"
-            >
-              <RefreshCcw
-                className={`w-5 h-5 text-gray-600 hover:text-gray-900 ${
-                  refreshing ? "animate-spin " : ""
-                }`}
-              />
-            </button>
-            {/* Logout Icon Button */}
-            {/* <button
-              onClick={async () => {
-                await supabase.auth.signOut();
-                router.push("/login");
-              }}
-              className="ml-4 p-2 rounded-md hover:bg-gray-200 transition"
-              aria-label="Logout"
-            >
-              <LogOut className="w-5 h-5 text-gray-600 hover:text-gray-900" />
-            </button> */}
-          </div>
-        </header>
+      <section className="py-20 px-4 max-w-6xl mx-auto">
+        <header className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-start"></header>
 
         <h1 className="text-3xl font-medium text-center mb-12 tracking-tight">
           Πίνακας Διαχείρισης

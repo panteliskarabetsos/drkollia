@@ -24,7 +24,7 @@ export default function AdminAccountsPage() {
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, name, email, role")
+        .select("id, name, email, role, phone")
         .eq("role", "admin");
 
       if (!error) setAdmins(data);
@@ -107,6 +107,7 @@ export default function AdminAccountsPage() {
                 <tr className="text-xs text-[#5a5955] uppercase tracking-wide border-b border-[#e4e0d8]">
                   <th className="px-4 py-3">Όνομα</th>
                   <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Τηλέφωνο</th>
                   <th className="px-4 py-3">Ρόλος</th>
                   <th className="px-4 py-3 text-right">Ενέργειες</th>
                 </tr>
@@ -125,6 +126,9 @@ export default function AdminAccountsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-[#4b4a47]">{admin.email}</td>
+                    <td className="px-4 py-3 text-[#4b4a47]">
+                      {admin.phone || "-"}
+                    </td>
                     <td className="px-4 py-3 text-[#4b4a47] capitalize">
                       {admin.role}
                     </td>

@@ -19,7 +19,7 @@ export default function ClinicPage() {
         <div className="relative z-10 text-center px-6">
           <h1 className="text-4xl md:text-6xl font-bold mb-4">Το Ιατρείο</h1>
           <p className="text-lg md:text-xl max-w-2xl mx-auto text-[#f4f0e8]">
-            Ένας σύγχρονος και φιλόξενος χώρος για την φροντίδα της υγείας σας.
+            Ένας φιλόξενος χώρος για την φροντίδα της υγείας σας.
           </p>
         </div>
       </section>
@@ -29,10 +29,8 @@ export default function ClinicPage() {
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-semibold mb-6">Πού θα μας βρείτε</h2>
           <p className="text-lg text-[#4a4944] max-w-2xl mx-auto">
-            Το ιατρείο βρίσκεται στο κέντρο της πόλης, σε σημείο εύκολα
-            προσβάσιμο με όλα τα μέσα. Ο χώρος έχει σχεδιαστεί για να προσφέρει
-            ηρεμία και άνεση, με ιδιαίτερη προσοχή στη λεπτομέρεια και στη
-            διακριτικότητα.
+            Το ιατρείο βρίσκεται στην Ηλιούπολη, σε σημείο εύκολα προσβάσιμο με
+            όλα τα μέσα.
           </p>
           <p className="mt-4 text-md text-[#5a5955]">
             Τάμπα 8, Ηλιούπολη, 163 42 | Τηλ: 210 9934316

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
 import ReCAPTCHA from "react-google-recaptcha";
 
+const STORAGE_KEY = "loginFailedAttempts";
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -12,11 +14,21 @@ export default function LoginPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [captchaValue, setCaptchaValue] = useState("");
+
+  // reCAPTCHA
   const recaptchaRef = useRef(null);
-  const handleCaptchaChange = (value) => {
-    setCaptchaValue(value);
-  };
+  const [captchaValue, setCaptchaValue] = useState("");
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [showCaptcha, setShowCaptcha] = useState(false);
+
+  const handleCaptchaChange = (value) => setCaptchaValue(value || "");
+
+  // Bootstrap failed attempts from localStorage
+  useEffect(() => {
+    const saved = Number(localStorage.getItem(STORAGE_KEY) || "0");
+    setFailedAttempts(saved);
+    setShowCaptcha(saved >= 3);
+  }, []);
 
   // Check if already logged in
   useEffect(() => {
@@ -33,53 +45,84 @@ export default function LoginPage() {
     checkUser();
   }, [router]);
 
+  const incrementFailures = () => {
+    const next = failedAttempts + 1;
+    setFailedAttempts(next);
+    localStorage.setItem(STORAGE_KEY, String(next));
+    if (next >= 3) setShowCaptcha(true);
+  };
+
+  const resetFailures = () => {
+    setFailedAttempts(0);
+    localStorage.removeItem(STORAGE_KEY);
+    setShowCaptcha(false);
+    setCaptchaValue("");
+    recaptchaRef.current?.reset?.();
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setErrorMsg("");
-
-    if (!captchaValue) {
-      setErrorMsg("Παρακαλώ επιβεβαιώστε ότι δεν είστε ρομπότ.");
-      return;
-    }
-
     setSubmitting(true);
 
     try {
-      // Επαλήθευση του reCAPTCHA token server-side
-      const captchaRes = await fetch("/api/verify-recaptcha", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: captchaValue }),
-      });
-
-      const { success } = await captchaRes.json();
-
-      if (!success) {
-        setErrorMsg("Η επαλήθευση reCAPTCHA απέτυχε. Προσπαθήστε ξανά.");
-        setSubmitting(false);
-        recaptchaRef.current?.reset(); // 👈 reset reCAPTCHA
-        return;
+      // If captcha is enabled, require it and verify server-side
+      if (showCaptcha) {
+        if (!captchaValue) {
+          setErrorMsg("Παρακαλώ επιβεβαιώστε ότι δεν είστε ρομπότ.");
+          return;
+        }
+        const captchaRes = await fetch("/api/verify-recaptcha", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: captchaValue }),
+        });
+        const { success } = await captchaRes.json();
+        if (!success) {
+          setErrorMsg("Η επαλήθευση reCAPTCHA απέτυχε. Προσπαθήστε ξανά.");
+          recaptchaRef.current?.reset?.();
+          setCaptchaValue("");
+          return;
+        }
       }
 
-      // Αν περάσει το reCAPTCHA
+      // Try Supabase login
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
-        recaptchaRef.current?.reset(); // 👈 reset αν αποτύχει login
+        // Count a failure and maybe turn captcha on next time
+        incrementFailures();
+
+        // If captcha is visible, reset it for the next attempt
+        if (showCaptcha) {
+          recaptchaRef.current?.reset?.();
+          setCaptchaValue("");
+        }
+
         if (error.message.toLowerCase().includes("invalid login credentials")) {
-          setErrorMsg("Λανθασμένα στοιχεία σύνδεσης.");
+          setErrorMsg(
+            failedAttempts + 1 >= 3
+              ? "Λανθασμένα στοιχεία. Συμπληρώστε και το reCAPTCHA."
+              : "Λανθασμένα στοιχεία σύνδεσης."
+          );
         } else {
           setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
         }
-      } else {
-        router.push("/admin");
+        return;
       }
+
+      // Success → reset failures and go to admin
+      resetFailures();
+      router.push("/admin");
     } catch (err) {
-      recaptchaRef.current?.reset(); // 👈 reset αν αποτύχει try/catch
-      console.error("Login failed:", err.message);
+      if (showCaptcha) {
+        recaptchaRef.current?.reset?.();
+        setCaptchaValue("");
+      }
+      console.error("Login failed:", err);
       setErrorMsg("Σφάλμα κατά τη σύνδεση. Προσπαθήστε ξανά.");
     } finally {
       setSubmitting(false);
@@ -110,6 +153,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={submitting}
+              autoComplete="username"
             />
           </div>
           <div>
@@ -121,14 +165,24 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={submitting}
+              autoComplete="current-password"
             />
           </div>
-          <ReCAPTCHA
-            ref={recaptchaRef}
-            sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
-            onChange={handleCaptchaChange}
-            className="mx-auto"
-          />
+
+          {/* reCAPTCHA only after 3 failures */}
+          {showCaptcha && (
+            <div className="space-y-2">
+              <ReCAPTCHA
+                ref={recaptchaRef}
+                sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
+                onChange={handleCaptchaChange}
+                className="mx-auto"
+              />
+              <p className="text-[12px] text-gray-500 text-center">
+                Για επιπλέον ασφάλεια απαιτείται reCAPTCHA.
+              </p>
+            </div>
+          )}
 
           {errorMsg && (
             <p className="text-red-600 text-sm font-medium">{errorMsg}</p>
@@ -145,6 +199,13 @@ export default function LoginPage() {
           >
             {submitting ? "Σύνδεση..." : "Σύνδεση"}
           </button>
+
+          {/* hint about attempts */}
+          {failedAttempts > 0 && !showCaptcha && (
+            <p className="mt-2 text-xs text-gray-500 text-center">
+              Αποτυχημένες προσπάθειες: {failedAttempts} / 3
+            </p>
+          )}
         </form>
       </div>
     </main>
