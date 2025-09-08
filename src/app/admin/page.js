@@ -331,7 +331,7 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-[#fafafa] text-[#333] font-sans relative">
-      <section className="py-20 px-4 max-w-6xl mx-auto">
+      <section className="py-18 px-4 max-w-6xl mx-auto">
         <header className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-start"></header>
 
         <h1 className="text-3xl font-medium text-center mb-12 tracking-tight">
