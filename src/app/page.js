@@ -113,7 +113,7 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="rounded-3xl overflow-hidden shadow-2xl ring-1 ring-[#e8e1d8]">
+          <div className="max-w-md mx-auto rounded-3xl overflow-hidden shadow-2xl ring-1 ring-[#e8e1d8]">
             <Image
               src="/doctor.jpg"
               alt="Dr. Georgia Kollia"
@@ -135,7 +135,7 @@ export default function Home() {
 
           {/* image first on mobile, second on desktop */}
           <div className="order-1 md:order-none space-y-3">
-            <div className="relative rounded-3xl overflow-hidden shadow-2xl ring-1 ring-[#e8e1d8]">
+            <div className="max-w-lg mx-auto  relative rounded-3xl overflow-hidden shadow-2xl ring-1 ring-[#e8e1d8]">
               <Image
                 src="/iatreio.jpg"
                 alt="Clinic Interior"
@@ -154,10 +154,6 @@ export default function Home() {
 
           {/* text + details */}
           <div className="space-y-6 text-center md:text-left">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#e8e1d8] bg-white/70 px-3 py-1 text-xs text-[#6a675f]">
-              Φροντίδα με σεβασμό · Σύγχρονη προσέγγιση
-            </div>
-
             <h2 className="text-4xl font-semibold tracking-tight">
               Το Ιατρείο
             </h2>
@@ -173,14 +169,7 @@ export default function Home() {
                 <ShieldCheck className="w-4 h-4 text-[#8c7c68]" /> Πιστή τήρηση
                 πρωτοκόλλων & απολύμανσης
               </li>
-              <li className="inline-flex items-center gap-2">
-                <Stethoscope className="w-4 h-4 text-[#8c7c68]" /> Σύγχρονος
-                διαγνωστικός εξοπλισμός
-              </li>
-              <li className="inline-flex items-center gap-2">
-                <Clock className="w-4 h-4 text-[#8c7c68]" /> Ευέλικτες ώρες με
-                ραντεβού
-              </li>
+
               <li className="inline-flex items-center gap-2">
                 <Car className="w-4 h-4 text-[#8c7c68]" /> Άνετη πρόσβαση &
                 στάθμευση γύρω από το ιατρείο
@@ -190,14 +179,7 @@ export default function Home() {
             {/* info chips */}
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 pt-1">
               <span className="inline-flex items-center gap-2 rounded-full border border-[#e8e1d8] bg-white/80 px-3 py-1.5 text-xs text-[#3b3a36]">
-                <MapPin className="w-4 h-4 text-[#8c7c68]" /> Τάμπα 8, Ηλιούπολη
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#e8e1d8] bg-white/80 px-3 py-1.5 text-xs text-[#3b3a36]">
                 <Clock className="w-4 h-4 text-[#8c7c68]" /> Κατόπιν ραντεβού
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#e8e1d8] bg-white/80 px-3 py-1.5 text-xs text-[#3b3a36]">
-                <Heart className="w-4 h-4 text-[#8c7c68]" /> Προσωποκεντρική
-                φροντίδα
               </span>
             </div>
 
