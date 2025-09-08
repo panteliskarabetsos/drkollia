@@ -33,7 +33,7 @@ export default function ContactPage() {
         className="relative grid place-items-center h-[48vh] md:h-[56vh] bg-center bg-cover"
         style={{ backgroundImage: "url('/contact-banner2.jpg')" }}
       >
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.45)_0%,rgba(0,0,0,0.35)_40%,rgba(0,0,0,0.25)_100%)] backdrop-blur-[1px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.45)_0%,rgba(0,0,0,0.35)_40%,rgba(0,0,0,0.25)_100%)] backdrop-blur-[6px]" />
         <div className="relative z-10 text-center px-6">
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
