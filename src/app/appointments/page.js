@@ -438,7 +438,10 @@ export default function NewAppointmentPage() {
       return null; // safety net
     }
     // Επιστρέφουμε YYYY-MM-DD (καθαρή ημερομηνία)
-    return d.toISOString().split("T")[0];
+    const isoDate = `${fullYear}-${String(mm).padStart(2, "0")}-${String(
+      dd
+    ).padStart(2, "0")}`;
+    return isoDate; // "YYYY-MM-DD"
   }
 
   function titleCaseGreek(str) {
@@ -491,10 +494,6 @@ export default function NewAppointmentPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // helpers που ΠΡΕΠΕΙ να υπάρχουν:
-    // import { normalizeGreekName } from "@/lib/normalizeGreekName";
-    // import { birthDateFromAmka } from "@/lib/amka";
 
     const greekRegex = /^[\u0370-\u03FF\u1F00-\u1FFF\s]+$/; // μόνο ελληνικά
     const amkaTrim = (newPatientData.amka || "").trim();
