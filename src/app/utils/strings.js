@@ -1,4 +1,4 @@
-// Κράτα το κάπου κοινό (π.χ. utils/strings.js)
+
 export function normalizeGreekName(input) {
   if (!input) return "";
   // καθάρισμα: trim & συμπίεση πολλαπλών κενών

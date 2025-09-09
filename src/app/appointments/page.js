@@ -492,6 +492,17 @@ export default function NewAppointmentPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // helpers που ΠΡΕΠΕΙ να υπάρχουν:
+    // import { normalizeGreekName } from "@/lib/normalizeGreekName";
+    // import { birthDateFromAmka } from "@/lib/amka";
+
+    const greekRegex = /^[\u0370-\u03FF\u1F00-\u1FFF\s]+$/; // μόνο ελληνικά
+    const amkaTrim = (newPatientData.amka || "").trim();
+    const emailTrim = (newPatientData.email || "").trim();
+    const phoneTrim = (newPatientData.phone || "").trim();
+    const firstNameRaw = (newPatientData.first_name || "").trim();
+    const lastNameRaw = (newPatientData.last_name || "").trim();
+
     // Έλεγχος ρύθμισης «δέχομαι ραντεβού»
     const { data: settingsCheck, error: settingsErr } = await supabase
       .from("clinic_settings")
@@ -515,10 +526,7 @@ export default function NewAppointmentPage() {
     // --- Validation ---
     const errors = {};
 
-    // ΟΝΟΜΑ / ΕΠΩΝΥΜΟ (ελληνικά μόνο + ελάχιστο μήκος 3)
-    const firstNameRaw = (newPatientData.first_name || "").trim();
-    const lastNameRaw = (newPatientData.last_name || "").trim();
-
+    // ΟΝΟΜΑ / ΕΠΩΝΥΜΟ
     if (!firstNameRaw || firstNameRaw.length < 3) {
       errors.first_name = "Το όνομα πρέπει να έχει τουλάχιστον 3 χαρακτήρες.";
     } else if (!greekRegex.test(firstNameRaw)) {
@@ -534,22 +542,25 @@ export default function NewAppointmentPage() {
     }
 
     // ΤΗΛΕΦΩΝΟ
-    if (!/^\d{10}$/.test(newPatientData.phone || "")) {
+    if (!/^\d{10}$/.test(phoneTrim)) {
       errors.phone = "Ο αριθμός τηλεφώνου πρέπει να είναι 10 ψηφία.";
     }
 
     // EMAIL
-    const emailTrim = (newPatientData.email || "").trim();
     if (!emailTrim || !/^[\w-.]+@([\w-]+\.)+[\w-]{2,}$/i.test(emailTrim)) {
       errors.email = "Παρακαλώ εισάγετε ένα έγκυρο email.";
     }
 
     // ΑΜΚΑ (αν δόθηκε)
-    const amkaTrim = (newPatientData.amka || "").trim();
+    let birthISO = null;
     if (amkaTrim) {
-      if (!isValidAmka(amkaTrim)) {
-        errors.amka =
-          "Το ΑΜΚΑ δεν είναι έγκυρο (ελέγξτε την ημερομηνία γέννησης DDMMYY).";
+      if (!/^\d{11}$/.test(amkaTrim)) {
+        errors.amka = "Το ΑΜΚΑ πρέπει να αποτελείται από 11 ψηφία.";
+      } else {
+        birthISO = birthDateFromAmka(amkaTrim); // "YYYY-MM-DD" ή null
+        if (!birthISO) {
+          errors.amka = "Το ΑΜΚΑ δεν είναι έγκυρο.";
+        }
       }
     }
 
@@ -565,26 +576,25 @@ export default function NewAppointmentPage() {
         formData.duration_minutes === "custom"
           ? parseInt(formData.customDuration || "", 10)
           : parseInt(formData.duration_minutes, 10);
-
       if (isNaN(duration) || duration <= 0) {
-        alert("Η διάρκεια του ραντεβού δεν είναι έγκυρη.");
-        return;
+        setIsSubmitting(false);
+        return alert("Η διάρκεια του ραντεβού δεν είναι έγκυρη.");
       }
 
       // ΗΜΕΡΟΜΗΝΙΑ / ΩΡΑ
       if (!formData.appointment_date || !formData.appointment_time) {
-        alert("Πρέπει να επιλέξετε ημερομηνία και ώρα.");
-        return;
+        setIsSubmitting(false);
+        return alert("Πρέπει να επιλέξετε ημερομηνία και ώρα.");
       }
       const [hour, minute] = formData.appointment_time.split(":").map(Number);
       const combinedDate = new Date(formData.appointment_date);
       combinedDate.setHours(hour, minute, 0, 0);
 
-      // ΚΑΝΟΝΙΚΟΠΟΙΗΣΗ ΟΝΟΜΑΤΩΝ πριν αποθήκευση
+      // Κανονικοποίηση ονομάτων
       const firstName = normalizeGreekName(firstNameRaw);
       const lastName = normalizeGreekName(lastNameRaw);
 
-      // Έλεγχος για Ιατρικούς Επισκέπτες (<=2 / μήνα)
+      // Ιατρικοί επισκέπτες (<= 2/μήνα)
       if (formData.reason === "Ιατρικός Επισκέπτης") {
         const startOfMonth = new Date(
           combinedDate.getFullYear(),
@@ -599,40 +609,41 @@ export default function NewAppointmentPage() {
           59,
           59
         );
-
-        const { count = 0, error: visitorError } = await supabase
+        const { count, error: visitorError } = await supabase
           .from("appointments")
           .select("*", { count: "exact", head: true })
           .eq("reason", "Ιατρικός Επισκέπτης")
           .gte("appointment_time", startOfMonth.toISOString())
           .lte("appointment_time", endOfMonth.toISOString());
-
         if (visitorError) {
-          console.error("Visitor count error:", visitorError);
-          alert("Σφάλμα κατά τον έλεγχο επισκέψεων.");
-          return;
+          setIsSubmitting(false);
+          return alert("Σφάλμα κατά τον έλεγχο επισκέψεων.");
         }
-        if (count >= 2) {
-          alert("Έχουν ήδη καταχωρηθεί 2 επισκέψεις για τον τρέχοντα μήνα.");
-          return;
+        if ((count || 0) >= 2) {
+          setIsSubmitting(false);
+          return alert(
+            "Έχουν ήδη καταχωρηθεί 2 επισκέψεις για τον τρέχοντα μήνα."
+          );
         }
       }
 
-      // Εύρεση ή Δημιουργία Ασθενούς (phone/amka)
+      // Εύρεση ή δημιουργία ασθενούς
       let patientId = null;
-      const searchQueries = [];
-      if ((newPatientData.phone || "").trim())
-        searchQueries.push(`phone.eq.${(newPatientData.phone || "").trim()}`);
-      if (amkaTrim) searchQueries.push(`amka.eq.${amkaTrim}`);
 
-      const birthISO = amkaTrim ? birthDateFromAmka(amkaTrim) : null;
+      const filters = [];
+      if (phoneTrim) filters.push(`phone.eq.${phoneTrim}`);
+      if (amkaTrim) filters.push(`amka.eq.${amkaTrim}`);
 
-      const { data: existingPatient } = await supabase
-        .from("patients")
-        .select("id")
-        .or(searchQueries.join(","))
-        .limit(1)
-        .single();
+      let existingPatient = null;
+      if (filters.length) {
+        const { data } = await supabase
+          .from("patients")
+          .select("id")
+          .or(filters.join(","))
+          .limit(1)
+          .single();
+        existingPatient = data || null;
+      }
 
       if (existingPatient) {
         patientId = existingPatient.id;
@@ -641,27 +652,25 @@ export default function NewAppointmentPage() {
           .from("patients")
           .insert([
             {
-              first_name: firstName, // normalized
-              last_name: lastName, // normalized
-              phone: (newPatientData.phone || "").trim(),
+              first_name: firstName,
+              last_name: lastName,
+              phone: phoneTrim,
               email: emailTrim || null,
               amka: amkaTrim || null,
-              birth_date: birthISO || null,
+              birth_date: birthISO || null, // μόνο αν υπήρχε έγκυρο ΑΜΚΑ
               gender: "other",
             },
           ])
           .select()
           .single();
-
         if (patientError || !data) {
-          console.error("❌ Patient insert error:", patientError);
-          alert("Σφάλμα κατά την καταχώρηση ασθενούς.");
-          return;
+          setIsSubmitting(false);
+          return alert("Σφάλμα κατά την καταχώρηση ασθενούς.");
         }
         patientId = data.id;
       }
 
-      // Έλεγχος ραντεβού ίδιας ημέρας για ίδιο ασθενή
+      // Έλεγχος διπλού ραντεβού ίδιας μέρας
       const startOfDay = new Date(combinedDate);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(combinedDate);
@@ -676,17 +685,16 @@ export default function NewAppointmentPage() {
         .in("status", ["pending", "approved", "completed"]);
 
       if (sameDayError) {
-        console.error("❌ Error checking same-day appointments:", sameDayError);
-        alert("Προέκυψε σφάλμα κατά τον έλεγχο ραντεβού.");
-        return;
+        setIsSubmitting(false);
+        return alert("Προέκυψε σφάλμα κατά τον έλεγχο ραντεβού.");
       }
       if ((sameDayAppointments || []).length > 0) {
-        setSubmitError("Έχετε ήδη ραντεβού για την επιλεγμένη ημέρα.");
         setIsSubmitting(false);
+        setSubmitError("Έχετε ήδη ραντεβού για την επιλεγμένη ημέρα.");
         return;
       }
 
-      // Καταχώρηση ραντεβού (approved)
+      // Καταχώρηση ραντεβού
       const { error } = await supabase.from("appointments").insert([
         {
           patient_id: patientId,
@@ -700,41 +708,40 @@ export default function NewAppointmentPage() {
           status: "approved",
         },
       ]);
-
       if (error) {
-        console.error("❌ Appointment insert error:", error);
-        alert(`Σφάλμα κατά την καταχώρηση ραντεβού:\n${error.message}`);
-      } else {
-        // Προαιρετικό email επιβεβαίωσης
-        try {
-          if (emailTrim) {
-            await fetch("/api/send-confirmation", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                email: emailTrim,
-                name: firstName, // normalized όνομα
-                date: combinedDate.toISOString(),
-                time: formData.appointment_time,
-                reason:
-                  formData.reason === "Προσαρμογή"
-                    ? formData.customReason
-                    : formData.reason,
-              }),
-            });
-          }
-        } catch (err) {
-          console.error("Σφάλμα αποστολής email επιβεβαίωσης:", err);
-        }
-
-        router.push(
-          `/appointments/success?ref=ok&name=${encodeURIComponent(
-            firstName
-          )}&date=${combinedDate.toISOString()}&reason=${encodeURIComponent(
-            formData.reason
-          )}`
-        );
+        setIsSubmitting(false);
+        return alert(`Σφάλμα κατά την καταχώρηση ραντεβού:\n${error.message}`);
       }
+
+      // Προαιρετικό email επιβεβαίωσης
+      try {
+        if (emailTrim) {
+          await fetch("/api/send-confirmation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: emailTrim,
+              name: firstName,
+              date: combinedDate.toISOString(),
+              time: formData.appointment_time,
+              reason:
+                formData.reason === "Προσαρμογή"
+                  ? formData.customReason
+                  : formData.reason,
+            }),
+          });
+        }
+      } catch (err) {
+        console.error("Σφάλμα αποστολής email επιβεβαίωσης:", err);
+      }
+
+      router.push(
+        `/appointments/success?ref=ok&name=${encodeURIComponent(
+          firstName
+        )}&date=${combinedDate.toISOString()}&reason=${encodeURIComponent(
+          formData.reason
+        )}`
+      );
     } catch (err) {
       console.error("Σφάλμα:", err);
       alert("Προέκυψε σφάλμα.");
@@ -1085,19 +1092,29 @@ export default function NewAppointmentPage() {
                 htmlFor="amka"
                 className="mb-1 block text-xs font-medium text-[#6b675f]"
               >
-                ΑΜΚΑ (προαιρετικό)
+                ΑΜΚΑ (11 ψηφία – προαιρετικό)
               </label>
               <input
                 id="amka"
                 type="text"
                 inputMode="numeric"
-                placeholder="π.χ. 01019912345"
-                value={newPatientData.amka}
-                onChange={(e) =>
-                  setNewPatientData({ ...newPatientData, amka: e.target.value })
-                }
-                className="w-full rounded-xl border border-[#e5e1d8] bg-white/80 px-3 py-2.5 text-[15px] shadow-sm outline-none transition focus:ring-4 focus:ring-[#d7cfc2]/50"
+                pattern="\d*"
+                placeholder="π.χ. 21079812345"
+                value={newPatientData.amka || ""}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, ""); // keep digits only
+                  setNewPatientData({ ...newPatientData, amka: v });
+                  setFormErrors((prev) => ({ ...prev, amka: undefined }));
+                }}
+                aria-invalid={!!formErrors?.amka}
+                className={`w-full rounded-xl border bg-white/80 px-3 py-2.5 text-[15px] shadow-sm outline-none transition
+    focus:ring-4 focus:ring-[#d7cfc2]/50 ${
+      formErrors?.amka ? "border-red-400" : "border-[#e5e1d8]"
+    }`}
               />
+              {formErrors?.amka && (
+                <p className="mt-1 text-xs text-red-600">{formErrors.amka}</p>
+              )}
             </div>
           </div>
         </section>
