@@ -49,8 +49,8 @@ export default function ContactPage() {
             transition={{ delay: 0.15, duration: 0.7 }}
             className="text-base md:text-lg max-w-2xl mx-auto text-[#efeae0]"
           >
-            Καλέστε μας ή κλείστε ηλεκτρονικά το ραντεβού σας. Θα χαρούμε να σας
-            εξυπηρετήσουμε.
+            Μπορείτε να επικοινωνείτε μαζί μας τηλεφωνικά ή να προγραμματίσετε
+            εύκολα την επόμενη επίσκεψή σας ηλεκτρονικά.
           </motion.p>
         </div>
       </section>
