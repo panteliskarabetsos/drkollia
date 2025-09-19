@@ -374,7 +374,6 @@ export default function AdminPage() {
 
           {/* --- Extra Card with Stats --- */}
 
-          {/* --- Extra Card with Stats (enhanced) --- */}
           <div className="relative overflow-hidden border border-[#e5e1d8] bg-white/90 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col backdrop-blur group">
             {/* soft background accent */}
             <div className="pointer-events-none absolute -top-20 -left-24 w-64 h-64 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#f4f1ea] via-transparent to-transparent opacity-80" />
@@ -672,7 +671,7 @@ export default function AdminPage() {
 
         {/* Icon button */}
         <button
-          onClick={() => router.push("/help")}
+          onClick={() => router.push("/admin/help")}
           aria-label="Need help?"
           className="p-3 rounded-full shadow-lg bg-gradient-to-r from-blue-500 to-blue-700 text-white hover:from-blue-600 hover:to-blue-800 transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-300"
         >

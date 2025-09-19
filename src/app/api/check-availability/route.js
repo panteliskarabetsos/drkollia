@@ -59,7 +59,7 @@ const REASON_RULES = {
 };
 
 // --------------------------- Helpers ---------------------------
-// --------------------------- Helpers ---------------------------
+
 const pad2 = (n) => String(n).padStart(2, "0");
 const timeStr = (h, m) => `${pad2(h)}:${pad2(m)}`;
 const normalize = (s = "") =>
@@ -114,6 +114,67 @@ function intersectWindows(base, windows) {
     }
   return out;
 }
+/** Minutes-of-day in Athens from either "HH:MM" or ISO datetime */
+function minutesOfDayAthensFromAny(s) {
+  if (!s) return null;
+  // If it looks like an ISO (has 'T'), format it to HH:MM in Athens first
+  if (s.includes("T")) {
+    const hm = new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: TZ,
+    }).format(new Date(s)); // "HH:MM" in Athens
+    const [h, m] = hm.split(":").map(Number);
+    return h * 60 + m;
+  }
+  // Otherwise assume "HH:MM"
+  const [h, m] = String(s).split(":").map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+// Pick up to `count` 15' starts from the earliest 30' window **within one period**
+function pickWindowHoldInPeriod(ticks, period, count = 2) {
+  const startMin = period.startMin;
+  const endMin = period.endMin;
+
+  // all free 15' aligned starts inside this period
+  const starts = ticks
+    .filter((t) => t.free)
+    .filter((t) => {
+      const mm = t.h * 60 + t.m;
+      return mm >= startMin && mm < endMin;
+    })
+    .map((t) => t.key);
+
+  // group by half-hour window (e.g., 10:00 group → [10:00, 10:15])
+  const byWindow = new Map();
+  const mmOf = (hhmm) => {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const toHM = (mm) =>
+    `${String(Math.floor(mm / 60)).padStart(2, "0")}:${String(mm % 60).padStart(
+      2,
+      "0"
+    )}`;
+
+  for (const s of starts) {
+    const mm = mmOf(s);
+    const winStart = Math.floor(mm / 30) * 30;
+    const key = toHM(winStart);
+    if (!byWindow.has(key)) byWindow.set(key, []);
+    byWindow.get(key).push(s);
+  }
+
+  // earliest window in this period
+  const windows = [...byWindow.keys()].sort((a, b) => mmOf(a) - mmOf(b));
+  if (!windows.length) return new Set();
+
+  const firstWin = windows[0];
+  const inWin = byWindow.get(firstWin).sort((a, b) => mmOf(a) - mmOf(b));
+  return new Set(inWin.slice(0, count)); // e.g., :00 & :15 (or :30 & :45)
+}
+
 function buildTicks(
   workingPeriods,
   fullDayBookedSet,
@@ -321,9 +382,16 @@ async function computeAvailability({
   const exceptionRanges = (exceptions || [])
     .filter((e) => e.start_time && e.end_time)
     .map((e) => ({
-      startMin: minutesFromHHMM(e.start_time),
-      endMin: minutesFromHHMM(e.end_time),
-    }));
+      startMin: minutesOfDayAthensFromAny(e.start_time),
+      endMin: minutesOfDayAthensFromAny(e.end_time),
+    }))
+    // guard against bad data (nulls or reversed)
+    .filter(
+      (r) =>
+        Number.isFinite(r.startMin) &&
+        Number.isFinite(r.endMin) &&
+        r.endMin > r.startMin
+    );
 
   // 5) Booked
   const startOfDay = `${dateISO}T00:00:00.000Z`;
@@ -516,10 +584,12 @@ async function computeAvailability({
   }
 
   const visibleSet = new Set(limited);
-  const allSlots = ticks.map((t) => ({
-    time: t.key,
-    available: t.m % align === 0 && visibleSet.has(t.key),
-  }));
+  const allSlots = ticks
+    .filter((t) => t.m % align === 0 && visibleSet.has(t.key))
+    .map((t) => ({
+      time: t.key,
+      available: true,
+    }));
 
   const payload = {
     dateISO,

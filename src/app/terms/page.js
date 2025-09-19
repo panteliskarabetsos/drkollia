@@ -256,7 +256,7 @@ export default function TermsPage() {
         </p>
 
         <p className="text-sm text-slate-500 mt-12">
-          Τελευταία ενημέρωση: Ιούλιος 2025
+          Τελευταία ενημέρωση: Σεπτέμβριος 2025
         </p>
       </div>
     </main>
