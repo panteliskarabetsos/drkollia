@@ -832,7 +832,7 @@ export default function NewAppointmentPage() {
                 htmlFor="first_name"
                 className="mb-1 block text-xs font-medium text-[#6b675f]"
               >
-                Όνομα
+                Όνομα *
               </label>
               <input
                 id="first_name"
@@ -867,7 +867,7 @@ export default function NewAppointmentPage() {
                 htmlFor="last_name"
                 className="mb-1 block text-xs font-medium text-[#6b675f]"
               >
-                Επώνυμο
+                Επώνυμο *
               </label>
               <input
                 id="last_name"
@@ -902,7 +902,7 @@ export default function NewAppointmentPage() {
                 htmlFor="phone"
                 className="mb-1 block text-xs font-medium text-[#6b675f]"
               >
-                Τηλέφωνο
+                Τηλέφωνο *
               </label>
               <input
                 id="phone"
@@ -947,7 +947,7 @@ export default function NewAppointmentPage() {
                 htmlFor="email"
                 className="mb-1 block text-xs font-medium text-[#6b675f]"
               >
-                Email
+                Email *
               </label>
               <input
                 id="email"
@@ -1062,7 +1062,7 @@ export default function NewAppointmentPage() {
                 locale={greekLocale}
                 selected={formData.appointment_date}
                 onSelect={(date) => {
-                  if (!acceptNewAppointments) return; // 🔹 block selecting when OFF
+                  if (!acceptNewAppointments) return;
                   setFormData({
                     ...formData,
                     appointment_date: date,
@@ -1077,9 +1077,11 @@ export default function NewAppointmentPage() {
                 }}
                 modifiers={{
                   weekend: (date) => [0, 6].includes(date.getDay()), // Κυριακή = 0, Σάββατο = 6
+                  friday: (date) => date.getDay() === 5,
                 }}
                 modifiersClassNames={{
                   weekend: "text-gray-400 opacity-60",
+                  friday: "text-gray-400 opacity-60",
                 }}
                 showOutsideDays
                 initialFocus
@@ -1278,7 +1280,10 @@ export default function NewAppointmentPage() {
                 Όρους Χρήσης
               </a>{" "}
               και την{" "}
-              <a href="/privacy" className="underline-offset-2 hover:underline">
+              <a
+                href="/privacy-policy"
+                className="underline-offset-2 hover:underline"
+              >
                 Πολιτική Απορρήτου
               </a>
               .

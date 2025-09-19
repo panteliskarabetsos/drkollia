@@ -59,6 +59,7 @@ const REASON_RULES = {
 };
 
 // --------------------------- Helpers ---------------------------
+// --------------------------- Helpers ---------------------------
 const pad2 = (n) => String(n).padStart(2, "0");
 const timeStr = (h, m) => `${pad2(h)}:${pad2(m)}`;
 const normalize = (s = "") =>
@@ -72,9 +73,8 @@ const minutesFromHHMM = (hhmm) => {
   const [h, m] = String(hhmm).split(":").map(Number);
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
 };
-const minutesOf = minutesFromHHMM; // alias
+const minutesOf = minutesFromHHMM;
 
-/** Format an ISO timestamp to "HH:mm" in Europe/Athens */
 function hhmmAthens(iso) {
   return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
@@ -83,8 +83,6 @@ function hhmmAthens(iso) {
     timeZone: TZ,
   }).format(new Date(iso));
 }
-
-/** Is the requested date today in Athens? */
 function isTodayInAthens(dateISO) {
   const now = new Date();
   const ymdAthens = new Intl.DateTimeFormat("en-CA", {
@@ -92,57 +90,47 @@ function isTodayInAthens(dateISO) {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(now); // "YYYY-MM-DD"
+  }).format(now);
   return ymdAthens === dateISO;
 }
-
-/** Return current minutes-of-day in Athens */
 function nowMinutesInAthens() {
   const nowHM = new Intl.DateTimeFormat("en-GB", {
     timeZone: TZ,
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).format(new Date()); // "HH:MM"
+  }).format(new Date());
   const [h, m] = nowHM.split(":").map(Number);
   return h * 60 + m;
 }
-
-/** Intersect working periods with optional allowed windows (both arrays of {startMin,endMin}) */
 function intersectWindows(base, windows) {
-  if (!windows || windows.length === 0) return base;
+  if (!windows?.length) return base;
   const out = [];
-  for (const b of base) {
+  for (const b of base)
     for (const w of windows) {
       const s = Math.max(b.startMin, w.startMin);
       const e = Math.min(b.endMin, w.endMin);
       if (s < e) out.push({ startMin: s, endMin: e });
     }
-  }
   return out;
 }
-
-/** Build 15' ticks for working periods */
 function buildTicks(
   workingPeriods,
   fullDayBookedSet,
   exceptionRanges,
   suppressPast
 ) {
-  const ticks = []; // [{h,m, key:"HH:MM", free:boolean}]
+  const ticks = [];
   const nowMin = suppressPast ? nowMinutesInAthens() : -1;
-
   const inException = (h, m) => {
     if (!exceptionRanges?.length) return false;
     const mm = h * 60 + m;
     return exceptionRanges.some((r) => mm >= r.startMin && mm < r.endMin);
   };
-
   for (const { startMin, endMin } of workingPeriods) {
-    // iterate in 15' steps
     for (let mm = startMin; mm < endMin; mm += 15) {
-      const h = Math.floor(mm / 60);
-      const m = mm % 60;
+      const h = Math.floor(mm / 60),
+        m = mm % 60;
       const key = timeStr(h, m);
       const past = suppressPast && mm <= nowMin;
       const unavailable =
@@ -153,23 +141,37 @@ function buildTicks(
   return ticks;
 }
 
+// NEW: choose “held” 15' starts (prefer :00 / :30)
+function pickDailyHold(selectableStarts, count = 2, preferAnchors = true) {
+  const anchors = preferAnchors
+    ? selectableStarts.filter((t) => minutesOf(t) % 30 === 0)
+    : [];
+  const picks = anchors.slice(0, count);
+  if (picks.length < count) {
+    for (const t of selectableStarts) {
+      if (!picks.includes(t)) {
+        picks.push(t);
+        if (picks.length === count) break;
+      }
+    }
+  }
+  return new Set(picks);
+}
+
 /** First available (date, time) search within N days */
 async function findNextAvailable({ dateISO, effective, days = 30 }) {
   const target = new Date(`${dateISO}T00:00:00Z`);
   for (let i = 1; i <= days; i++) {
     const next = new Date(target);
     next.setUTCDate(target.getUTCDate() + i);
-
     const y = next.getUTCFullYear();
     const m = pad2(next.getUTCMonth() + 1);
     const d = pad2(next.getUTCDate());
     const probeISO = `${y}-${m}-${d}`;
-
     const res = await computeAvailability({
       dateISO: probeISO,
       reason: effective.reasonOriginal,
       includeNext: false,
-      // carry through the effective settings
       _effectiveOverride: effective,
     });
     if (res.availableSlots?.length) {
@@ -182,10 +184,10 @@ async function findNextAvailable({ dateISO, effective, days = 30 }) {
 // ---------------------- Core availability ----------------------
 async function computeAvailability({
   dateISO,
-  duration, // optional incoming (will be overridden by reason rules if present)
+  duration,
   reason = "",
   includeNext,
-  _effectiveOverride, // internal use when probing next dates
+  _effectiveOverride,
 }) {
   // 0) Accept new appointments?
   const { data: settings, error: settingsErr } = await supabase
@@ -204,7 +206,7 @@ async function computeAvailability({
     };
   }
 
-  // 1) Resolve reason rules
+  // 1) Resolve rules
   const normReason = normalize(reason);
   const baseRule = REASON_RULES[normReason] || REASON_RULES.default;
   const ruleDur = Number(
@@ -214,38 +216,41 @@ async function computeAvailability({
     reasonOriginal: reason,
     normReason,
     durationMinutes: ruleDur,
-    reserveMinutes: Number(
-      baseRule.reserveMinutes ?? ruleDur // default reserve == duration
-    ),
+    reserveMinutes: Number(baseRule.reserveMinutes ?? ruleDur),
     startAlignment:
       baseRule.startAlignment != null
         ? Number(baseRule.startAlignment)
         : ruleDur <= 15
         ? 15
-        : 30, // default align 15' for 15-min appts, else 30'
+        : 30,
     dailyCap: baseRule.dailyCap ?? null,
     monthlyCap: baseRule.monthlyCap ?? null,
-    dbMatch: baseRule.dbMatch || reason, // what to compare against in DB
+    dbMatch: baseRule.dbMatch || reason,
     allowedWindows: Array.isArray(baseRule.allowedWindows)
       ? baseRule.allowedWindows.map((w) => ({
           startMin: minutesFromHHMM(w.start),
           endMin: minutesFromHHMM(w.end),
         }))
       : null,
-    bufferBeforeTicks: Number(baseRule.bufferBeforeTicks ?? 0), // 15' units before
-    bufferAfterTicks: Number(baseRule.bufferAfterTicks ?? 0), // 15' units after
+    bufferBeforeTicks: Number(baseRule.bufferBeforeTicks ?? 0),
+    bufferAfterTicks: Number(baseRule.bufferAfterTicks ?? 0),
+
+    // Carry the hold settings (even if current reason isn't evaluation)
+    evalDailyHoldCount:
+      REASON_RULES["αξιολογηση αποτελεσματων"]?.dailyHoldCount ?? 0,
+    evalDailyHoldAnchors:
+      !!REASON_RULES["αξιολογηση αποτελεσματων"]?.dailyHoldAnchors,
   };
 
-  // 2) Monthly cap (if configured for this reason)
+  // 2) Monthly cap
   if (effective.monthlyCap != null) {
     const [Y, M] = dateISO.split("-").map(Number);
     const monthStart = new Date(Date.UTC(Y, M - 1, 1, 0, 0, 0));
     const nextMonthStart = new Date(Date.UTC(Y, M, 1, 0, 0, 0));
-
     const { count, error: capErr } = await supabase
       .from("appointments")
       .select("*", { head: true, count: "exact" })
-      .eq("reason", effective.dbMatch) // use dbMatch to be precise
+      .eq("reason", effective.dbMatch)
       .gte("appointment_time", monthStart.toISOString())
       .lt("appointment_time", nextMonthStart.toISOString());
     if (capErr) throw capErr;
@@ -261,7 +266,7 @@ async function computeAvailability({
     }
   }
 
-  // 3) Base schedule for weekday
+  // 3) Base schedule
   const weekday = new Date(`${dateISO}T00:00:00Z`).getUTCDay(); // 0=Sunday
   const { data: scheduleData, error: schedErr } = await supabase
     .from("clinic_schedule")
@@ -269,7 +274,7 @@ async function computeAvailability({
     .eq("weekday", weekday);
   if (schedErr) throw schedErr;
 
-  if (!scheduleData || scheduleData.length === 0) {
+  if (!scheduleData?.length) {
     return {
       availableSlots: [],
       allSlots: [],
@@ -278,17 +283,14 @@ async function computeAvailability({
     };
   }
 
-  // Convert schedule periods to minutes-of-day ranges
   let workingPeriods = scheduleData.map((s) => {
     const startMin = minutesFromHHMM(s.start_time);
     const endMin = minutesFromHHMM(s.end_time);
     return { startMin, endMin };
   });
 
-  // Apply reason-specific allowed windows (if any)
   workingPeriods = intersectWindows(workingPeriods, effective.allowedWindows);
-
-  if (workingPeriods.length === 0) {
+  if (!workingPeriods.length) {
     return {
       availableSlots: [],
       allSlots: [],
@@ -298,7 +300,7 @@ async function computeAvailability({
     };
   }
 
-  // 4) Exceptions for that date
+  // 4) Exceptions
   const { data: exceptions, error: excErr } = await supabase
     .from("schedule_exceptions")
     .select("start_time, end_time")
@@ -323,7 +325,7 @@ async function computeAvailability({
       endMin: minutesFromHHMM(e.end_time),
     }));
 
-  // 5) Already booked appointments for that date
+  // 5) Booked
   const startOfDay = `${dateISO}T00:00:00.000Z`;
   const endOfDay = `${dateISO}T23:59:59.999Z`;
 
@@ -335,12 +337,10 @@ async function computeAvailability({
     .in("status", ["approved", "completed", "scheduled"]);
   if (bookedErr) throw bookedErr;
 
-  // Build set of blocked 15' ticks (HH:MM in Athens)
   const bookedSet = new Set();
   const sameDayReasonCount = { total: 0 };
   (booked || []).forEach(
     ({ appointment_time, duration_minutes, reason: r }) => {
-      // count same-day same reason (for dailyCap)
       if (effective.dailyCap != null && r === (effective.dbMatch || reason)) {
         sameDayReasonCount.total += 1;
       }
@@ -353,7 +353,6 @@ async function computeAvailability({
     }
   );
 
-  // Daily cap enforcement
   if (
     effective.dailyCap != null &&
     sameDayReasonCount.total >= effective.dailyCap
@@ -367,10 +366,8 @@ async function computeAvailability({
     };
   }
 
-  // 6) Build ticks grid
-  const suppressPast = isTodayInAthens(dateISO); // only hide past times for today
-
-  // Convert workingPeriods to 15-minute steps
+  // 6) Ticks grid
+  const suppressPast = isTodayInAthens(dateISO);
   const ticks = buildTicks(
     workingPeriods,
     bookedSet,
@@ -378,23 +375,20 @@ async function computeAvailability({
     suppressPast
   );
 
-  // 7) Choose valid start times based on reason rules
+  // 7) Valid starts for THIS reason
   const reserveSteps = Math.ceil(Number(effective.reserveMinutes) / 15);
   const bufferBefore = Number(effective.bufferBeforeTicks || 0);
   const bufferAfter = Number(effective.bufferAfterTicks || 0);
   const align = Number(effective.startAlignment || 30);
-
   const isAligned = (m) => m % align === 0;
 
   const selectable = [];
   for (let i = 0; i < ticks.length; i++) {
     const t0 = ticks[i];
-    if (!t0.free) continue;
-    if (!isAligned(t0.m)) continue;
+    if (!t0.free || !isAligned(t0.m)) continue;
 
     let ok = true;
-
-    // require buffer BEFORE
+    // buffer BEFORE
     for (let b = 1; b <= bufferBefore; b++) {
       const tb = ticks[i - b];
       if (!tb || !tb.free) {
@@ -402,15 +396,13 @@ async function computeAvailability({
         break;
       }
       const prev = ticks[i - b + 1] || t0;
-      const delta = prev.h * 60 + prev.m - (tb.h * 60 + tb.m);
-      if (delta !== 15) {
+      if (prev.h * 60 + prev.m - (tb.h * 60 + tb.m) !== 15) {
         ok = false;
         break;
       }
     }
     if (!ok) continue;
-
-    // require reserveSteps contiguous FREE ticks (the actual hold)
+    // reserve block
     for (let k = 1; k < reserveSteps; k++) {
       const tk = ticks[i + k];
       if (!tk || !tk.free) {
@@ -418,15 +410,13 @@ async function computeAvailability({
         break;
       }
       const prev = ticks[i + k - 1];
-      const delta = tk.h * 60 + tk.m - (prev.h * 60 + prev.m);
-      if (delta !== 15) {
+      if (tk.h * 60 + tk.m - (prev.h * 60 + prev.m) !== 15) {
         ok = false;
         break;
       }
     }
     if (!ok) continue;
-
-    // require buffer AFTER
+    // buffer AFTER
     for (let a = 1; a <= bufferAfter; a++) {
       const ta = ticks[i + reserveSteps + a - 1];
       const prev = ticks[i + reserveSteps + a - 2];
@@ -434,57 +424,101 @@ async function computeAvailability({
         ok = false;
         break;
       }
-      const delta = ta.h * 60 + ta.m - (prev.h * 60 + prev.m);
-      if (delta !== 15) {
+      if (ta.h * 60 + ta.m - (prev.h * 60 + prev.m) !== 15) {
         ok = false;
         break;
       }
     }
     if (!ok) continue;
 
-    selectable.push(t0.key); // "HH:MM"
+    selectable.push(t0.key);
   }
 
-  // -------- WINDOWED TWO policy for 15' appointments --------
-  // Pick up to 2 starts from the earliest 30-minute window only.
-  // If that window has just one free start, expose only one.
-  let visibleSet;
-  let limited;
+  // ---------- EXCLUSIVE DAILY HOLD FOR Αξιολόγηση Αποτελεσμάτων ----------
+  // Build the reserved set from today's FREE 15-min-aligned starts (independent of the current reason).
+  let reservedSet = new Set();
+  const holdCount = Number(
+    REASON_RULES["αξιολογηση αποτελεσματων"]?.dailyHoldCount || 0
+  );
+  const holdAnchors =
+    !!REASON_RULES["αξιολογηση αποτελεσματων"]?.dailyHoldAnchors;
+
+  if (holdCount > 0) {
+    // Collect all free 15-min aligned starts from the day's ticks (ignores current reason constraints)
+    const free15Aligned = ticks
+      .filter((t) => t.free && t.m % 15 === 0)
+      .map((t) => t.key)
+      .sort((a, b) => minutesOf(a) - minutesOf(b));
+
+    reservedSet = pickDailyHold(free15Aligned, holdCount, holdAnchors);
+  }
+
+  const isEvaluation = normReason === "αξιολογηση αποτελεσματων";
+
+  // If NOT evaluation, mask out any reserved holds from the selectable list
+  let filteredSelectable = selectable;
+  if (!isEvaluation && holdCount > 0) {
+    filteredSelectable = selectable.filter((t) => !reservedSet.has(t));
+  }
+
+  // Build the visible set:
+  // - Evaluation: show remaining held slots (1–2). If none left, fallback to your windowed-two logic.
+  // - Others: windowed-two from filteredSelectable (unchanged UX).
+  let limited = filteredSelectable;
+
   if (effective.durationMinutes <= 15) {
-    // Group selectable starts by half-hour window start
-    const groups = new Map(); // key = "HH:MM" of window start (00 or 30)
-    for (const t of selectable) {
-      const mins = minutesOf(t);
-      const winStartMin = Math.floor(mins / 30) * 30;
-      const gKey = timeStr(Math.floor(winStartMin / 60), winStartMin % 60);
-      if (!groups.has(gKey)) groups.set(gKey, []);
-      groups.get(gKey).push(t);
-    }
-    // Earliest window
-    const keys = Array.from(groups.keys()).sort(
-      (a, b) => minutesOf(a) - minutesOf(b)
-    );
-    if (keys.length > 0) {
-      const firstKey = keys[0];
-      const firstWindowSlots = groups
-        .get(firstKey)
-        .sort((a, b) => minutesOf(a) - minutesOf(b))
-        .slice(0, 2); // up to 2 from the same window
-      limited = firstWindowSlots;
+    if (isEvaluation && holdCount > 0) {
+      const stillFreeHeld = [...reservedSet]
+        .filter((t) => selectable.includes(t)) // ensure still free for this reason’s constraints
+        .sort((a, b) => minutesOf(a) - minutesOf(b));
+      if (stillFreeHeld.length > 0) {
+        limited = stillFreeHeld.slice(0, 2); // show up to the 2 held ones
+      } else {
+        // fallback: earliest windowed two from filteredSelectable
+        const groups = new Map();
+        for (const t of filteredSelectable) {
+          const mins = minutesOf(t);
+          const winStart = Math.floor(mins / 30) * 30;
+          const key = timeStr(Math.floor(winStart / 60), winStart % 60);
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(t);
+        }
+        const keys = [...groups.keys()].sort(
+          (a, b) => minutesOf(a) - minutesOf(b)
+        );
+        limited = keys.length
+          ? groups
+              .get(keys[0])
+              .sort((a, b) => minutesOf(a) - minutesOf(b))
+              .slice(0, 2)
+          : [];
+      }
     } else {
-      limited = [];
+      // Non-evaluation 15′ reasons: earliest windowed two from filteredSelectable
+      const groups = new Map();
+      for (const t of filteredSelectable) {
+        const mins = minutesOf(t);
+        const winStart = Math.floor(mins / 30) * 30;
+        const key = timeStr(Math.floor(winStart / 60), winStart % 60);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(t);
+      }
+      const keys = [...groups.keys()].sort(
+        (a, b) => minutesOf(a) - minutesOf(b)
+      );
+      limited = keys.length
+        ? groups
+            .get(keys[0])
+            .sort((a, b) => minutesOf(a) - minutesOf(b))
+            .slice(0, 2)
+        : [];
     }
-    visibleSet = new Set(limited);
-  } else {
-    // Non-15' reasons: expose all aligned valid starts (or add your own limit logic)
-    limited = selectable;
-    visibleSet = new Set(selectable);
   }
 
-  // Timeline for UI; mark as available ONLY those in visibleSet
+  const visibleSet = new Set(limited);
   const allSlots = ticks.map((t) => ({
     time: t.key,
-    available: isAligned(t.m) && visibleSet.has(t.key),
+    available: t.m % align === 0 && visibleSet.has(t.key),
   }));
 
   const payload = {
@@ -496,20 +530,17 @@ async function computeAvailability({
       startAlignment: effective.startAlignment,
       dailyCap: effective.dailyCap,
       monthlyCap: effective.monthlyCap,
-      allowedWindows: REASON_RULES[normReason]?.allowedWindows || null,
-      windowedTwoFor15min: true,
+      evalDailyHoldCount: holdCount,
+      evalDailyHoldAnchors: holdAnchors,
     },
-    availableSlots: limited, // e.g., ["18:00","18:15"] or ["18:00"] or next window's two
+    availableSlots: limited, // evaluation sees held ones; others don't see held ones
     allSlots,
     fullDayException,
     reasonBlocked: false,
   };
 
   if (includeNext && limited.length === 0) {
-    payload.nextAvailable = await findNextAvailable({
-      dateISO,
-      effective,
-    });
+    payload.nextAvailable = await findNextAvailable({ dateISO, effective });
   }
 
   return payload;
@@ -519,12 +550,7 @@ async function computeAvailability({
 export async function POST(req) {
   try {
     const body = await req.json();
-    const {
-      dateISO, // "YYYY-MM-DD" (Athens-local date of interest)
-      duration, // number, minutes (optional; reason rules may override)
-      reason = "", // string (Greek or English)
-      includeNext = true, // boolean
-    } = body || {};
+    const { dateISO, duration, reason = "", includeNext = true } = body || {};
 
     if (!dateISO) {
       return NextResponse.json(
