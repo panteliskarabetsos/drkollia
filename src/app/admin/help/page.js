@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
@@ -274,6 +274,20 @@ export default function HelpPage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [pathname, router]);
+
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("focus") === "1") {
+      // give the page a tick to render before focusing
+      setTimeout(() => {
+        const el = document.querySelector(
+          'input[placeholder="Αναζήτηση στο FAQ…"]'
+        );
+        el?.focus();
+        el?.select?.();
+      }, 120);
+    }
+  }, [searchParams]);
 
   // -------- FAQ search/filter --------
   const filteredFaqs = useMemo(() => {

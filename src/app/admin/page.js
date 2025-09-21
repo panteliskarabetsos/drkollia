@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+
 import { supabase } from "../lib/supabaseClient";
 import {
   CalendarDays,
@@ -17,8 +18,8 @@ import {
   Users,
   CalendarRange,
   Sunrise,
-  Sunset,
-  RefreshCcw,
+  Keyboard,
+  Command,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -160,6 +161,49 @@ export default function AdminPage() {
 
     if (user) loadProfile();
   }, [user]);
+
+  useEffect(() => {
+    const isTyping = (el) => {
+      if (!el) return false;
+      const tag = el.tagName?.toLowerCase();
+      return (
+        el.isContentEditable ||
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select"
+      );
+    };
+
+    const onKey = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return; // ignore with modifiers
+      if (isTyping(document.activeElement)) return; // don't fire while typing
+
+      const k = e.key;
+
+      if (k.toLowerCase() === "n") {
+        e.preventDefault();
+        router.push("/admin/appointments/new");
+        return;
+      }
+
+      if (k.toLowerCase() === "p") {
+        e.preventDefault();
+        router.push("/admin/patients/new");
+        return;
+      }
+
+      // Both ? and / will open Help and focus the search
+      if (k === "?" || k === "/" || (k === "/" && e.shiftKey)) {
+        e.preventDefault();
+        // pass a flag so Help can auto-focus the search box
+        router.push("/admin/help?focus=1");
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [router]);
 
   useEffect(() => {
     const loadNextAppointment = async () => {
@@ -678,6 +722,70 @@ export default function AdminPage() {
           <LifeBuoy className="w-8 h-8" />
         </button>
       </div>
+
+      <div className="max-w-6xl mx-auto px-4 -mt-10 mb-8 flex items-center justify-end">
+        <ShortcutsLegend />
+      </div>
     </main>
+  );
+}
+
+function Kbd({ children }) {
+  return (
+    <kbd className="px-2 py-0.5 rounded border border-gray-300 bg-white text-[11px] leading-none shadow-sm">
+      {children}
+    </kbd>
+  );
+}
+
+function ShortcutsLegend() {
+  return (
+    <div className="relative">
+      {/* collapsed chip */}
+      <button
+        type="button"
+        className="group inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-xs text-gray-700 shadow-sm backdrop-blur hover:bg-white transition"
+        title="Πληκτροσυντομεύσεις"
+        aria-expanded="false"
+        aria-controls="shortcuts-panel"
+        onClick={(e) => {
+          const panel = e.currentTarget.nextElementSibling;
+          const expanded = panel?.classList.toggle("hidden") === false;
+          e.currentTarget.setAttribute(
+            "aria-expanded",
+            expanded ? "true" : "false"
+          );
+        }}
+      >
+        <Command className="w-4 h-4 text-gray-600" aria-hidden="true" />
+        <span className="font-medium">Συντομεύσεις</span>
+        <Kbd>?</Kbd>
+      </button>
+
+      {/* panel */}
+      <div className="hidden absolute right-0 mt-2 w-[320px] rounded-xl border border-gray-200 bg-white p-3 text-[12px] text-gray-700 shadow-lg">
+        <div className="grid grid-cols-1 gap-2">
+          <div className="flex items-center justify-between">
+            <span>Άνοιγμα «Νέο Ραντεβού»</span>
+            <Kbd>N</Kbd>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Άνοιγμα «Νέος Ασθενής»</span>
+            <Kbd>P</Kbd>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Βοήθεια / Εστίαση αναζήτησης</span>
+            <div className="flex items-center gap-1">
+              <Kbd>?</Kbd>
+              <span className="text-gray-400">ή</span>
+              <Kbd>/</Kbd>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 border-t pt-2 text-[11px] text-gray-500">
+          Δεν ενεργοποιούνται όταν πληκτρολογείτε σε πεδίο.
+        </div>
+      </div>
+    </div>
   );
 }

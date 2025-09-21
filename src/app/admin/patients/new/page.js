@@ -584,7 +584,7 @@ export default function NewPatientPage() {
             </div>
           )}
 
-          <div className="flex justify-end">
+          {/* <div className="flex justify-end">
             <button
               type="submit"
               disabled={loading}
@@ -592,7 +592,7 @@ export default function NewPatientPage() {
             >
               {loading ? "Αποθήκευση..." : "Καταχώρηση"}
             </button>
-          </div>
+          </div> */}
 
           {/* sticky bottom action bar */}
           <div className="sticky bottom-0 inset-x-0 mt-6 z-20 border-t border-[#e7eceb] bg-white/80 backdrop-blur px-4 py-3 rounded-b-3xl flex items-center justify-between">
