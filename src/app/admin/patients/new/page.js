@@ -75,7 +75,7 @@ export default function NewPatientPage() {
   const [phoneExists, setPhoneExists] = useState(false);
 
   const [loading, setLoading] = useState(true);
-
+  const [submitIntent, setSubmitIntent] = useState("save");
   const firstErrorRef = useRef(null);
 
   // debounced duplicate checks
@@ -335,7 +335,11 @@ export default function NewPatientPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-14">
+        <form
+          id="new-patient-form"
+          onSubmit={handleSubmit}
+          className="space-y-14"
+        >
           <Section title="🧾 Στοιχεία Ασθενούς">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 bg-white/60 backdrop-blur-md p-6 rounded-2xl shadow-md border border-gray-200">
               <InputField
@@ -602,13 +606,18 @@ export default function NewPatientPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => router.push("/admin/appointments/new")}
-                className="text-sm rounded-lg border border-[#cfd8d6] px-4 py-2 hover:bg-[#f7f9f8] transition"
+                onClick={() => {
+                  setSubmitIntent("save_and_new_appt");
+                  document.getElementById("new-patient-form")?.requestSubmit();
+                }}
+                disabled={loading}
+                className="text-sm rounded-lg border border-[#cfd8d6] px-4 py-2 hover:bg-[#f7f9f8] transition disabled:opacity-50"
               >
                 Αποθήκευση & Νέο Ραντεβού
               </button>
               <button
                 type="submit"
+                onClick={() => setSubmitIntent("save")}
                 disabled={loading}
                 className="bg-[#2e2c28] hover:bg-[#1f1e1b] text-white px-5 py-2 rounded-lg text-sm font-semibold tracking-wide shadow-md hover:shadow-lg transition disabled:opacity-50"
               >
