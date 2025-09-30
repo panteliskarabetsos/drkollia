@@ -1,56 +1,84 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import {
-  ChevronDown,
   ArrowLeft,
-  ScrollText,
-  IdCard,
-  ShieldCheck,
-  Info,
   BarChart3,
   CalendarPlus,
-  Plus,
-  Settings2,
-  Search,
+  ChevronDown,
+  ExternalLink,
+  IdCard,
+  Info,
+  Link2,
   Printer,
+  ScrollText,
+  Search as SearchIcon,
+  Settings2,
+  ShieldCheck,
+  LifeBuoy,
+  Bug,
+  Image as ImageIcon,
 } from "lucide-react";
 
+/* --------------------------------------------------------
+   HELP PAGE (Admin) — Redesigned with Incident Reporting
+   - Adds prominent CTA to /admin/report-incident (with photos)
+   - Quick Action tile + keyboard shortcut (I)
+   - Updates FAQ entry to point to the incident page
+   - Keeps print-friendly + sticky header + search
+--------------------------------------------------------- */
+
 /* ------------------ FAQ CONTENT ------------------ */
-const faqs = [
+const rawFaqs = [
+  // Ραντεβού
   {
+    category: "Ραντεβού",
     question: "Πώς μπορώ να καταχωρήσω ραντεβού;",
     answer:
       "Μεταβείτε στη σελίδα «Ραντεβού» και πατήστε το κουμπί + επάνω δεξιά. Αναζητήστε υπάρχοντα ασθενή (όνομα, τηλέφωνο, email ή ΑΜΚΑ) ή πατήστε «Νέος Ασθενής». Επιλέξτε ημερομηνία, λόγο επίσκεψης, (προτεινόμενη) διάρκεια και ώρα και πατήστε «Καταχώρηση». Ο ασθενής λαμβάνει αυτόματα email επιβεβαίωσης.",
   },
   {
+    category: "Ραντεβού",
     question: "Πώς μπορώ να ακυρώσω ραντεβού;",
     answer:
       "Από τη σελίδα «Ραντεβού», επιλέξτε το ραντεβού και πατήστε «Ακύρωση». Μετά την ακύρωση, ο ασθενής ενημερώνεται αυτόματα μέσω email.",
   },
   {
-    question: "Πώς προσθέτω νέο ασθενή;",
-    answer:
-      "Στη σελίδα «Ασθενείς» πατήστε «Νέος Ασθενής», συμπληρώστε τα απαιτούμενα πεδία και πατήστε «Δημιουργία Ασθενή». Νέος ασθενής μπορεί να δημιουργηθεί και από τη σελίδα «Ραντεβού» κατά την καταχώρηση νέου ραντεβού, επιλέγοντας «Νέος Ασθενής».",
-  },
-  {
+    category: "Ραντεβού",
     question: "Χρειάζεται λογαριασμός για να κλείσει ραντεβού ένας ασθενής;",
     answer:
       "Όχι. Οι ασθενείς μπορούν να κλείσουν ραντεβού χωρίς λογαριασμό. Η αντιστοίχιση γίνεται με ΑΜΚΑ ή τηλέφωνο κατά την καταχώρηση.",
   },
   {
-    question: "Πώς μπορώ να δημιουργήσω νέο λογαριασμό διαχειριστή;",
+    category: "Ραντεβού",
+    question: "Τι σημαίνει η διάρκεια στο ραντεβού;",
     answer:
-      "Από τον πίνακα διαχείρισης, ανοίξτε την ενότητα «Πρόσβαση» και πατήστε «Νέος Διαχειριστής». Συμπληρώστε τα στοιχεία και πατήστε «Δημιουργία Λογαριασμού». Μόνο οι υπάρχοντες διαχειριστές μπορούν να δημιουργούν νέους.",
+      "Προεπιλογές διάρκειας: «Εξέταση» 30′, «Αξιολόγηση Αποτελεσμάτων» 15′, «Ιατρικός Επισκέπτης» 15′. Το σύστημα προτείνει ωράρια ώστε να μην «σπάνε» τα 30′ slots.",
   },
   {
-    question: "Πότε στέλνονται αυτοματοποιημένα email στον ασθενή;",
+    category: "Ραντεβού",
+    question: "Μπορούν να κλείσουν ραντεβού ηλεκτρονικά Ιατρικοί Επισκέπτες;",
     answer:
-      "Αυτόματα email αποστέλλονται όταν καταχωρείται νέο ραντεβού, όταν ακυρώνεται ένα ραντεβού και ως υπενθύμιση μία ημέρα πριν από το ραντεβού. Τα email περιλαμβάνουν λεπτομέρειες και οδηγίες.",
+      "Ναι, υπάρχει ειδική επιλογή. Ωστόσο επιτρέπονται έως δύο ραντεβού Ιατρικών Επισκεπτών ανά μήνα. Αν συμπληρωθεί το όριο, εμφανίζεται μήνυμα για τηλεφωνική συνεννόηση ή επιλογή άλλου μήνα.",
   },
   {
+    category: "Ραντεβού",
+    question: "Τι σημαίνουν τα status;",
+    answer:
+      "🟡 pending → σε εκκρεμότητα • 🔵 scheduled → προγραμματισμένο • 🟢 approved → εγκεκριμένο • 🟣 rejected → απορρίφθηκε • 🔴 cancelled → ακυρώθηκε • ⚪ completed → ολοκληρώθηκε.",
+  },
+
+  // Ασθενείς
+  {
+    category: "Ασθενείς",
+    question: "Πώς προσθέτω νέο ασθενή;",
+    answer:
+      "Στη σελίδα «Ασθενείς» πατήστε «Νέος Ασθενής», συμπληρώστε τα απαιτούμενα πεδία και πατήστε «Δημιουργία Ασθενή». Νέος ασθενής μπορεί να δημιουργηθεί και από τη σελίδα «Ραντεβού» κατά την καταχώρηση νέου ραντεβού, επιλέγοντας «Νέος Ασθενής».",
+  },
+  {
+    category: "Ασθενείς",
     question: "Πώς μπορώ να δω το ιστορικό επισκέψεων ενός ασθενούς;",
     answer: (
       <span>
@@ -62,46 +90,7 @@ const faqs = [
     ),
   },
   {
-    question: "Πώς μπορώ να σταματήσω προσωρινά να δέχομαι ραντεβού;",
-    answer:
-      "Στη σελίδα «Πρόγραμμα Ιατρείου» απενεργοποιήστε τον διακόπτη «Δεχόμαστε νέα ραντεβού». Οι ασθενείς δεν θα μπορούν να κλείσουν νέο ραντεβού μέχρι να τον ενεργοποιήσετε ξανά.",
-  },
-  {
-    question: "Τι είναι οι «Εξαιρέσεις» στο πρόγραμμα ιατρείου;",
-    answer:
-      "Οι «Εξαιρέσεις» δηλώνουν ημέρες ή ώρες όπου δεν δέχεστε ραντεβού, ανεξάρτητα από το βασικό εβδομαδιαίο πρόγραμμα (π.χ. αργίες, άδεια, έκτακτα). Το σύστημα αποτρέπει αυτόματα κρατήσεις στα αντίστοιχα διαστήματα.",
-  },
-  {
-    question: "Πώς μπορώ να αλλάξω το ωράριο του ιατρείου;",
-    answer:
-      "Μεταβείτε στη σελίδα «Πρόγραμμα Ιατρείου». Στο «Βασικό Εβδομαδιαίο Πρόγραμμα» ορίζετε τα ωράρια ανά ημέρα (με δυνατότητα σπαστού ωραρίου). Για προσωρινές αλλαγές χρησιμοποιήστε «Εξαιρέσεις». Οι αλλαγές εφαρμόζονται αυτόματα στη διαθεσιμότητα. Αν προσθέσετε εξαίρεση πάνω σε προγραμματισμένο ραντεβού που δεν μπορείτε να εξυπηρετήσετε, ακυρώστε το χειροκίνητα.",
-  },
-  {
-    question: "Τι σημαίνουν τα status;",
-    answer:
-      "🟡 pending → σε εκκρεμότητα • 🔵 scheduled → προγραμματισμένο • 🟢 approved → εγκεκριμένο • 🟣 rejected → απορρίφθηκε • 🔴 cancelled → ακυρώθηκε • ⚪ completed → ολοκληρώθηκε.",
-  },
-  {
-    question: "Πώς εκτυπώνω τη λίστα ραντεβού;",
-    answer:
-      "Στη σελίδα «Ραντεβού», από το ημερολόγιο δεξιά, επιλέξτε ημερομηνία ή εύρος ημερομηνιών και πατήστε το εικονίδιο 🖨️ «Εκτύπωση».",
-  },
-  {
-    question: "Πώς κατεβάζω τη λίστα ραντεβού σε αρχείο Excel;",
-    answer:
-      "Στη σελίδα «Ραντεβού», από το ημερολόγιο δεξιά, επιλέξτε ημερομηνία ή εύρος ημερομηνιών και πατήστε το εικονίδιο 📥 «Εξαγωγή σε Excel».",
-  },
-  {
-    question: "Τι σημαίνει η διάρκεια στο ραντεβού;",
-    answer:
-      "Προεπιλογές διάρκειας: «Εξέταση» 30′, «Αξιολόγηση Αποτελεσμάτων» 15′, «Ιατρικός Επισκέπτης» 15′. Το σύστημα προτείνει ωράρια ώστε να μην «σπάνε» τα 30′ slots.",
-  },
-  {
-    question: "Μπορούν να κλείσουν ραντεβού ηλεκτρονικά Ιατρικοί Επισκέπτες;",
-    answer:
-      "Ναι, υπάρχει ειδική επιλογή. Ωστόσο επιτρέπονται έως δύο ραντεβού Ιατρικών Επισκεπτών ανά μήνα. Αν συμπληρωθεί το όριο, εμφανίζεται μήνυμα για τηλεφωνική συνεννόηση ή επιλογή άλλου μήνα.",
-  },
-  {
+    category: "Ασθενείς",
     question: "Πώς κρατώ ιστορικό ανά ασθενή;",
     answer: (
       <span>
@@ -113,14 +102,106 @@ const faqs = [
       </span>
     ),
   },
+
+  // Πρόσβαση / Διαχείριση
   {
+    category: "Πρόσβαση",
+    question: "Πώς μπορώ να δημιουργήσω νέο λογαριασμό διαχειριστή;",
+    answer:
+      "Από τον πίνακα διαχείρισης, ανοίξτε την ενότητα «Πρόσβαση» και πατήστε «Νέος Διαχειριστής». Συμπληρώστε τα στοιχεία και πατήστε «Δημιουργία Λογαριασμού». Μόνο οι υπάρχοντες διαχειριστές μπορούν να δημιουργούν νέους.",
+  },
+
+  // Πρόγραμμα Ιατρείου
+  {
+    category: "Πρόγραμμα Ιατρείου",
+    question: "Πώς μπορώ να σταματήσω προσωρινά να δέχομαι ραντεβού;",
+    answer:
+      "Στη σελίδα «Πρόγραμμα Ιατρείου» απενεργοποιήστε τον διακόπτη «Δεχόμαστε νέα ραντεβού». Οι ασθενείς δεν θα μπορούν να κλείσουν νέο ραντεβού μέχρι να τον ενεργοποιήσετε ξανά.",
+  },
+  {
+    category: "Πρόγραμμα Ιατρείου",
+    question: "Τι είναι οι «Εξαιρέσεις» στο πρόγραμμα ιατρείου;",
+    answer:
+      "Οι «Εξαιρέσεις» δηλώνουν ημέρες ή ώρες όπου δεν δέχεστε ραντεβού, ανεξάρτητα από το βασικό εβδομαδιαίο πρόγραμμα (π.χ. αργίες, άδεια, έκτακτα). Το σύστημα αποτρέπει αυτόματα κρατήσεις στα αντίστοιχα διαστήματα.",
+  },
+  {
+    category: "Πρόγραμμα Ιατρείου",
+    question: "Πώς μπορώ να αλλάξω το ωράριο του ιατρείου;",
+    answer:
+      "Μεταβείτε στη σελίδα «Πρόγραμμα Ιατρείου». Στο «Βασικό Εβδομαδιαίο Πρόγραμμα» ορίζετε τα ωράρια ανά ημέρα (με δυνατότητα σπαστού ωραρίου). Για προσωρινές αλλαγές χρησιμοποιήστε «Εξαιρέσεις». Οι αλλαγές εφαρμόζονται αυτόματα στη διαθεσιμότητα. Αν προσθέσετε εξαίρεση πάνω σε προγραμματισμένο ραντεβού που δεν μπορείτε να εξυπηρετήσετε, ακυρώστε το χειροκίνητα.",
+  },
+
+  // Email & Ειδοποιήσεις
+  {
+    category: "Email & Ειδοποιήσεις",
+    question: "Πότε στέλνονται αυτοματοποιημένα email στον ασθενή;",
+    answer:
+      "Αυτόματα email αποστέλλονται όταν καταχωρείται νέο ραντεβού, όταν ακυρώνεται ένα ραντεβού και ως υπενθύμιση μία ημέρα πριν από το ραντεβού. Τα email περιλαμβάνουν λεπτομέρειες και οδηγίες.",
+  },
+
+  // Εκτύπωση & Εξαγωγή
+  {
+    category: "Εκτύπωση & Εξαγωγή",
+    question: "Πώς εκτυπώνω τη λίστα ραντεβού;",
+    answer:
+      "Στη σελίδα «Ραντεβού», από το ημερολόγιο δεξιά, επιλέξτε ημερομηνία ή εύρος ημερομηνιών και πατήστε το εικονίδιο 🖨️ «Εκτύπωση».",
+  },
+  {
+    category: "Εκτύπωση & Εξαγωγή",
+    question: "Πώς κατεβάζω τη λίστα ραντεβού σε αρχείο Excel;",
+    answer:
+      "Στη σελίδα «Ραντεβού», από το ημερολόγιο δεξιά, επιλέξτε ημερομηνία ή εύρος ημερομηνιών και πατήστε το εικονίδιο 📥 «Εξαγωγή σε Excel».",
+  },
+
+  // Δεδομένα & Απόρρητο
+  {
+    category: "Δεδομένα & Απόρρητο",
     question: "Τι δεδομένα διατηρούνται στο σύστημα;",
     answer:
       "Διατηρούνται στοιχεία επικοινωνίας και ιστορικό επισκέψεων έως οριστική διαγραφή. Τα ραντεβού διατηρούνται έως 3 μήνες και έπειτα διαγράφονται αυτόματα.",
   },
+
+  // Κατάσταση Συστήματος
+  {
+    category: "Κατάσταση Συστήματος",
+    question: "Πού βλέπω την κατάσταση λειτουργίας (status) του συστήματος;",
+    answer: (
+      <span>
+        Επισκεφθείτε την ειδική σελίδα κατάστασης:{" "}
+        <a
+          href="https://status.drkollia.com"
+          target="_blank"
+          rel="noreferrer"
+          className="underline hover:no-underline"
+        >
+          status.drkollia.com
+        </a>
+        . Εκεί θα δείτε τρέχουσες ενημερώσεις και ιστορικό συμβάντων.
+      </span>
+    ),
+  },
+  {
+    category: "Κατάσταση Συστήματος",
+    question: "Πώς αναφέρω πρόβλημα;",
+    answer: (
+      <span>
+        Ανοίξτε τη σελίδα{" "}
+        <a
+          href="/admin/report-incident"
+          className="underline hover:no-underline"
+        >
+          Αναφορά Προβλήματος (IT)
+        </a>
+        . Συμπληρώστε τίτλο/περιοχή/επίδραση, περιγραφή και{" "}
+        <b>επισυνάψτε εικόνες</b> (σύρετε‑απόθεση ή επιλογή αρχείων). Το μήνυμα
+        αποστέλλεται απευθείας στην IT με CC στον αποστολέα (αν επιλεγεί).
+      </span>
+    ),
+  },
 ];
 
 /* ------------------ UTILS ------------------ */
+const escapeRegExp = (s = "") => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const slug = (s) =>
   String(s || "")
     .toLowerCase()
@@ -130,7 +211,8 @@ const slug = (s) =>
 
 const highlight = (text, needle) => {
   if (!needle || typeof text !== "string") return text;
-  const parts = text.split(new RegExp(`(${needle})`, "ig"));
+  const safe = escapeRegExp(needle);
+  const parts = text.split(new RegExp(`(${safe})`, "ig"));
   return parts.map((p, i) =>
     p.toLowerCase() === needle.toLowerCase() ? (
       <mark key={i} className="bg-yellow-100 rounded px-0.5">
@@ -151,12 +233,17 @@ function endOfTodayLocal() {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
 }
 
+function classNames(...xs) {
+  return xs.filter(Boolean).join(" ");
+}
+
 /* ------------------ PAGE ------------------ */
 export default function HelpPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  const [openAll, setOpenAll] = useState(false);
   const [openSlug, setOpenSlug] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionExists, setSessionExists] = useState(false);
@@ -170,6 +257,9 @@ export default function HelpPage() {
     todayCount: null,
   });
   const [loadingStats, setLoadingStats] = useState(true);
+
+  const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "v1.0.0";
+  const needle = q.trim();
 
   // ---- Auth guard
   useEffect(() => {
@@ -188,11 +278,7 @@ export default function HelpPage() {
     (async () => {
       setLoadingStats(true);
       try {
-        const [
-          { data: settings },
-          { count: pendingCount },
-          { count: todayCount },
-        ] = await Promise.all([
+        const [settingsRes, pendingRes, todayRes] = await Promise.all([
           supabase
             .from("clinic_settings")
             .select("accept_new_appointments")
@@ -209,9 +295,11 @@ export default function HelpPage() {
             .lte("appointment_time", endOfTodayLocal().toISOString()),
         ]);
         setStats({
-          acceptsNew: settings?.accept_new_appointments ?? null,
-          pendingCount: typeof pendingCount === "number" ? pendingCount : null,
-          todayCount: typeof todayCount === "number" ? todayCount : null,
+          acceptsNew: settingsRes?.data?.accept_new_appointments ?? null,
+          pendingCount:
+            typeof pendingRes?.count === "number" ? pendingRes.count : null,
+          todayCount:
+            typeof todayRes?.count === "number" ? todayRes.count : null,
         });
       } finally {
         setLoadingStats(false);
@@ -219,7 +307,7 @@ export default function HelpPage() {
     })();
   }, []);
 
-  // ---- Keyboard shortcuts (N, P, /, ?)
+  // ---- Keyboard shortcuts (N, P, /, ?, I)
   useEffect(() => {
     const isTyping = (el) => {
       const tag = el?.tagName?.toLowerCase();
@@ -241,6 +329,9 @@ export default function HelpPage() {
       } else if (k.toLowerCase() === "p") {
         e.preventDefault();
         router.push("/admin/patients/new");
+      } else if (k.toLowerCase() === "i") {
+        e.preventDefault();
+        router.push("/admin/report-incident");
       } else if (k === "/" && pathname === "/admin/help") {
         e.preventDefault();
         searchRef.current?.focus();
@@ -267,6 +358,7 @@ export default function HelpPage() {
     }
     const hash = decodeURIComponent(window.location.hash.replace(/^#/, ""));
     if (hash) {
+      setOpenAll(false);
       setOpenSlug(hash);
       setTimeout(() => {
         document.getElementById(`faq-${hash}`)?.scrollIntoView({
@@ -277,19 +369,43 @@ export default function HelpPage() {
     }
   }, [searchParams]);
 
-  // ---- Search / filter
-  const filteredFaqs = useMemo(() => {
-    if (!q.trim()) return faqs;
-    const needle = q.toLowerCase();
-    return faqs.filter((f) => {
-      const qStr = typeof f.question === "string" ? f.question : "";
-      const aStr = typeof f.answer === "string" ? f.answer : "";
-      return (
-        qStr.toLowerCase().includes(needle) ||
-        aStr.toLowerCase().includes(needle)
-      );
-    });
-  }, [q]);
+  // ---- Categories / grouping
+  const categories = useMemo(
+    () => Array.from(new Set(rawFaqs.map((f) => f.category))),
+    []
+  );
+
+  // ---- Filtered data
+  const filteredByCategory = useMemo(() => {
+    const list = !needle
+      ? rawFaqs
+      : rawFaqs.filter((f) => {
+          const qStr = typeof f.question === "string" ? f.question : "";
+          const aStr = typeof f.answer === "string" ? f.answer : "";
+          return (
+            qStr.toLowerCase().includes(needle.toLowerCase()) ||
+            aStr.toLowerCase().includes(needle.toLowerCase())
+          );
+        });
+    const grouped = categories.map((cat) => ({
+      category: cat,
+      faqs: list.filter((f) => f.category === cat),
+    }));
+    return grouped.filter((g) => g.faqs.length > 0);
+  }, [needle, categories]);
+
+  const resultsCount = filteredByCategory.reduce(
+    (acc, g) => acc + g.faqs.length,
+    0
+  );
+
+  // ---- helpers
+  const updateHash = useCallback((nextSlug) => {
+    const url = new URL(window.location.href);
+    if (nextSlug) url.hash = nextSlug;
+    else url.hash = "";
+    history.replaceState(null, "", url.toString());
+  }, []);
 
   if (!sessionChecked) {
     return (
@@ -300,14 +416,14 @@ export default function HelpPage() {
   }
   if (!sessionExists) return null;
 
-  const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "v1.0.0";
-  const needle = q.trim();
-
   return (
-    <main className="min-h-screen bg-[#fafafa] text-[#333] font-sans py-24 px-4 print:bg-white">
-      <div className="max-w-5xl mx-auto">
-        {/* Sticky header: back + search + print */}
-        <div className="no-print sticky top-16 z-10 -mx-4 px-4 py-3 bg-[#fafafa]/85 backdrop-blur border-b border-[#eceae6]">
+    <main className="min-h-screen bg-[#fafafa] text-[#2f2e2c] font-sans pb-24 print:bg-white">
+      {/* Top gradient banner */}
+      <div className="sticky top-0 z-10 -mb-10 h-8 bg-gradient-to-b from-[#f4efe7] to-transparent pointer-events-none" />
+
+      <div className="max-w-6xl mx-auto px-4 pt-20">
+        {/* Header */}
+        <div className="no-print sticky top-14 z-20 -mx-4 px-4 py-3 bg-[#fafafa]/85 backdrop-blur border-b border-[#eceae6]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <button
@@ -318,35 +434,95 @@ export default function HelpPage() {
                 <ArrowLeft className="w-4 h-4" />
                 Πίσω
               </button>
-              <button
-                onClick={() => window.print()}
-                className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition"
-                title="Εκτύπωση"
+
+              {/* Status link */}
+              <a
+                href="https://status.drkollia.com"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-full border border-[#e5e1d8] bg-white/80 px-3 py-1.5 text-xs text-gray-700 shadow-sm hover:bg:white transition"
+                title="Κατάσταση Συστήματος"
               >
-                <Printer className="w-4 h-4" />
-                Εκτύπωση
+                <span className="font-medium">Κατάσταση</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+              {/* Report Incident header button */}
+              <button
+                onClick={() => router.push("/admin/report-incident")}
+                className="inline-flex items-center gap-2 rounded-full border border-[#e5e1d8] bg-[#111827] px-3 py-1.5 text-xs text-white shadow-sm hover:bg-black transition"
+                title="Αναφορά Προβλήματος (I)"
+              >
+                <Bug className="w-3.5 h-3.5" />
+                Αναφορά Προβλήματος
               </button>
             </div>
 
-            <div className="relative w-full sm:w-96">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <div className="relative w-full sm:w-[32rem]">
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
               <input
                 ref={searchRef}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Αναζήτηση στο FAQ…"
-                className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                placeholder="Αναζήτηση στο βοήθημα… (/)"
+                className="w-full rounded-lg border border-gray-300 bg:white pl-9 pr-20 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
                 aria-label="Αναζήτηση στο FAQ"
               />
+              {q && (
+                <button
+                  onClick={() => setQ("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-600 underline"
+                >
+                  Εκκαθάριση
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Title + badges */}
-        <div className="flex items-end justify-between gap-3 mt-6 mb-6">
-          <h1 className="text-3xl font-bold">Οδηγός Διαχειριστή</h1>
+        {/* Title row */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mt-8 mb-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">
+              Οδηγός Διαχειριστή
+            </h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Χρήσιμες οδηγίες, συντομεύσεις και κατάσταση συστήματος.
+            </p>
+          </div>
           <div className="text-xs text-gray-500">Έκδοση: {appVersion}</div>
         </div>
+
+        {/* Incident CTA */}
+        <section className="no-print mb-8">
+          <div className="rounded-2xl border border-[#e5e1d8] bg-gradient-to-br from-white via-[#fcfbf9] to-[#f7f5f1] p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5">
+                <LifeBuoy className="w-5 h-5 text-[#6b675f]" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Κάτι δεν λειτουργεί σωστά;</h3>
+                <p className="text-sm text-gray-600">
+                  Αναφέρετε άμεσα το πρόβλημα στον τεχνικό για{" "}
+                  <b>άμεση επίλυση</b>.
+                </p>
+                <ul className="text-xs text-gray-500 list-disc ml-5 mt-2 space-y-1">
+                  <li>Περιγράψτε το πρόβλημα που αντιμετωπίζετε.</li>
+                  <li>Άμεση ενημέρωση τεχνικού.</li>
+                  <li>Υποστηρίζει έως 5 εικόνες, συνολικά μέχρι 10MB.</li>
+                </ul>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.push("/admin/report-incident")}
+                className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-white bg-[#111827] hover:bg-black transition"
+              >
+                <Bug className="w-4 h-4" />
+                Άνοιγμα Αναφοράς
+              </button>
+            </div>
+          </div>
+        </section>
 
         {/* System badges */}
         <section className="mb-8 no-print">
@@ -385,131 +561,209 @@ export default function HelpPage() {
           </div>
         </section>
 
-        {/* Quick Actions */}
-        <section className="mb-10 no-print">
-          <h2 className="text-xl font-semibold mb-3">Γρήγορες Ενέργειες</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <QuickAction
-              icon={<CalendarPlus className="w-5 h-5" />}
-              title="Νέο Ραντεβού"
-              onClick={() => router.push("/admin/appointments/new")}
-              hint="N"
-            />
-            <QuickAction
-              icon={<Plus className="w-5 h-5" />}
-              title="Νέος Ασθενής"
-              onClick={() => router.push("/admin/patients/new")}
-              hint="P"
-            />
-            <QuickAction
-              icon={<Settings2 className="w-5 h-5" />}
-              title="Πρόγραμμα Ιατρείου"
-              onClick={() => router.push("/admin/schedule")}
-            />
-            <QuickAction
-              icon={<BarChart3 className="w-5 h-5" />}
-              title="Αναφορές"
-              onClick={() => router.push("/admin/reports")}
-            />
-          </div>
-        </section>
-
-        {/* Search results info */}
-        {q && (
-          <p className="mt-2 mb-4 text-xs text-gray-500">
-            Βρέθηκαν {filteredFaqs.length} αποτελέσματα.
-          </p>
-        )}
-
-        {/* FAQ list */}
-        <section className="mb-16">
-          <h2 className="text-xl font-semibold mb-3">Συχνές Ερωτήσεις (FAQ)</h2>
-          <div className="space-y-3">
-            {filteredFaqs.map((faq) => {
-              const id = slug(faq.question);
-              const isOpen = openSlug === id;
-              return (
-                <article
-                  key={id}
-                  id={`faq-${id}`}
-                  className="border border-gray-200 rounded-lg bg-white shadow-sm"
+        {/* Layout: TOC + content */}
+        <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-6">
+          {/* TOC */}
+          <aside className="no-print hidden lg:block sticky self-start top-28 h-[calc(100vh-7rem)] overflow-auto pr-2">
+            <nav aria-label="Πίνακας περιεχομένων" className="space-y-1">
+              {filteredByCategory.map((g) => (
+                <a
+                  key={g.category}
+                  href={`#cat-${slug(g.category)}`}
+                  className="block rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:bg-white border border-transparent hover:border-[#eceae6]"
                 >
-                  <button
-                    onClick={() => {
-                      const next = isOpen ? null : id;
-                      setOpenSlug(next);
-                      const newHash = next ? `#${next}` : " ";
-                      // push hash for deep link (no navigation reload)
-                      history.replaceState(null, "", newHash);
-                    }}
-                    className="w-full flex justify-between items-center p-4 text-left"
-                    aria-expanded={isOpen}
-                    aria-controls={`panel-${id}`}
-                  >
-                    <span className="font-medium">
-                      {typeof faq.question === "string"
-                        ? highlight(faq.question, needle)
-                        : faq.question}
-                    </span>
-                    <ChevronDown
-                      className={`w-5 h-5 transition-transform ${
-                        isOpen ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-                  <div
-                    id={`panel-${id}`}
-                    className={`px-4 overflow-hidden transition-[max-height,opacity] duration-300 ${
-                      isOpen
-                        ? "max-h-[600px] opacity-100 pb-4"
-                        : "max-h-0 opacity-0"
-                    }`}
-                    aria-hidden={!isOpen}
-                  >
-                    <div className="text-gray-600 text-sm">
-                      {typeof faq.answer === "string"
-                        ? highlight(faq.answer, needle)
-                        : faq.answer}
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-            {filteredFaqs.length === 0 && (
-              <p className="text-sm text-gray-500">
-                Δεν βρέθηκαν αποτελέσματα. Δοκιμάστε διαφορετικές
-                λέξεις-κλειδιά.
+                  {g.category}{" "}
+                  <span className="text-gray-400">({g.faqs.length})</span>
+                </a>
+              ))}
+            </nav>
+          </aside>
+
+          {/* Main content */}
+          <div>
+            {/* Quick Actions */}
+            <section className="mb-8 no-print">
+              <h2 className="text-xl font-semibold mb-3">Γρήγορες Ενέργειες</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <QuickAction
+                  icon={<CalendarPlus className="w-5 h-5" />}
+                  title="Νέο Ραντεβού"
+                  onClick={() => router.push("/admin/appointments/new")}
+                  hint="N"
+                />
+                <QuickAction
+                  icon={<BarChart3 className="w-5 h-5" />}
+                  title="Αναφορές"
+                  onClick={() => router.push("/admin/reports")}
+                />
+                <QuickAction
+                  icon={<Settings2 className="w-5 h-5" />}
+                  title="Πρόγραμμα Ιατρείου"
+                  onClick={() => router.push("/admin/schedule")}
+                />
+                <QuickAction
+                  icon={<Bug className="w-5 h-5" />}
+                  title="Αναφορά Προβλήματος"
+                  onClick={() => router.push("/admin/report-incident")}
+                  hint="I"
+                />
+              </div>
+            </section>
+
+            {/* Search results info + controls */}
+            <div className="no-print flex items-center justify-between mb-3">
+              {q ? (
+                <p className="text-xs text-gray-500">
+                  Βρέθηκαν {resultsCount} αποτελέσματα.
+                </p>
+              ) : (
+                <div />
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setOpenAll(true);
+                    setOpenSlug(null);
+                    updateHash("");
+                  }}
+                  className="text-xs underline text-gray-600"
+                >
+                  Άνοιγμα όλων
+                </button>
+                <span className="text-gray-300">•</span>
+                <button
+                  onClick={() => {
+                    setOpenAll(false);
+                    setOpenSlug(null);
+                    updateHash("");
+                  }}
+                  className="text-xs underline text-gray-600"
+                >
+                  Κλείσιμο όλων
+                </button>
+              </div>
+            </div>
+
+            {/* FAQ grouped by category */}
+            {filteredByCategory.map(({ category, faqs }) => (
+              <section key={category} className="mb-10">
+                <h2
+                  id={`cat-${slug(category)}`}
+                  className="text-xl font-semibold mb-3"
+                >
+                  {category}
+                </h2>
+                <div className="space-y-3">
+                  {faqs.map((faq) => {
+                    const id = slug(faq.question);
+                    const isOpen = openAll || openSlug === id;
+                    return (
+                      <article
+                        key={id}
+                        id={`faq-${id}`}
+                        className="border border-[#e9e5db] rounded-xl bg-white shadow-sm"
+                      >
+                        <header className="flex items-center justify-between gap-2 p-4">
+                          <button
+                            onClick={() => {
+                              const next = isOpen ? null : id;
+                              setOpenAll(false);
+                              setOpenSlug(next);
+                              updateHash(next);
+                            }}
+                            className="flex-1 text-left"
+                            aria-expanded={isOpen}
+                            aria-controls={`panel-${id}`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-medium">
+                                {typeof faq.question === "string"
+                                  ? highlight(faq.question, needle)
+                                  : faq.question}
+                              </span>
+                              <ChevronDown
+                                className={classNames(
+                                  "w-5 h-5 shrink-0 transition-transform text-gray-500",
+                                  isOpen && "rotate-180"
+                                )}
+                              />
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => {
+                              const url = `${window.location.origin}${window.location.pathname}#${id}`;
+                              navigator.clipboard?.writeText(url);
+                            }}
+                            className="inline-flex items-center justify-center p-2 rounded-lg border border-transparent hover:border-[#eceae6] text-gray-500"
+                            title="Αντιγραφή συνδέσμου ερώτησης"
+                            aria-label="Αντιγραφή συνδέσμου ερώτησης"
+                          >
+                            <Link2 className="w-4 h-4" />
+                          </button>
+                        </header>
+                        <div
+                          id={`panel-${id}`}
+                          className={classNames(
+                            "px-4 overflow-hidden transition-[max-height,opacity] duration-300",
+                            isOpen
+                              ? "max-h-[800px] opacity-100 pb-4"
+                              : "max-h-0 opacity-0"
+                          )}
+                          aria-hidden={!isOpen}
+                        >
+                          <div className="text-gray-700 text-sm leading-relaxed">
+                            {typeof faq.answer === "string"
+                              ? highlight(faq.answer, needle)
+                              : faq.answer}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+
+            {/* Keyboard shortcuts */}
+            <section className="mb-12 no-print">
+              <h2 className="text-xl font-semibold mb-3">
+                Συντομεύσεις Πληκτρολογίου
+              </h2>
+              <ul className="text-sm text-gray-700 grid sm:grid-cols-2 gap-2">
+                <Shortcut k="N" label="Άνοιγμα «Νέο Ραντεβού»" />
+                <Shortcut k="P" label="Άνοιγμα «Νέος Ασθενής»" />
+                <Shortcut k="I" label="Άνοιγμα «Αναφορά Προβλήματος»" />
+                <Shortcut k="/" label="Εστίαση στην αναζήτηση βοήθειας" />
+                <Shortcut k="?" label="Άνοιγμα/Επιστροφή στη βοήθεια" />
+              </ul>
+            </section>
+
+            {/* Footer */}
+            <footer className="text-sm text-gray-600 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 print:mt-8">
+              <p>
+                Για βοήθεια:{" "}
+                <a
+                  href="mailto:contact@pkarabetsos.com"
+                  className="underline hover:no-underline"
+                >
+                  contact@pkarabetsos.com
+                </a>
               </p>
-            )}
+              <p className="flex items-center gap-2">
+                <span>Κατάσταση:</span>
+                <a
+                  href="https://status.drkollia.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 underline hover:no-underline"
+                >
+                  status.drkollia.com <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </p>
+              <p>© {new Date().getFullYear()}</p>
+            </footer>
           </div>
-        </section>
-
-        {/* Keyboard shortcuts */}
-        <section className="mb-16 no-print">
-          <h2 className="text-xl font-semibold mb-3">
-            Συντομεύσεις Πληκτρολογίου
-          </h2>
-          <ul className="text-sm text-gray-700 grid gap-2">
-            <Shortcut k="N" label="Άνοιγμα «Νέο Ραντεβού»" />
-            <Shortcut k="P" label="Άνοιγμα «Νέος Ασθενής»" />
-            <Shortcut k="/" label="Εστίαση στην αναζήτηση FAQ" />
-            <Shortcut k="?" label="Άνοιγμα/Επιστροφή στη βοήθεια" />
-          </ul>
-        </section>
-
-        {/* Footer info */}
-        <footer className="text-sm text-gray-600 flex items-center justify-between print:mt-8">
-          <p>
-            Για βοήθεια:{" "}
-            <a
-              href="mailto:contact@pkarabetsos.com"
-              className="underline hover:no-underline"
-            >
-              contact@pkarabetsos.com
-            </a>
-          </p>
-          <p>© {new Date().getFullYear()}</p>
-        </footer>
+        </div>
       </div>
 
       {/* print styles */}
