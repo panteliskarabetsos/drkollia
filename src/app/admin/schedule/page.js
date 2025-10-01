@@ -61,6 +61,10 @@ export default function SchedulePage() {
     setSettingsLoading(false);
   };
 
+  useEffect(() => {
+    router.prefetch("/admin");
+  }, [router]);
+
   const toggleClinicAppointments = async (value) => {
     setAcceptNewAppointments(value);
     const { error } = await supabase

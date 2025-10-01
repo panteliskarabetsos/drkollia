@@ -1,17 +1,65 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { supabase } from "../../../lib/supabaseClient";
-import { FaArrowLeft } from "react-icons/fa";
-import { ImSpinner2 } from "react-icons/im";
-import { IdCard, ArrowLeft, AlertCircle, Users } from "lucide-react";
 import Link from "next/link";
+import { supabase } from "../../../lib/supabaseClient";
+
+// shadcn/ui
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
+// our reusable card
+import PatientFormCard from "../../../components/PatientFormCard";
+
+// icons (lucide)
+import {
+  ArrowLeft,
+  IdCard,
+  Loader2,
+  CalendarDays,
+  Users,
+  AlertCircle,
+  Save,
+  Plus,
+  Copy,
+  Check,
+  Trash2,
+  Phone as PhoneIcon,
+  IdCard as IdCardIcon,
+} from "lucide-react";
 
 /* ---------- helpers ---------- */
 const onlyDigits = (s) => (s || "").replace(/\D+/g, "");
 const normalizeAMKA = (s) => onlyDigits(s).slice(0, 11);
 const normalizePhone = (s) => onlyDigits(s).slice(0, 10);
+const calcAge = (iso) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const t = new Date();
+  let age = t.getFullYear() - d.getFullYear();
+  const m = t.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && t.getDate() < d.getDate())) age--;
+  return age;
+};
 
 const GENDER_OPTIONS = [
   { label: "Άνδρας", value: "male" },
@@ -24,23 +72,16 @@ const CHILDREN_OPTIONS = ["Κανένα", "1", "2", "3", "4+"];
 
 function validate(p) {
   const errs = {};
-  if (!p.first_name?.trim()) errs.first_name = "Το «Όνομα» είναι υποχρεωτικό.";
-  if (!p.last_name?.trim()) errs.last_name = "Το «Επώνυμο» είναι υποχρεωτικό.";
-  if (p.amka && p.amka.length !== 11)
+  if (!p?.first_name?.trim()) errs.first_name = "Το «Όνομα» είναι υποχρεωτικό.";
+  if (!p?.last_name?.trim()) errs.last_name = "Το «Επώνυμο» είναι υποχρεωτικό.";
+  if (p?.amka && String(p.amka).length !== 11)
     errs.amka = "Ο ΑΜΚΑ πρέπει να έχει 11 ψηφία.";
-  if (p.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email))
+  if (p?.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email))
     errs.email = "Μη έγκυρο email.";
-  if (p.phone && p.phone.length < 10)
+  if (p?.phone && String(p.phone).length < 10)
     errs.phone = "Το τηλέφωνο πρέπει να έχει 10 ψηφία.";
   return errs;
 }
-
-const formatDate = (value) => {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toISOString().split("T")[0];
-};
 
 export default function EditPatientPage() {
   const { id } = useParams();
@@ -54,19 +95,16 @@ export default function EditPatientPage() {
   const [message, setMessage] = useState(null);
   const [dirty, setDirty] = useState(false);
 
-  // custom values for select=Προσαρμογή
-  const [customAlcohol, setCustomAlcohol] = useState("");
-  const [customSmoking, setCustomSmoking] = useState("");
-
   const [amkaExists, setAmkaExists] = useState(false);
   const [phoneExists, setPhoneExists] = useState(false);
   const [amkaMatches, setAmkaMatches] = useState([]);
 
-  const firstErrorRef = useRef(null);
+  const [copied, setCopied] = useState(""); // 'amka' | 'phone' | ''
+  const [showDelete, setShowDelete] = useState(false);
 
   // -------- Auth + fetch once --------
   useEffect(() => {
-    const run = async () => {
+    (async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -74,13 +112,13 @@ export default function EditPatientPage() {
         router.replace("/login");
         return;
       }
+
       const { data, error } = await supabase
         .from("patients")
         .select("*")
         .eq("id", id)
         .single();
-      if (data) {
-        // normalize digits for AMKA/phone for consistent UI
+      if (!error && data) {
         const normalized = {
           ...data,
           amka: normalizeAMKA(data.amka),
@@ -88,20 +126,9 @@ export default function EditPatientPage() {
         };
         setPatient(normalized);
         setOriginal(normalized);
-        if (!["Όχι", "Σπάνια", "Συχνά", "Καθημερινά"].includes(data.alcohol)) {
-          setCustomAlcohol(data.alcohol || "");
-        }
-        if (
-          !["Όχι", "Περιστασιακά", "Καθημερινά", "Πρώην καπνιστής"].includes(
-            data.smoking
-          )
-        ) {
-          setCustomSmoking(data.smoking || "");
-        }
       }
       setLoading(false);
-    };
-    run();
+    })();
   }, [id, router]);
 
   // -------- unsaved changes guard --------
@@ -138,31 +165,34 @@ export default function EditPatientPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router, patient, dirty]); // eslint-disable-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, patient, dirty]);
 
-  const setField = (field, value) => {
-    if (!patient) return;
-    // normalize
-    if (field === "amka") value = normalizeAMKA(value);
-    if (field === "phone") value = normalizePhone(value);
-    const next = { ...patient, [field]: value };
-    setPatient(next);
-    setDirty(JSON.stringify(next) !== JSON.stringify(original));
-    setMessage(null);
-
-    // soft duplicate checks if user edited those
-    if (field === "amka") {
-      if (value?.length === 11) checkDuplicate("amka", value);
-      else {
-        setAmkaExists(false);
-        setAmkaMatches([]);
-      }
-    }
-    if (field === "phone") {
-      if (value?.length === 10) checkDuplicate("phone", value);
-      else setPhoneExists(false);
-    }
-  };
+  // robust setter
+  const setField = useCallback(
+    (field, value) => {
+      if (field === "amka") value = normalizeAMKA(value);
+      if (field === "phone") value = normalizePhone(value);
+      setPatient((prev) => {
+        const next = { ...(prev ?? {}), [field]: value };
+        setDirty(JSON.stringify(next) !== JSON.stringify(original));
+        setMessage(null);
+        if (field === "amka") {
+          if (value?.length === 11) checkDuplicate("amka", value);
+          else {
+            setAmkaExists(false);
+            setAmkaMatches([]);
+          }
+        }
+        if (field === "phone") {
+          if (value?.length === 10) checkDuplicate("phone", value);
+          else setPhoneExists(false);
+        }
+        return next;
+      });
+    },
+    [original]
+  );
 
   const checkDuplicate = async (field, value) => {
     if (!value) return;
@@ -171,7 +201,7 @@ export default function EditPatientPage() {
         .from("patients")
         .select("id, first_name, last_name, amka")
         .eq("amka", value)
-        .neq("id", id) // exclude self
+        .neq("id", id)
         .limit(5);
       if (!error) {
         setAmkaExists((data?.length ?? 0) > 0);
@@ -192,18 +222,16 @@ export default function EditPatientPage() {
   const handleSave = async () => {
     if (!patient) return;
 
-    // validate
     const v = validate(patient);
     setErrors(v);
     if (Object.keys(v).length) {
+      setMessage({ type: "error", text: "Ελέγξτε τα πεδία της φόρμας." });
       const firstKey = Object.keys(v)[0];
       const el = document.getElementById(firstKey);
-      firstErrorRef.current = el;
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
         setTimeout(() => el.focus(), 150);
       }
-      setMessage({ type: "error", text: "Ελέγξτε τα πεδία της φόρμας." });
       return;
     }
     if (amkaExists) {
@@ -223,17 +251,8 @@ export default function EditPatientPage() {
 
     setSaving(true);
 
-    // apply custom values
-    const alcoholValue =
-      patient.alcohol === "Προσαρμογή" ? customAlcohol : patient.alcohol;
-    const smokingValue =
-      patient.smoking === "Προσαρμογή" ? customSmoking : patient.smoking;
-
-    // clean nullables for dates
     const payload = {
       ...patient,
-      alcohol: alcoholValue,
-      smoking: smokingValue,
       updated_at: new Date().toISOString(),
       birth_date: patient.birth_date ? patient.birth_date : null,
       first_visit_date: patient.first_visit_date
@@ -247,8 +266,8 @@ export default function EditPatientPage() {
       .eq("id", id);
 
     if (error) {
-      setMessage({ type: "error", text: "Σφάλμα κατά την αποθήκευση." });
       console.error("Supabase update error:", error);
+      setMessage({ type: "error", text: "Σφάλμα κατά την αποθήκευση." });
       setSaving(false);
       return;
     }
@@ -260,353 +279,391 @@ export default function EditPatientPage() {
     router.push("/admin/patients");
   };
 
+  const handleReset = () => {
+    if (!original) return;
+    setPatient(original);
+    setErrors({});
+    setDirty(false);
+    setMessage(null);
+  };
+
+  const handleCopy = async (key, value) => {
+    try {
+      await navigator.clipboard.writeText(value || "");
+      setCopied(key);
+      setTimeout(() => setCopied(""), 1200);
+    } catch (_) {}
+  };
+
+  const handleDelete = async () => {
+    // Simple delete with error surfacing; FKs may block if not cascaded
+    const { error } = await supabase.from("patients").delete().eq("id", id);
+    if (error) {
+      setMessage({
+        type: "error",
+        text: "Αποτυχία διαγραφής. Υπάρχουν συνδεδεμένα ραντεβού ή ελλιπή δικαιώματα.",
+      });
+      return;
+    }
+    router.push("/admin/patients");
+  };
+
+  /* ---------- UI ---------- */
+
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen text-[#3b3a36]">
-        <ImSpinner2 className="animate-spin text-3xl text-[#8c7c68]" />
-      </div>
+      <main className="min-h-[60vh] grid place-items-center bg-gradient-to-b from-stone-50/70 via-white to-white">
+        <div className="inline-flex items-center gap-2 text-stone-700">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span>Φόρτωση…</span>
+        </div>
+      </main>
     );
   }
 
   if (!patient) {
     return (
       <main className="max-w-5xl mx-auto px-4 py-16">
-        <p>Δεν βρέθηκε ασθενής.</p>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>Δεν βρέθηκε ασθενής.</AlertDescription>
+        </Alert>
+        <div className="mt-4">
+          <Button
+            variant="outline"
+            onClick={() => router.push("/admin/patients")}
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" /> Επιστροφή
+          </Button>
+        </div>
       </main>
     );
   }
 
-  const dateFields = ["birth_date", "first_visit_date"];
+  const createdAt = patient?.created_at ? new Date(patient.created_at) : null;
+  const updatedAt = patient?.updated_at ? new Date(patient.updated_at) : null;
+  const age = calcAge(patient?.birth_date);
 
   return (
-    <main className="max-w-5xl mx-auto px-4 py-16 bg-[#f9f8f6] text-[#3b3a36] font-serif">
-      <div
-        className="mb-6 flex items-center gap-3 text-sm text-gray-500 hover:text-[#8c7c68] cursor-pointer"
-        onClick={() => router.back()}
-      >
-        <FaArrowLeft className="text-xs" />
-        <span>Επιστροφή</span>
-      </div>
+    <main className="relative max-w-7xl mx-auto px-4 py-10">
+      {/* soft background accents */}
+      <div className="pointer-events-none absolute inset-0 -z-10 [mask-image:radial-gradient(55%_60%_at_50%_-5%,#000_0%,transparent_70%)] bg-[radial-gradient(1100px_450px_at_10%_-10%,#f1efe8_25%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#ece9e0_20%,transparent)]" />
 
-      <h1 className="text-3xl font-semibold mb-10 text-center text-[#2e2d2c] flex justify-center items-center gap-3">
-        <IdCard className="w-6 h-6 text-[#8c7c68]" />
-        Επεξεργασία Καρτέλας Ασθενούς
-      </h1>
+      {/* top bar */}
+      <div className="flex items-center justify-between gap-4">
+        <Button
+          variant="outline"
+          onClick={() => router.back()}
+          className="gap-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Επιστροφή
+        </Button>
 
-      {/* error summary */}
-      {Object.keys(errors).length > 0 && (
-        <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-          <p className="font-medium mb-1">Υπάρχουν εκκρεμότητες στη φόρμα:</p>
-          <ul className="list-disc pl-5 space-y-1">
-            {Object.entries(errors).map(([k, msg]) => (
-              <li key={k}>
-                <button
-                  type="button"
-                  className="underline underline-offset-2"
-                  onClick={() => {
-                    const el = document.getElementById(k);
-                    if (el) {
-                      el.scrollIntoView({
-                        behavior: "smooth",
-                        block: "center",
-                      });
-                      setTimeout(() => el.focus(), 150);
-                    }
-                  }}
-                >
-                  {msg}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-10 rounded-3xl shadow-sm border border-gray-100">
-        {[
-          ["first_name", "Όνομα"],
-          ["last_name", "Επώνυμο"],
-          ["amka", "ΑΜΚΑ"],
-          ["email", "Email"],
-          ["phone", "Τηλέφωνο"],
-          ["birth_date", "Ημ. Γέννησης"],
-          ["gender", "Φύλο"],
-          ["occupation", "Επάγγελμα"],
-          ["first_visit_date", "Ημ. Πρώτης Επίσκεψης"],
-          ["marital_status", "Οικογενειακή Κατάσταση"],
-          ["children", "Τέκνα"],
-        ].map(([field, label]) => (
-          <div key={field}>
-            <label
-              htmlFor={field}
-              className="block mb-1 text-sm text-gray-700 font-medium"
-            >
-              {label}
-            </label>
-
-            {field === "gender" ? (
-              <select
-                id={field}
-                value={patient[field] || ""}
-                onChange={(e) => setField(field, e.target.value)}
-                className={`w-full px-4 py-2 bg-[#fdfdfc] border rounded-lg shadow-sm focus:outline-none focus:ring-2 ${
-                  errors[field]
-                    ? "border-rose-300 focus:ring-rose-300"
-                    : "border-gray-200 focus:ring-[#8c7c68]"
-                }`}
-              >
-                <option value="">Επιλέξτε</option>
-                {GENDER_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            ) : field === "children" ? (
-              <select
-                id={field}
-                value={patient[field] || ""}
-                onChange={(e) => setField(field, e.target.value)}
-                className={`w-full px-4 py-2 bg-[#fdfdfc] border rounded-lg shadow-sm focus:outline-none focus:ring-2 ${
-                  errors[field]
-                    ? "border-rose-300 focus:ring-rose-300"
-                    : "border-gray-200 focus:ring-[#8c7c68]"
-                }`}
-              >
-                <option value="">Επιλέξτε</option>
-                {CHILDREN_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            ) : field === "marital_status" ? (
-              <select
-                id={field}
-                value={patient[field] || ""}
-                onChange={(e) => setField(field, e.target.value)}
-                className={`w-full px-4 py-2 bg-[#fdfdfc] border rounded-lg shadow-sm focus:outline-none focus:ring-2 ${
-                  errors[field]
-                    ? "border-rose-300 focus:ring-rose-300"
-                    : "border-gray-200 focus:ring-[#8c7c68]"
-                }`}
-              >
-                <option value="">Επιλέξτε</option>
-                {MARITAL_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            ) : dateFields.includes(field) ? (
-              <input
-                id={field}
-                type="date"
-                value={formatDate(patient[field])}
-                onChange={(e) => setField(field, e.target.value)}
-                className={`w-full px-4 py-2 bg-[#fdfdfc] border rounded-lg shadow-sm focus:outline-none focus:ring-2 ${
-                  errors[field]
-                    ? "border-rose-300 focus:ring-rose-300"
-                    : "border-gray-200 focus:ring-[#8c7c68]"
-                }`}
-              />
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              router.push(`/admin/appointments/new?patient_id=${id}`)
+            }
+            className="gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Νέο Ραντεβού
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={saving || !dirty}
+            className="gap-2"
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <input
-                id={field}
-                type="text"
-                value={patient[field] || ""}
-                onChange={(e) => setField(field, e.target.value)}
-                className={`w-full px-4 py-2 bg-[#fdfdfc] border rounded-lg shadow-sm focus:outline-none focus:ring-2 ${
-                  errors[field]
-                    ? "border-rose-300 focus:ring-rose-300"
-                    : "border-gray-200 focus:ring-[#8c7c68]"
-                }`}
-              />
+              <Save className="h-4 w-4" />
             )}
-
-            {errors[field] && (
-              <p className="mt-1 flex items-start gap-1 text-sm text-rose-700">
-                <AlertCircle className="h-4 w-4 mt-[2px]" />
-                {errors[field]}
-              </p>
-            )}
-          </div>
-        ))}
-
-        {/* Smoking */}
-        <div>
-          <label className="block mb-1 text-sm text-gray-700 font-medium">
-            Κάπνισμα
-          </label>
-          <select
-            value={
-              ["Όχι", "Περιστασιακά", "Καθημερινά", "Πρώην καπνιστής"].includes(
-                patient.smoking
-              )
-                ? patient.smoking
-                : "Προσαρμογή"
-            }
-            onChange={(e) => setField("smoking", e.target.value)}
-            className="w-full px-4 py-2 bg-[#fdfdfc] border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#8c7c68]"
-          >
-            <option value="">Επιλέξτε</option>
-            <option value="Όχι">Όχι</option>
-            <option value="Περιστασιακά">Περιστασιακά</option>
-            <option value="Καθημερινά">Καθημερινά</option>
-            <option value="Πρώην καπνιστής">Πρώην καπνιστής</option>
-            <option value="Προσαρμογή">Προσαρμογή</option>
-          </select>
-          {patient.smoking === "Προσαρμογή" && (
-            <input
-              type="text"
-              value={customSmoking}
-              onChange={(e) => setCustomSmoking(e.target.value)}
-              className="mt-2 w-full px-4 py-2 bg-[#fdfdfc] border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#8c7c68]"
-              placeholder="Εισάγετε τιμή..."
-            />
-          )}
+            Αποθήκευση
+          </Button>
         </div>
-
-        {/* Alcohol */}
-        <div>
-          <label className="block mb-1 text-sm text-gray-700 font-medium">
-            Αλκοόλ
-          </label>
-          <select
-            value={
-              ["Όχι", "Σπάνια", "Συχνά", "Καθημερινά"].includes(patient.alcohol)
-                ? patient.alcohol
-                : "Προσαρμογή"
-            }
-            onChange={(e) => setField("alcohol", e.target.value)}
-            className="w-full px-4 py-2 bg-[#fdfdfc] border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#8c7c68]"
-          >
-            <option value="">Επιλέξτε</option>
-            <option value="Όχι">Όχι</option>
-            <option value="Σπάνια">Σπάνια</option>
-            <option value="Συχνά">Συχνά</option>
-            <option value="Καθημερινά">Καθημερινά</option>
-            <option value="Προσαρμογή">Προσαρμογή</option>
-          </select>
-          {patient.alcohol === "Προσαρμογή" && (
-            <input
-              type="text"
-              value={customAlcohol || ""}
-              onChange={(e) => setCustomAlcohol(e.target.value)}
-              className="mt-2 w-full px-4 py-2 bg-[#fdfdfc] border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#8c7c68]"
-              placeholder="Εισάγετε τιμή..."
-            />
-          )}
-        </div>
-
-        {/* Long text fields */}
-        {[
-          ["medications", "Φάρμακα"],
-          ["gynecological_history", "Γυναικολογικό Ιστορικό"],
-          ["hereditary_history", "Κληρονομικό Ιστορικό"],
-          ["current_disease", "Παρούσα Νόσος"],
-          ["physical_exam", "Αντικειμενική Εξέταση"],
-          ["preclinical_screening", "Πάρακλινικός Έλεγχος"],
-          ["notes", "Σημειώσεις"],
-        ].map(([field, label]) => (
-          <div key={field} className="md:col-span-2">
-            <label
-              className="block mb-1 text-sm text-gray-700 font-medium"
-              htmlFor={field}
-            >
-              {label}
-            </label>
-            <textarea
-              id={field}
-              rows={4}
-              value={patient[field] || ""}
-              onChange={(e) => setField(field, e.target.value)}
-              className="w-full px-4 py-3 bg-[#fdfdfc] border border-gray-200 rounded-lg shadow-inner focus:outline-none focus:ring-2 focus:ring-[#8c7c68]"
-            />
-          </div>
-        ))}
-
-        {/* If AMKA duplicate, show matches */}
-        {amkaExists && amkaMatches?.length > 0 && (
-          <div className="md:col-span-2 rounded-xl border border-rose-200 bg-rose-50/70 p-3 text-sm text-rose-800 shadow-sm">
-            <div className="flex items-center gap-2 font-medium mb-1.5">
-              <Users className="h-4 w-4" />
-              <span>Υπάρχοντες ασθενείς με αυτόν τον ΑΜΚΑ</span>
-              <span className="ml-auto text-xs bg-rose-100 text-rose-700 rounded-full px-2 py-0.5">
-                {amkaMatches.length}
-              </span>
-            </div>
-            <ul className="space-y-1">
-              {amkaMatches.map((p) => (
-                <li key={p.id} className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-rose-500 inline-block" />
-                  <Link
-                    href={`/admin/patients/${p.id}`}
-                    className="hover:underline"
-                  >
-                    {p.last_name} {p.first_name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </div>
 
-      {/* feedback */}
+      <Separator className="my-6" />
+
+      {/* header hero */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl border border-stone-200 bg-white shadow-sm">
+            <IdCard className="h-6 w-6 text-stone-700" />
+          </div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-semibold leading-tight">
+              Επεξεργασία Καρτέλας Ασθενούς
+            </h1>
+            <p className="text-sm text-stone-600">
+              {patient.last_name} {patient.first_name}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Dirty status chip */}
+          <Badge
+            variant={dirty ? "secondary" : "outline"}
+            className={
+              dirty ? "bg-amber-50 text-amber-700 border-amber-200" : ""
+            }
+            title="Κατάσταση φόρμας"
+          >
+            {dirty ? "Μη αποθηκευμένες αλλαγές" : "Όλα αποθηκευμένα"}
+          </Badge>
+          {createdAt && (
+            <div className="text-xs text-stone-500 flex items-center gap-1">
+              <CalendarDays className="h-4 w-4" />
+              Δημιουργία: {createdAt.toLocaleDateString("el-GR")}
+            </div>
+          )}
+          {updatedAt && (
+            <div className="text-xs text-stone-500 flex items-center gap-1">
+              <CalendarDays className="h-4 w-4" />
+              Τελ. αλλαγή: {updatedAt.toLocaleDateString("el-GR")}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* key chips */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <KeyChip
+          icon={<IdCardIcon className="h-3.5 w-3.5" />}
+          label="ΑΜΚΑ"
+          value={patient.amka || "—"}
+          onCopy={() => handleCopy("amka", patient.amka)}
+          copied={copied === "amka"}
+        />
+        <KeyChip
+          icon={<PhoneIcon className="h-3.5 w-3.5" />}
+          label="Τηλέφωνο"
+          value={patient.phone || "—"}
+          onCopy={() => handleCopy("phone", patient.phone)}
+          copied={copied === "phone"}
+        />
+        <KeyChip label="Ηλικία" value={age ?? "—"} />
+        <Badge variant="outline" className="capitalize">
+          {patient.gender === "male"
+            ? "Άνδρας"
+            : patient.gender === "female"
+            ? "Γυναίκα"
+            : "Άλλο"}
+        </Badge>
+      </div>
+
       {message && (
         <div
-          className={`mt-4 text-center text-sm font-medium ${
+          className={`mt-6 ${
             message.type === "error" ? "text-red-600" : "text-green-700"
-          }`}
+          } text-sm`}
         >
           {message.text}
         </div>
       )}
 
-      {/* actions */}
-      <div className="mt-10 flex justify-end gap-4">
-        <button
-          onClick={() => router.back()}
-          className="px-5 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 transition flex items-center gap-2"
-        >
-          <ArrowLeft className="w-4 h-4" /> Άκυρο
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={saving || !dirty}
-          className="px-5 py-2 text-sm bg-[#8c7c68] text-white rounded-lg hover:bg-[#6f6253] disabled:opacity-50 transition flex items-center gap-2"
-        >
-          {saving && <ImSpinner2 className="animate-spin w-4 h-4" />}
-          Αποθήκευση
-        </button>
-      </div>
+      {/* content grid */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* form (2 cols on desktop) */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Στοιχεία ασθενούς</CardTitle>
+            <CardDescription>
+              Ενημερώστε τα στοιχεία και αποθηκεύστε.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PatientFormCard
+              patient={patient || {}}
+              errors={errors}
+              setField={setField}
+              amkaExists={amkaExists}
+              amkaMatches={amkaMatches}
+              dateFields={["birth_date", "first_visit_date"]}
+              genderOptions={GENDER_OPTIONS}
+              maritalOptions={MARITAL_OPTIONS}
+              childrenOptions={CHILDREN_OPTIONS}
+            />
 
-      {/* sticky bottom bar */}
-      <div className="sticky bottom-0 inset-x-0 mt-6 z-20 border-t border-[#e7eceb] bg-white/80 backdrop-blur px-4 py-3 rounded-b-3xl flex items-center justify-between">
-        <span className="text-xs text-gray-500">
-          {dirty ? "Μη αποθηκευμένες αλλαγές" : "Όλα αποθηκευμένα"}
-        </span>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              router.push(`/admin/appointments/new?patient_id=${id}`)
-            }
-            className="text-sm rounded-lg border border-[#cfd8d6] px-4 py-2 hover:bg-[#f7f9f8] transition"
-          >
-            Νέο Ραντεβού
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || !dirty}
-            className="bg-[#2e2c28] hover:bg-[#1f1e1b] text-white px-5 py-2 rounded-lg text-sm font-semibold tracking-wide shadow-md hover:shadow-lg transition disabled:opacity-50"
-          >
-            {saving ? "Αποθήκευση..." : "Αποθήκευση"}
-          </button>
+            {/* form footer actions */}
+            <div className="mt-6 flex items-center justify-between">
+              <Button variant="outline" onClick={handleReset}>
+                Επαναφορά αλλαγών
+              </Button>
+              <div className="text-xs text-stone-500">
+                Συντόμευση:{" "}
+                <kbd className="px-1.5 py-0.5 rounded border">Ctrl/⌘ + S</kbd>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* side panels */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Κατάσταση</CardTitle>
+              <CardDescription>Σύνοψη ενεργειών</CardDescription>
+            </CardHeader>
+            <CardContent className="text-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-stone-600">Αποθηκευμένες αλλαγές</span>
+                <span
+                  className={`font-medium ${
+                    dirty ? "text-amber-700" : "text-green-700"
+                  }`}
+                >
+                  {dirty ? "Εκκρεμούν" : "ΟΚ"}
+                </span>
+              </div>
+              {amkaExists && (
+                <div className="rounded-md border border-rose-200 bg-rose-50/70 p-2">
+                  <div className="flex items-center gap-2 font-medium text-rose-800">
+                    <Users className="h-4 w-4" />
+                    Διπλότυπος ΑΜΚΑ
+                  </div>
+                  <ul className="mt-1 text-rose-800">
+                    {amkaMatches.map((p) => (
+                      <li key={p.id}>
+                        <Link
+                          href={`/admin/patients/${p.id}`}
+                          className="underline"
+                        >
+                          {p.last_name} {p.first_name}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {phoneExists && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-800">
+                  <AlertCircle className="h-4 w-4 inline mr-1" />
+                  Το τηλέφωνο υπάρχει ήδη σε άλλο προφίλ.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Danger zone */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base text-rose-700">
+                Danger zone
+              </CardTitle>
+              <CardDescription>Οριστικές ενέργειες</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50/60 p-3">
+                <div className="text-sm">
+                  <div className="font-medium text-rose-800">
+                    Διαγραφή ασθενούς
+                  </div>
+                  <div className="text-rose-700/90">
+                    Η ενέργεια δεν μπορεί να αναιρεθεί.
+                  </div>
+                </div>
+                <Button
+                  variant="destructive"
+                  className="gap-1.5"
+                  onClick={() => setShowDelete(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Διαγραφή
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
+
+      {/* sticky actions */}
+      <div className="sticky bottom-0 inset-x-0 z-20 mt-8 border-t bg-white/80 backdrop-blur">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <span className="text-xs text-stone-600">
+            {dirty ? "Μη αποθηκευμένες αλλαγές" : "Όλα αποθηκευμένα"}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() =>
+                router.push(`/admin/appointments/new?patient_id=${id}`)
+              }
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Νέο Ραντεβού
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              className="gap-2"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Αποθήκευση
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Delete dialog */}
+      <Dialog open={showDelete} onOpenChange={setShowDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Διαγραφή ασθενούς</DialogTitle>
+            <DialogDescription>
+              Θα διαγραφεί ο/η{" "}
+              <strong>
+                {patient.last_name} {patient.first_name}
+              </strong>
+              . Η ενέργεια δεν μπορεί να αναιρεθεί. Αν υπάρχουν συνδεδεμένα
+              ραντεβού, η διαγραφή θα αποτύχει.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDelete(false)}>
+              Άκυρο
+            </Button>
+            <Button variant="destructive" onClick={handleDelete}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Διαγραφή
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
+  );
+}
+
+/* --------- small UI helpers --------- */
+function KeyChip({ icon, label, value, onCopy, copied }) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1 text-xs shadow-sm">
+      {icon ? <span className="text-stone-600">{icon}</span> : null}
+      <span className="text-stone-500">{label}:</span>
+      <span className="font-medium text-stone-800">{String(value ?? "—")}</span>
+      {onCopy && (
+        <button
+          type="button"
+          onClick={onCopy}
+          className="ml-1 rounded-full p-1 hover:bg-stone-100 transition"
+          title="Αντιγραφή"
+        >
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-green-600" />
+          ) : (
+            <Copy className="h-3.5 w-3.5 text-stone-600" />
+          )}
+        </button>
+      )}
+    </div>
   );
 }

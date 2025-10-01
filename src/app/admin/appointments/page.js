@@ -522,9 +522,8 @@ export default function AdminAppointmentsPage() {
     setCancelDialogOpen(true);
   }
 
-  // wherever you open the modal:
   function openAppointmentNoteModal(appt) {
-    setSelectedAppointmentId(appt.id); // ✅ keep the id
+    setSelectedAppointmentId(appt.id);
     setSelectedAppointmentNote(appt.notes || "");
     setAppointmentNoteModalOpen(true);
   }

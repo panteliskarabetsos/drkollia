@@ -1,60 +1,87 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { supabase } from "../lib/supabaseClient";
+
+// shadcn/ui
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
+import {
+  Tooltip,
+  TooltipProvider,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// icons
 import {
   CalendarDays,
-  User,
+  User as UserIcon,
   Clock,
   ShieldCheck,
   ArrowRight,
   Loader2,
   LifeBuoy,
-  LogOut,
   BarChart3,
   Hourglass,
-  Users,
   CalendarRange,
-  Sunrise,
-  Keyboard,
   Command,
+  RefreshCcw,
 } from "lucide-react";
 
 export default function AdminPage() {
   const router = useRouter();
+
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-  const [loadingButton, setLoadingButton] = useState(null);
   const [profile, setProfile] = useState(null);
+
+  const [loadingButton, setLoadingButton] = useState(null);
+
   const [stats, setStats] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
   const [nextAppt, setNextAppt] = useState(null);
   const [nextApptErr, setNextApptErr] = useState(null);
-  const [dayEdges, setDayEdges] = useState({ start: null, last: null });
-  const [refreshing, setRefreshing] = useState(false);
-  const [syncing, setSyncing] = useState(false);
 
+  const [dayEdges, setDayEdges] = useState({ first: null, last: null });
+
+  // ---------- Data loaders ----------
   const loadStats = useCallback(async () => {
-    // Use local day window (clinic local time)
     const now = new Date();
     const startLocal = new Date(now);
     startLocal.setHours(0, 0, 0, 0);
     const endLocal = new Date(now);
     endLocal.setHours(23, 59, 59, 999);
 
-    const startISO = startLocal.toISOString(); // DB is UTC (timestamptz), ISO is fine
+    const startISO = startLocal.toISOString();
     const endISO = endLocal.toISOString();
     const nowISO = now.toISOString();
 
     const [
-      // all of today (any status)
       { count: todayCount },
-      // already flipped to completed within today window
       { count: completedFlipped },
-      // approved for today but already in the past (not flipped yet)
       { count: approvedPastNow },
-      // total patients
       { count: patientsCount },
     ] = await Promise.all([
       supabase
@@ -80,7 +107,6 @@ export default function AdminPage() {
       supabase.from("patients").select("*", { count: "exact", head: true }),
     ]);
 
-    // Combine both buckets to show real-world “completed today”
     const completedToday = (completedFlipped || 0) + (approvedPastNow || 0);
 
     setStats({
@@ -90,77 +116,170 @@ export default function AdminPage() {
     });
   }, []);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     try {
       setRefreshing(true);
-      setStats(null);
-
-      await loadStats();
+      // First sync backend-completed, then refresh UI data in parallel
+      await syncCompleted();
+      await Promise.all([loadStats(), loadDayEdges(), loadNextAppointment()]);
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [loadStats]);
 
   const syncCompleted = useCallback(async () => {
     try {
-      setSyncing(true);
       await fetch("/api/mark-completed", {
         method: "POST",
         headers: {
-          // Only include if you set ADMIN_SYNC_KEY on the server
           "x-admin-key": process.env.NEXT_PUBLIC_ADMIN_SYNC_KEY || "",
         },
         cache: "no-store",
       });
     } catch (e) {
       console.error("syncCompleted failed", e);
-    } finally {
-      setSyncing(false);
     }
   }, []);
-  useEffect(() => {
-    // Run once when /admin loads
-    syncCompleted();
-  }, [syncCompleted]);
 
-  useEffect(() => {
-    // πρώτο load
-    handleRefresh();
-
-    // interval κάθε 5 λεπτά
-    const interval = setInterval(() => {
-      handleRefresh();
-    }, 5 * 60 * 1000);
-
-    return () => clearInterval(interval); // καθάρισμα
+  const loadProfile = useCallback(async (uid) => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("name")
+      .eq("id", uid)
+      .single();
+    setProfile(data);
   }, []);
+
+  const loadNextAppointment = useCallback(async () => {
+    setNextApptErr(null);
+    try {
+      const now = new Date();
+      const nowISO = now.toISOString();
+
+      const endOfDay = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
+      ).toISOString();
+
+      const { data, error } = await supabase
+        .from("appointments")
+        .select(
+          "id, appointment_time, status, duration_minutes, reason, patient_id"
+        )
+        .gte("appointment_time", nowISO)
+        .lte("appointment_time", endOfDay)
+        .not("status", "in", "(cancelled,completed)")
+        .order("appointment_time", { ascending: true })
+        .limit(1);
+
+      if (error) throw error;
+
+      const appt = data?.[0] ?? null;
+      if (!appt) return setNextAppt(null);
+
+      if (appt.patient_id) {
+        const { data: p } = await supabase
+          .from("patients")
+          .select("first_name, last_name")
+          .eq("id", appt.patient_id)
+          .single();
+
+        appt.patient_name = p
+          ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()
+          : null;
+      }
+
+      setNextAppt(appt);
+    } catch (e) {
+      console.error("loadNextAppointment error", e);
+      setNextApptErr("Αδυναμία φόρτωσης επόμενου ραντεβού");
+      setNextAppt(null);
+    }
+  }, []);
+
+  const loadDayEdges = useCallback(async () => {
+    const startLocal = new Date();
+    startLocal.setHours(0, 0, 0, 0);
+    const endLocal = new Date();
+    endLocal.setHours(23, 59, 59, 999);
+
+    const startISO = startLocal.toISOString();
+    const endISO = endLocal.toISOString();
+
+    const [firstRes, lastRes] = await Promise.all([
+      supabase
+        .from("appointments")
+        .select("id, appointment_time, status, reason, patient_id")
+        .gte("appointment_time", startISO)
+        .lte("appointment_time", endISO)
+        .not("status", "eq", "cancelled")
+        .order("appointment_time", { ascending: true })
+        .limit(1),
+      supabase
+        .from("appointments")
+        .select("id, appointment_time, status, reason, patient_id")
+        .gte("appointment_time", startISO)
+        .lte("appointment_time", endISO)
+        .not("status", "eq", "cancelled")
+        .order("appointment_time", { ascending: false })
+        .limit(1),
+    ]);
+
+    const first = firstRes.data?.[0] ?? null;
+    const last = lastRes.data?.[0] ?? null;
+
+    const ids = Array.from(
+      new Set([first?.patient_id, last?.patient_id].filter(Boolean))
+    );
+    let namesById = {};
+    if (ids.length) {
+      const { data: pts } = await supabase
+        .from("patients")
+        .select("id, first_name, last_name")
+        .in("id", ids);
+      for (const p of pts ?? []) {
+        namesById[p.id] =
+          `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || null;
+      }
+    }
+
+    if (first) first.patient_name = namesById[first.patient_id] ?? null;
+    if (last) last.patient_name = namesById[last.patient_id] ?? null;
+
+    setDayEdges({ first, last });
+  }, []);
+
+  // ---------- Effects ----------
   useEffect(() => {
-    const checkSession = async () => {
+    (async () => {
       const { data } = await supabase.auth.getSession();
       const session = data?.session;
       if (!session) {
         router.push("/login");
-      } else {
-        setUser(session.user);
-        setLoading(false);
-        await loadStats(); // αρχικό φόρτωμα στατιστικών
+        return;
       }
-    };
-    checkSession();
-  }, [router, loadStats]);
+      setUser(session.user);
+      setLoading(false);
+      await Promise.all([
+        loadStats(),
+        loadProfile(session.user.id),
+        loadDayEdges(),
+        loadNextAppointment(),
+      ]);
+      syncCompleted();
 
-  useEffect(() => {
-    const loadProfile = async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("name")
-        .eq("id", user.id)
-        .single();
-      setProfile(data);
-    };
-
-    if (user) loadProfile();
-  }, [user]);
+      const interval = setInterval(() => {
+        loadStats();
+      }, 5 * 60 * 1000);
+      return () => clearInterval(interval);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
 
   useEffect(() => {
     const isTyping = (el) => {
@@ -175,27 +294,22 @@ export default function AdminPage() {
     };
 
     const onKey = (e) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return; // ignore with modifiers
-      if (isTyping(document.activeElement)) return; // don't fire while typing
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTyping(document.activeElement)) return;
 
-      const k = e.key;
-
-      if (k.toLowerCase() === "n") {
+      const k = e.key?.toLowerCase();
+      if (k === "n") {
         e.preventDefault();
         router.push("/admin/appointments/new");
         return;
       }
-
-      if (k.toLowerCase() === "p") {
+      if (k === "p") {
         e.preventDefault();
         router.push("/admin/patients/new");
         return;
       }
-
-      // Both ? and / will open Help and focus the search
       if (k === "?" || k === "/" || (k === "/" && e.shiftKey)) {
         e.preventDefault();
-        // pass a flag so Help can auto-focus the search box
         router.push("/admin/help?focus=1");
         return;
       }
@@ -205,566 +319,426 @@ export default function AdminPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [router]);
 
-  useEffect(() => {
-    const loadNextAppointment = async () => {
-      setNextApptErr(null);
-      try {
-        const now = new Date();
-        const nowISO = now.toISOString();
+  const todayStr = useMemo(
+    () =>
+      new Date().toLocaleDateString("el-GR", {
+        weekday: "long",
+        day: "2-digit",
+        month: "long",
+      }),
+    []
+  );
 
-        // Υπολογισμός τέλους ημέρας (23:59:59.999)
-        const endOfDay = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate(),
-          23,
-          59,
-          59,
-          999
-        ).toISOString();
-
-        // 1) Πάρε το πρώτο επερχόμενο ΣΗΜΕΡΑ (0X00 έως 23:59)
-        const { data, error } = await supabase
-          .from("appointments")
-          .select(
-            "id, appointment_time, status, duration_minutes, reason, patient_id"
-          )
-          .gte("appointment_time", nowISO)
-          .lte("appointment_time", endOfDay)
-          .not("status", "in", "(cancelled,completed)")
-          .order("appointment_time", { ascending: true })
-          .limit(1);
-
-        if (error) throw error;
-
-        const appt = data?.[0] ?? null;
-        if (!appt) return setNextAppt(null);
-
-        // 2) Φέρε όνομα ασθενή
-        if (appt.patient_id) {
-          const { data: p } = await supabase
-            .from("patients")
-            .select("first_name, last_name")
-            .eq("id", appt.patient_id)
-            .single();
-
-          appt.patient_name = p
-            ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()
-            : null;
-        }
-
-        setNextAppt(appt);
-      } catch (e) {
-        console.error("loadNextAppointment error", e);
-        setNextApptErr("Αδυναμία φόρτωσης επόμενου ραντεβού");
-        setNextAppt(null);
-      }
-    };
-
-    loadNextAppointment();
-  }, []);
-
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      const session = data?.session;
-
-      if (!session) {
-        router.push("/login");
-      } else {
-        setUser(session.user);
-        setLoading(false);
-      }
-    };
-
-    checkSession();
-  }, [router]);
-
-  useEffect(() => {
-    const loadDayEdges = async () => {
-      // Τοπικά μεσάνυχτα -> ακριβή UTC instants
-      const startLocal = new Date();
-      startLocal.setHours(0, 0, 0, 0);
-      const endLocal = new Date();
-      endLocal.setHours(23, 59, 59, 999);
-      const startISO = startLocal.toISOString();
-      const endISO = endLocal.toISOString();
-
-      // Earliest & latest για σήμερα (μη ακυρωμένα)
-      const [firstRes, lastRes] = await Promise.all([
-        supabase
-          .from("appointments")
-          .select("id, appointment_time, status, reason, patient_id")
-          .gte("appointment_time", startISO)
-          .lte("appointment_time", endISO)
-          .not("status", "eq", "cancelled")
-          .order("appointment_time", { ascending: true })
-          .limit(1),
-        supabase
-          .from("appointments")
-          .select("id, appointment_time, status, reason, patient_id")
-          .gte("appointment_time", startISO)
-          .lte("appointment_time", endISO)
-          .not("status", "eq", "cancelled")
-          .order("appointment_time", { ascending: false })
-          .limit(1),
-      ]);
-
-      const first = firstRes.data?.[0] ?? null;
-      const last = lastRes.data?.[0] ?? null;
-
-      // Φέρε ονόματα ασθενών (1 κλήση για όσα χρειάζεται)
-      const ids = Array.from(
-        new Set([first?.patient_id, last?.patient_id].filter(Boolean))
-      );
-      let namesById = {};
-      if (ids.length) {
-        const { data: pts } = await supabase
-          .from("patients")
-          .select("id, first_name, last_name")
-          .in("id", ids);
-        for (const p of pts ?? []) {
-          namesById[p.id] =
-            `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || null;
-        }
-      }
-
-      if (first) first.patient_name = namesById[first.patient_id] ?? null;
-      if (last) last.patient_name = namesById[last.patient_id] ?? null;
-
-      setDayEdges({ first, last });
-    };
-
-    loadDayEdges();
-  }, []);
-
-  if (loading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-[#fafafa] text-[#333]">
-        <p className="text-sm text-gray-500">Έλεγχος σύνδεσης...</p>
-      </main>
-    );
-  }
-
-  const items = [
+  // ---------- UI helpers ----------
+  const navItems = [
     {
       title: "Ραντεβού",
       description: "Διαχείριση προγραμματισμένων ραντεβού.",
       href: "/admin/appointments",
-      icon: <CalendarDays className="w-5 h-5 text-[#3a3a38]" />,
+      icon: CalendarDays,
     },
     {
       title: "Ασθενείς",
       description: "Προβολή και επεξεργασία αρχείου ασθενών.",
       href: "/admin/patients",
-      icon: <User className="w-5 h-5 text-[#3a3a38]" />,
+      icon: UserIcon,
     },
     {
       title: "Πρόγραμμα",
       description: "Διαχείριση προγράμματος λειτουργίας και εξαιρέσεων.",
       href: "/admin/schedule",
-      icon: <Clock className="w-5 h-5 text-[#3a3a38]" />,
+      icon: Clock,
     },
     {
       title: "Πρόσβαση",
       description: "Διαχείριση και δημιουργία λογαριασμών διαχειριστών.",
       href: "/admin/accounts",
-      icon: <ShieldCheck className="w-5 h-5 text-[#3a3a38]" />,
+      icon: ShieldCheck,
     },
   ];
 
+  const progressPct = useMemo(() => {
+    if (!stats || stats.today === 0) return 0;
+    const pct = Math.round((stats.completedToday / stats.today) * 100);
+    return Math.min(100, Math.max(0, pct));
+  }, [stats]);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-stone-50 grid place-items-center">
+        <div className="w-full max-w-2xl mx-auto p-6">
+          <div className="mb-6">
+            <Skeleton className="h-8 w-64" />
+            <div className="mt-2 flex items-center gap-2">
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-5 w-20" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Skeleton className="h-36 w-full" />
+            <Skeleton className="h-36 w-full" />
+            <Skeleton className="h-36 w-full col-span-1 sm:col-span-2" />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-[#fafafa] text-[#333] font-sans relative">
-      <section className="py-18 px-4 max-w-6xl mx-auto">
-        <header className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-start"></header>
+    <TooltipProvider delayDuration={200}>
+      <main className="min-h-screen bg-gradient-to-b from-stone-50/70 via-white to-white text-stone-800">
+        {/* Header / hero */}
+        <section className="relative">
+          <div className="pointer-events-none absolute inset-0 [mask-image:radial-gradient(60%_60%_at_50%_0%,#000_20%,transparent_70%)] bg-[radial-gradient(1200px_500px_at_10%_-10%,#f1efe8_20%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#ece9e0_20%,transparent)]" />
 
-        <h1 className="text-3xl font-medium text-center mb-12 tracking-tight">
-          Πίνακας Διαχείρισης
-        </h1>
-
-        <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3">
-          {items.map((item, idx) => (
-            <div
-              key={idx}
-              className="group border border-gray-200 bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition duration-200 hover:scale-[1.01] flex flex-col justify-between"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                {item.icon}
-                <h2 className="text-lg font-semibold">{item.title}</h2>
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-stone-500">
+                  {todayStr}
+                </p>
+                <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+                  Πίνακας Διαχείρισης
+                </h1>
+                <p className="mt-1 text-stone-600">
+                  Καλώς ήρθατε{profile?.name ? `, ${profile.name}` : ""}.
+                </p>
               </div>
-              <p className="text-sm text-gray-500 mb-6">{item.description}</p>
-              <button
+
+              <div className="flex items-center gap-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="default"
+                      onClick={handleRefresh}
+                      disabled={refreshing}
+                      className="gap-2"
+                    >
+                      {refreshing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCcw className="h-4 w-4" />
+                      )}
+                      Ανανέωση
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Συγχρονισμός</TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
+          <Separator />
+        </section>
+
+        {/* Content grid */}
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Quick nav cards */}
+            {navItems.map((item, idx) => (
+              <Card
+                key={item.title}
+                role="link"
+                tabIndex={0}
                 onClick={() => {
                   setLoadingButton(idx);
                   router.push(item.href);
                 }}
-                className="inline-flex items-center justify-center gap-2 text-sm px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-[#3a3a38] hover:text-white transition font-medium shadow-sm disabled:opacity-60"
-                disabled={loadingButton !== null}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") router.push(item.href);
+                }}
+                className="transition hover:shadow-md cursor-pointer group"
               >
-                {loadingButton === idx ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Φόρτωση...
-                  </>
-                ) : (
-                  <>
-                    Μετάβαση
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </div>
-          ))}
-
-          {/* --- Extra Card with Stats --- */}
-
-          <div className="relative overflow-hidden border border-[#e5e1d8] bg-white/90 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col backdrop-blur group">
-            {/* soft background accent */}
-            <div className="pointer-events-none absolute -top-20 -left-24 w-64 h-64 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#f4f1ea] via-transparent to-transparent opacity-80" />
-            <div className="pointer-events-none absolute -bottom-20 -right-24 w-64 h-64 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#efece5] via-transparent to-transparent opacity-70" />
-
-            {/* Header */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="inline-flex items-center justify-center rounded-full border border-[#e5e1d8] bg-white/80 p-1 shadow-sm">
-                  <BarChart3
-                    className="w-4 h-4 text-[#8c7c68]"
-                    aria-hidden="true"
-                  />
-                </div>
-                <h2 className="text-lg font-semibold text-[#2f2e2b] tracking-tight">
-                  Σύνοψη
-                </h2>
-              </div>
-
-              {/* subtle link to reports */}
-              <button
-                onClick={() => router.push("/admin/reports")}
-                className="text-xs rounded-full px-3 py-1 border border-[#e5e1d8] text-[#6b675f] bg-white/80 hover:bg-[#8c7c68] hover:text-white transition shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8c7c68]/40"
-                aria-label="Μετάβαση στις αναφορές"
-                title="Μετάβαση στις αναφορές"
-              >
-                Αναφορές
-              </button>
-            </div>
-
-            {/* Content */}
-            {stats ? (
-              <>
-                {/* KPI row */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Today */}
-                  <div className="rounded-2xl border border-[#e5e1d8] bg-white/95 px-3 py-3 shadow-sm transition-transform duration-300 group-hover:translate-y-[-1px]">
-                    <div className="flex items-center gap-2 mb-1">
-                      <CalendarDays
-                        className="w-4 h-4 text-[#8c7c68]"
-                        aria-hidden="true"
-                      />
-                      <span className="text-xs font-medium text-[#6b675f]">
-                        Ραντεβού σήμερα
-                      </span>
+                <CardHeader className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-lg border bg-white p-2 shadow-sm">
+                      <item.icon className="h-4 w-4 text-stone-700" />
                     </div>
-                    <p className="text-3xl font-semibold text-[#2f2e2b] leading-tight tabular-nums">
-                      {stats.today}
-                    </p>
-
-                    {/* Real progress: completedToday / today */}
-                    <div
-                      className="mt-2 h-2 w-full bg-[#f3f1ec] rounded-full overflow-hidden"
-                      aria-hidden="true"
-                    >
-                      <div
-                        className="h-2 bg-[#8c7c68] transition-all"
-                        style={{
-                          width: `${
-                            stats.today > 0
-                              ? Math.min(
-                                  100,
-                                  Math.max(
-                                    0,
-                                    Math.round(
-                                      (stats.completedToday / stats.today) * 100
-                                    )
-                                  )
-                                )
-                              : 0
-                          }%`,
-                        }}
-                      />
-                    </div>
-                    <p className="mt-1 text-[11px] text-[#6b675f]">
-                      <span className="font-medium">
-                        {stats.completedToday}
-                      </span>{" "}
-                      από <span className="font-medium">{stats.today}</span>{" "}
-                      ολοκληρώθηκαν
-                    </p>
+                    <CardTitle className="text-lg">{item.title}</CardTitle>
                   </div>
+                  <CardDescription className="leading-relaxed">
+                    {item.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardFooter>
+                  <Button
+                    disabled={loadingButton !== null && loadingButton !== idx}
+                    variant="outline"
+                    className="ml-auto gap-2"
+                  >
+                    {loadingButton === idx ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Φόρτωση...
+                      </>
+                    ) : (
+                      <>
+                        Μετάβαση <ArrowRight className="h-4 w-4" />
+                      </>
+                    )}
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
 
-                  {/* First & Last Today */}
-                  <div className="rounded-xl border border-[#e5e1d8] bg-white/95 p-3 shadow-sm flex flex-col justify-between transition-transform duration-300 group-hover:translate-y-[-1px]">
+            {/* Stats card */}
+            <Card className="relative overflow-hidden">
+              <div className="pointer-events-none absolute -top-20 -left-24 h-64 w-64 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-stone-100 via-transparent to-transparent" />
+              <CardHeader className="flex-row items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-full border bg-white p-1.5 shadow-sm">
+                    <BarChart3 className="h-4 w-4 text-stone-700" />
+                  </div>
+                  <CardTitle>Σύνοψη</CardTitle>
+                </div>
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full"
+                >
+                  <Link href="/admin/reports">Αναφορές</Link>
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {stats ? (
+                  <div className="space-y-4">
                     <div>
-                      {/* Header */}
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <CalendarRange
-                          className="w-4 h-4 text-[#8c7c68]"
-                          aria-hidden="true"
-                        />
-                        <span className="text-[11px] font-semibold tracking-wide text-[#5c5345] uppercase">
-                          Πρώτο & Τελευταίο
+                      <div className="flex items-center justify-between text-sm text-stone-600">
+                        <span>Ραντεβού σήμερα</span>
+                        <span className="font-semibold text-stone-800 tabular-nums">
+                          {stats.today}
+                        </span>
+                      </div>
+                      <Progress value={progressPct} className="mt-2" />
+                      <div className="mt-1 text-xs text-stone-600">
+                        <span className="font-medium">
+                          {stats.completedToday}
+                        </span>{" "}
+                        από <span className="font-medium">{stats.today}</span>{" "}
+                        ολοκληρώθηκαν
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xl border p-3">
+                        <div className="flex items-center gap-2 text-[11px] text-stone-600">
+                          <CalendarRange className="h-4 w-4" /> Πρώτο
+                        </div>
+                        {dayEdges.first ? (
+                          <div className="mt-1">
+                            <div className="text-sm font-semibold tabular-nums">
+                              {new Date(
+                                dayEdges.first.appointment_time
+                              ).toLocaleTimeString("el-GR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                            <div className="text-xs text-stone-600 truncate">
+                              {dayEdges.first.patient_name ?? "—"}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-1 text-xs text-stone-500 italic">
+                            Δεν υπάρχουν
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border p-3">
+                        <div className="flex items-center gap-2 text-[11px] text-stone-600">
+                          <CalendarRange className="h-4 w-4" /> Τελευταίο
+                        </div>
+                        {dayEdges.last ? (
+                          <div className="mt-1">
+                            <div className="text-sm font-semibold tabular-nums">
+                              {new Date(
+                                dayEdges.last.appointment_time
+                              ).toLocaleTimeString("el-GR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                            <div className="text-xs text-stone-600 truncate">
+                              {dayEdges.last.patient_name ?? "—"}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-1 text-xs text-stone-500 italic">
+                            Δεν υπάρχουν
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-xl border p-3">
+                      <Skeleton className="h-4 w-28 mb-2" />
+                      <Skeleton className="h-3 w-full" />
+                      <Skeleton className="h-3 w-2/3 mt-2" />
+                    </div>
+                    <div className="rounded-xl border p-3">
+                      <Skeleton className="h-4 w-28 mb-2" />
+                      <Skeleton className="h-10 w-24" />
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+              <CardFooter>
+                <Button asChild variant="outline" className="gap-2">
+                  <Link href="/admin/reports">
+                    Προβολή Αναφορών <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </CardFooter>
+            </Card>
+
+            {/* Next appointment */}
+            <Card className="relative overflow-hidden">
+              <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-stone-100 via-transparent to-transparent" />
+              <CardHeader className="flex-row items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Hourglass className="h-5 w-5 text-stone-700" />
+                  <CardTitle>Επόμενο ραντεβού</CardTitle>
+                </div>
+                {nextAppt && (
+                  <Badge variant="secondary" className="rounded-full text-xs">
+                    {new Date(nextAppt.appointment_time).toLocaleTimeString(
+                      "el-GR",
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }
+                    )}
+                  </Badge>
+                )}
+              </CardHeader>
+              <CardContent>
+                {nextApptErr ? (
+                  <p className="text-sm text-red-600">{nextApptErr}</p>
+                ) : nextAppt ? (
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback>
+                        {(nextAppt.patient_name || "—")
+                          .split(" ")
+                          .map((s) => s?.[0])
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .join("")
+                          .toUpperCase() || "?"}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold truncate">
+                        {nextAppt.patient_name ?? "—"}
+                      </div>
+                      <div className="text-xs text-stone-600">
+                        {new Date(nextAppt.appointment_time).toLocaleDateString(
+                          "el-GR",
+                          {
+                            day: "2-digit",
+                            month: "2-digit",
+                          }
+                        )}{" "}
+                        • Διάρκεια {nextAppt.duration_minutes ?? 30}′
+                      </div>
+
+                      <Separator className="my-3" />
+
+                      <div className="text-sm">
+                        <span className="text-stone-600">Λόγος:</span>{" "}
+                        <span className="font-medium">
+                          {nextAppt.reason || "—"}
                         </span>
                       </div>
 
-                      {/* Times */}
-                      {dayEdges.first || dayEdges.last ? (
-                        <div className="space-y-1.5">
-                          {dayEdges.first && (
-                            <div className="flex items-center justify-between text-[12px]">
-                              <span className="text-[#7a7468]">Πρ.</span>
-                              <span className="font-semibold tabular-nums text-[#2f2e2b]">
-                                {new Date(
-                                  dayEdges.first.appointment_time
-                                ).toLocaleTimeString("el-GR", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                            </div>
-                          )}
-                          {dayEdges.last && (
-                            <div className="flex items-center justify-between text-[12px]">
-                              <span className="text-[#7a7468]">Τελ.</span>
-                              <span className="font-semibold tabular-nums text-[#2f2e2b]">
-                                {new Date(
-                                  dayEdges.last.appointment_time
-                                ).toLocaleTimeString("el-GR", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="mt-1 text-xs text-gray-400 italic">
-                          Δεν υπάρχουν
-                        </p>
-                      )}
+                      <div className="mt-2">
+                        <Badge
+                          variant={
+                            nextAppt.status === "approved"
+                              ? "default"
+                              : nextAppt.status === "pending"
+                              ? "secondary"
+                              : "outline"
+                          }
+                          className="capitalize"
+                        >
+                          {nextAppt.status}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
-                </div>
-
-                {/* fine divider */}
-                <div className="my-4 h-px bg-gradient-to-r from-transparent via-[#e5e1d8] to-transparent" />
-
-                {/* micro-footnotes (optional) */}
-                {/* <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#6b675f]">
-      <span className="inline-flex items-center gap-1">
-        <span className="inline-block h-2 w-2 rounded-full bg-[#8c7c68]" />
-        σήμερα
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <span className="inline-block h-2 w-2 rounded-full bg-green-600" />
-        ολοκληρωμένα
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <span className="inline-block h-2 w-2 rounded-full bg-[#3a3a38]" />
-        σύνολο ασθενών
-      </span>
-    </div> */}
-              </>
-            ) : (
-              // Loading state
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {Array.from({ length: 2 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="rounded-2xl border border-[#e5e1d8] bg-white/90 px-3 py-3 shadow-sm"
-                  >
-                    <div className="h-4 w-18 bg-[#f2efe9] rounded mb-3 animate-pulse" />
-                    <div className="h-4 w-20 bg-[#f2efe9] rounded mb-2 animate-pulse" />
-                    <div className="h-2 w-full bg-[#f2efe9] rounded animate-pulse" />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <button
-              onClick={() => router.push("/admin/reports")}
-              className="mt-2 inline-flex items-center justify-center gap-2 text-sm px-4 py-2 rounded-md border border-[#e5e1d8] text-[#2f2e2b] bg-white/80 hover:bg-[#3a3a38] hover:text-white transition font-medium shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8c7c68]/40"
-              aria-label="Προβολή Αναφορών"
-              title="Προβολή Αναφορών"
-            >
-              Προβολή Αναφορών
-              <ArrowRight className="w-4 h-4" aria-hidden="true" />
-            </button>
-          </div>
-
-          {/* --- Next Appointment Card--- */}
-          <div className="group relative overflow-hidden border border-[#e5e1d8] bg-white/90 rounded-2xl p-5 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-300 flex flex-col justify-between backdrop-blur">
-            {/* Soft gradient accent */}
-            <div className="pointer-events-none absolute -top-20 -right-20 w-60 h-60 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#efece5] via-transparent to-transparent opacity-70" />
-
-            {/* Ribbon */}
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2 mb-3">
-                <Hourglass className="w-5 h-5 text-[#8c7c68] animate-pulse" />
-                <h2 className="text-lg font-semibold text-[#2f2e2b]">
-                  Επόμενο ραντεβού
-                </h2>
-              </div>
-
-              {/* Time chip (today) */}
-              {nextAppt && (
-                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-[#f6f4ef] text-[#6b675f] border border-[#e5e1d8] shadow-sm">
-                  {new Date(nextAppt.appointment_time).toLocaleTimeString(
-                    "el-GR",
-                    {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }
-                  )}
-                </span>
-              )}
-            </div>
-
-            {/* Content */}
-            {nextApptErr ? (
-              <p className="text-sm text-red-600 mb-4">{nextApptErr}</p>
-            ) : nextAppt ? (
-              <div className="mb-4 space-y-3">
-                {/* Patient row */}
-                <div className="flex items-center gap-3">
-                  {/* Avatar / initials */}
-                  <div className="flex-shrink-0 grid place-items-center w-9 h-9 rounded-full bg-[#efece5] text-[#2f2e2b] font-semibold shadow-sm border border-[#e5e1d8]">
-                    {(nextAppt.patient_name || "—")
-                      .split(" ")
-                      .map((s) => s?.[0])
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .join("")
-                      .toUpperCase() || "?"}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-[#2f2e2b] leading-tight truncate">
-                      {nextAppt.patient_name ?? "—"}
+                ) : (
+                  <div>
+                    <p className="text-sm text-stone-600">
+                      Δεν υπάρχει επόμενο ραντεβού για σήμερα.
                     </p>
-                    <p className="text-xs text-[#6b675f]">
-                      {new Date(nextAppt.appointment_time).toLocaleDateString(
-                        "el-GR",
-                        {
-                          day: "2-digit",
-                          month: "2-digit",
-                        }
-                      )}
-                      {" • "}
-                      Διάρκεια {nextAppt.duration_minutes ?? 30}′
-                    </p>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <Skeleton className="h-3" />
+                      <Skeleton className="h-3" />
+                      <Skeleton className="h-3" />
+                    </div>
                   </div>
-                </div>
-
-                {/* Divider */}
-                <div className="h-px bg-gradient-to-r from-transparent via-[#e5e1d8] to-transparent" />
-
-                {/* Reason + Status */}
-                <div className="flex flex-col gap-2">
-                  <p className="text-sm text-[#3b3a36]">
-                    <span className="font-medium text-[#6b675f]">Λόγος:</span>{" "}
-                    <span className="truncate align-middle">
-                      {nextAppt.reason || "—"}
-                    </span>
-                  </p>
-
-                  <span
-                    className={[
-                      "w-fit inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border shadow-sm",
-                      nextAppt.status === "approved"
-                        ? "bg-green-50 border-green-200 text-green-700"
-                        : nextAppt.status === "pending"
-                        ? "bg-amber-50 border-amber-200 text-amber-700"
-                        : "bg-gray-50 border-gray-200 text-gray-600",
-                    ].join(" ")}
-                  >
-                    {nextAppt.status}
-                  </span>
-                </div>
-                <div className="h-8 " />
-              </div>
-            ) : (
-              <div className="mb-4 space-y-2">
-                <p className="text-sm text-gray-500">
-                  Δεν υπάρχει επόμενο ραντεβού για σήμερα.
-                </p>
-                {/* Skeleton for empty state to keep height stable */}
-                <div className="h-3 w-2/3 bg-[#f2efe9] rounded animate-pulse" />
-                <div className="h-3 w-1/2 bg-[#f2efe9] rounded animate-pulse" />
-                <div className="h-3 w-1/2 bg-[#f2efe9] rounded animate-pulse" />
-                <div className="h-8 " />
-              </div>
-            )}
+                )}
+              </CardContent>
+            </Card>
           </div>
+        </section>
+
+        {/* Bottom bar */}
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-10 flex items-center justify-end">
+          <ShortcutsPopover />
+        </section>
+
+        {/* Floating help */}
+        <div className="fixed bottom-6 right-6">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                className="rounded-full shadow-lg h-12 w-12"
+                onClick={() => router.push("/admin/help")}
+                aria-label="Χρειάζεστε βοήθεια;"
+              >
+                <LifeBuoy className="h-6 w-6" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Χρειάζεστε βοήθεια;</TooltipContent>
+          </Tooltip>
         </div>
-      </section>
-
-      {/* Floating Help Button with Hover Text */}
-      <div className="fixed bottom-6 right-6 flex items-center space-x-2 group">
-        {/* Hover text */}
-        <span className="opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 bg-white text-gray-700 text-sm px-3 py-1 rounded-lg shadow-md">
-          Χρειάζεστε βοήθεια?
-        </span>
-
-        {/* Icon button */}
-        <button
-          onClick={() => router.push("/admin/help")}
-          aria-label="Need help?"
-          className="p-3 rounded-full shadow-lg bg-gradient-to-r from-blue-500 to-blue-700 text-white hover:from-blue-600 hover:to-blue-800 transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-300"
-        >
-          <LifeBuoy className="w-8 h-8" />
-        </button>
-      </div>
-
-      <div className="max-w-6xl mx-auto px-4 -mt-10 mb-8 flex items-center justify-end">
-        <ShortcutsLegend />
-      </div>
-    </main>
+      </main>
+    </TooltipProvider>
   );
 }
 
 function Kbd({ children }) {
   return (
-    <kbd className="px-2 py-0.5 rounded border border-gray-300 bg-white text-[11px] leading-none shadow-sm">
+    <kbd className="px-2 py-0.5 rounded border bg-white text-[11px] leading-none shadow-sm">
       {children}
     </kbd>
   );
 }
 
-function ShortcutsLegend() {
+function ShortcutsPopover() {
   return (
-    <div className="relative">
-      {/* collapsed chip */}
-      <button
-        type="button"
-        className="group inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-xs text-gray-700 shadow-sm backdrop-blur hover:bg-white transition"
-        title="Πληκτροσυντομεύσεις"
-        aria-expanded="false"
-        aria-controls="shortcuts-panel"
-        onClick={(e) => {
-          const panel = e.currentTarget.nextElementSibling;
-          const expanded = panel?.classList.toggle("hidden") === false;
-          e.currentTarget.setAttribute(
-            "aria-expanded",
-            expanded ? "true" : "false"
-          );
-        }}
-      >
-        <Command className="w-4 h-4 text-gray-600" aria-hidden="true" />
-        <span className="font-medium">Συντομεύσεις</span>
-        <Kbd>?</Kbd>
-      </button>
-
-      {/* panel */}
-      <div className="hidden absolute right-0 mt-2 w-[320px] rounded-xl border border-gray-200 bg-white p-3 text-[12px] text-gray-700 shadow-lg">
-        <div className="grid grid-cols-1 gap-2">
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className="gap-2 rounded-full"
+          aria-label="Πληκτροσυντομεύσεις"
+        >
+          <Command className="h-4 w-4" />
+          <span className="font-medium">Συντομεύσεις</span>
+          <Kbd>?</Kbd>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[320px] text-[12px]">
+        <div className="grid gap-2">
           <div className="flex items-center justify-between">
             <span>Άνοιγμα «Νέο Ραντεβού»</span>
             <Kbd>N</Kbd>
@@ -777,15 +751,16 @@ function ShortcutsLegend() {
             <span>Βοήθεια / Εστίαση αναζήτησης</span>
             <div className="flex items-center gap-1">
               <Kbd>?</Kbd>
-              <span className="text-gray-400">ή</span>
+              <span className="text-stone-400">ή</span>
               <Kbd>/</Kbd>
             </div>
           </div>
         </div>
-        <div className="mt-3 border-t pt-2 text-[11px] text-gray-500">
+        <Separator className="my-2" />
+        <div className="text-stone-500">
           Δεν ενεργοποιούνται όταν πληκτρολογείτε σε πεδίο.
         </div>
-      </div>
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
