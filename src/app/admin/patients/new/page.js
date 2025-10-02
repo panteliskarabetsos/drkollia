@@ -70,7 +70,7 @@ export default function NewPatientPage() {
   const [dirty, setDirty] = useState(false);
   const [showClinical, setShowClinical] = useState(false);
 
-  const [amkaMatches, setAmkaMatches] = useState([]); // [{id, first_name, last_name, amka}]
+  const [amkaMatches, setAmkaMatches] = useState([]);
   const [amkaExists, setAmkaExists] = useState(false);
   const [phoneExists, setPhoneExists] = useState(false);
 
@@ -137,10 +137,16 @@ export default function NewPatientPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [router]);
 
+  const requiredCount = useMemo(
+    () => ["first_name", "last_name"].filter((k) => !!form[k]?.trim()).length,
+    [form]
+  );
+  const progress = Math.round((requiredCount / 2) * 100);
+
   if (loading)
     return (
-      <div className="flex justify-center items-center h-screen bg-white">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-[#a3895d]" />
+      <div className="grid min-h-screen place-items-center bg-gradient-to-b from-stone-50 via-white to-stone-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-stone-300 border-t-[#8c7c68]" />
       </div>
     );
 
@@ -173,7 +179,6 @@ export default function NewPatientPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // base validation
     const v = validate(form);
     setErrors(v);
     setFullNameError(!!(v.first_name || v.last_name));
@@ -191,7 +196,6 @@ export default function NewPatientPage() {
       return;
     }
 
-    // server-side duplicate flags
     if (amkaExists) {
       setMessage({
         type: "error",
@@ -210,7 +214,7 @@ export default function NewPatientPage() {
     setLoading(true);
     setMessage(null);
 
-    // Επεξεργασία τιμών smoking/alcohol
+    // apply custom smoking/alcohol
     const preparedForm = {
       ...form,
       smoking:
@@ -220,7 +224,7 @@ export default function NewPatientPage() {
     };
     const { customSmoking, customAlcohol, ...cleanedFormRaw } = preparedForm;
 
-    // Map για φύλο
+    // normalize gender values to schema
     const genderMap = { Άνδρας: "male", Γυναίκα: "female", Άλλο: "other" };
 
     const cleanedForm = {
@@ -228,27 +232,34 @@ export default function NewPatientPage() {
       gender: genderMap[cleanedFormRaw.gender] || cleanedFormRaw.gender || null,
     };
 
-    // Μετατροπή κενών string σε null
+    // empty strings → null
     ["birth_date", "first_visit_date", "amka"].forEach((field) => {
       if (cleanedForm[field]?.trim?.() === "") cleanedForm[field] = null;
     });
 
-    const { error } = await supabase.from("patients").insert([cleanedForm]);
+    // return id so we can optionally jump to "new appointment"
+    const { data, error } = await supabase
+      .from("patients")
+      .insert([cleanedForm])
+      .select("id")
+      .single();
 
     if (error) {
       setMessage({ type: "error", text: "Σφάλμα κατά την αποθήκευση." });
-      console.error(
-        "Supabase insert error:",
-        error.message,
-        error.details,
-        error
-      );
+      console.error("Supabase insert error:", error);
+      setLoading(false);
+      return;
+    }
+
+    setMessage({
+      type: "success",
+      text: "Ο/η ασθενής καταχωρήθηκε με επιτυχία.",
+    });
+    setDirty(false);
+
+    if (submitIntent === "save_and_new_appt" && data?.id) {
+      router.push(`/admin/appointments/new?patient_id=${data.id}`);
     } else {
-      setMessage({
-        type: "success",
-        text: "Ο ασθενής καταχωρήθηκε με επιτυχία.",
-      });
-      setDirty(false);
       router.push("/admin/patients");
     }
 
@@ -289,23 +300,47 @@ export default function NewPatientPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f2f5f4] py-22 px-4 text-[#3a3a38]">
-      <div className="max-w-5xl mx-auto bg-white shadow-lg rounded-3xl p-10 border border-[#cfd8d6]">
-        {/* header */}
-        <div className="sticky top-0 bg-white z-10 flex justify-between items-center py-4 px-2 border-b mb-6">
+    <main className="min-h-screen text-stone-800 bg-[radial-gradient(1200px_500px_at_10%_-10%,#f3f1ea_25%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#f1eee6_25%,transparent)]">
+      {/* Top bar */}
+      <div className="sticky top-0 z-30 border-b bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <button
             onClick={() => router.back()}
-            className="text-gray-500 hover:text-gray-700"
+            className="inline-flex items-center gap-2 text-sm rounded-lg border border-stone-200 px-3 py-1.5 hover:bg-stone-50"
+            title="Επιστροφή"
           >
-            <FaArrowLeft />
+            <FaArrowLeft className="opacity-70" />
+            Επιστροφή
           </button>
-          <h1 className="text-3xl font-serif font-semibold tracking-tight text-[#2d2d2b] flex justify-center items-center gap-3">
-            <Users className="w-6 h-6 text-[#8c7c68]" />
-            Νέος Ασθενής
-          </h1>
-          <div className="w-5" />
-        </div>
 
+          <div className="text-center">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
+              Νέος Ασθενής
+            </h1>
+            <p className="text-xs text-stone-600">
+              Συμπληρώστε τα βασικά στοιχεία και (προαιρετικά) κλινικές
+              πληροφορίες.
+            </p>
+          </div>
+
+          {/* progress pill */}
+          <div className="hidden sm:flex items-center gap-2 text-xs rounded-full border border-stone-200 bg-white px-3 py-1.5 shadow-sm">
+            <span className="text-stone-500">Πρόοδος</span>
+            <span className="font-semibold">{progress}%</span>
+            <span
+              className="ml-2 h-1.5 w-20 rounded-full bg-stone-200 overflow-hidden"
+              aria-hidden
+            >
+              <span
+                className="block h-full bg-[#8c7c68]"
+                style={{ width: `${progress}%` }}
+              />
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         {/* error summary */}
         {Object.keys(errors).length > 0 && (
           <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
@@ -338,10 +373,11 @@ export default function NewPatientPage() {
         <form
           id="new-patient-form"
           onSubmit={handleSubmit}
-          className="space-y-14"
+          className="space-y-10"
         >
+          {/* ——— Section: Basics ——— */}
           <Section title="🧾 Στοιχεία Ασθενούς">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 bg-white/60 backdrop-blur-md p-6 rounded-2xl shadow-md border border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 bg-white/70 p-6 rounded-2xl shadow-sm border border-stone-200">
               <InputField
                 name="first_name"
                 label="Όνομα"
@@ -349,6 +385,7 @@ export default function NewPatientPage() {
                 value={form.first_name}
                 onChange={handleChange}
                 required
+                hint="Υποχρεωτικό"
                 error={!!(fullNameError || errors.first_name)}
                 errorMessage={errors.first_name}
               />
@@ -359,6 +396,7 @@ export default function NewPatientPage() {
                 value={form.last_name}
                 onChange={handleChange}
                 required
+                hint="Υποχρεωτικό"
                 error={!!(fullNameError || errors.last_name)}
                 errorMessage={errors.last_name}
               />
@@ -372,6 +410,7 @@ export default function NewPatientPage() {
                   if (/^\d{11}$/.test(form.amka))
                     checkDuplicate("amka", form.amka);
                 }}
+                hint="11 ψηφία"
                 error={amkaExists || !!(amkaError || errors.amka)}
                 errorMessage={
                   errors.amka ||
@@ -407,6 +446,7 @@ export default function NewPatientPage() {
                   if (form.phone?.length === 10)
                     checkDuplicate("phone", form.phone);
                 }}
+                hint="10 ψηφία"
                 error={!!(errors.phone || phoneExists)}
                 errorMessage={
                   errors.phone ||
@@ -462,11 +502,11 @@ export default function NewPatientPage() {
               />
             </div>
 
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 bg-white/60 backdrop-blur-md p-6 rounded-2xl shadow-md border border-gray-200">
-              <div className="space-y-4">
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white/70 p-6 rounded-2xl shadow-sm border border-stone-200">
                 <SelectField
                   name="smoking"
-                  label="Καπνιστής"
+                  label="Κάπνισμα"
                   value={form.smoking}
                   onChange={handleChange}
                   options={[
@@ -478,19 +518,22 @@ export default function NewPatientPage() {
                   ]}
                 />
                 {form.smoking === "Προσαρμογή" && (
-                  <InputField
-                    name="customSmoking"
-                    label="Προσαρμοσμένη Τιμή (Καπνιστής)"
-                    value={form.customSmoking}
-                    onChange={handleChange}
-                  />
+                  <div className="mt-3">
+                    <InputField
+                      name="customSmoking"
+                      label="Προσαρμοσμένη τιμή"
+                      placeholder="περιγράψτε..."
+                      value={form.customSmoking}
+                      onChange={handleChange}
+                    />
+                  </div>
                 )}
               </div>
 
-              <div className="space-y-4">
+              <div className="bg-white/70 p-6 rounded-2xl shadow-sm border border-stone-200">
                 <SelectField
                   name="alcohol"
-                  label="Κατανάλωση Αλκοόλ"
+                  label="Αλκοόλ"
                   value={form.alcohol}
                   onChange={handleChange}
                   options={[
@@ -502,17 +545,20 @@ export default function NewPatientPage() {
                   ]}
                 />
                 {form.alcohol === "Προσαρμογή" && (
-                  <InputField
-                    name="customAlcohol"
-                    label="Προσαρμοσμένη Τιμή (Αλκοόλ)"
-                    value={form.customAlcohol}
-                    onChange={handleChange}
-                  />
+                  <div className="mt-3">
+                    <InputField
+                      name="customAlcohol"
+                      label="Προσαρμοσμένη τιμή"
+                      placeholder="περιγράψτε..."
+                      value={form.customAlcohol}
+                      onChange={handleChange}
+                    />
+                  </div>
                 )}
               </div>
             </div>
 
-            <div className="mt-6 bg-white/60 backdrop-blur-md p-6 rounded-2xl shadow-md border border-gray-200">
+            <div className="mt-6 bg-white/70 p-6 rounded-2xl shadow-sm border border-stone-200">
               <TextAreaField
                 name="medications"
                 label="Φάρμακα"
@@ -522,6 +568,7 @@ export default function NewPatientPage() {
             </div>
           </Section>
 
+          {/* ——— Section: Clinical ——— */}
           <Section
             title={
               <div className="flex items-center justify-between">
@@ -529,7 +576,7 @@ export default function NewPatientPage() {
                 <button
                   type="button"
                   onClick={() => setShowClinical((v) => !v)}
-                  className="text-sm text-[#6b675f] underline underline-offset-2"
+                  className="text-sm rounded-full border border-stone-300 px-3 py-1 hover:bg-stone-50"
                 >
                   {showClinical ? "Σύμπτυξη" : "Εμφάνιση"}
                 </button>
@@ -537,7 +584,7 @@ export default function NewPatientPage() {
             }
           >
             {showClinical && (
-              <div className="grid grid-cols-1 gap-6">
+              <div className="grid grid-cols-1 gap-6 bg-white/70 p-6 rounded-2xl shadow-sm border border-stone-200">
                 <TextAreaField
                   name="gynecological_history"
                   label="Γυναικολογικό Ιστορικό"
@@ -580,7 +627,7 @@ export default function NewPatientPage() {
 
           {message && (
             <div
-              className={`mb-6 text-center text-sm font-medium ${
+              className={`mt-2 text-center text-sm font-medium ${
                 message.type === "error" ? "text-red-600" : "text-green-600"
               }`}
             >
@@ -588,41 +635,35 @@ export default function NewPatientPage() {
             </div>
           )}
 
-          {/* <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={loading}
-              className="bg-[#2e2c28] hover:bg-[#1f1e1b] text-white px-7 py-2.5 rounded-lg text-sm font-semibold tracking-wide shadow-md hover:shadow-lg transition-all disabled:opacity-50"
-            >
-              {loading ? "Αποθήκευση..." : "Καταχώρηση"}
-            </button>
-          </div> */}
-
-          {/* sticky bottom action bar */}
-          <div className="sticky bottom-0 inset-x-0 mt-6 z-20 border-t border-[#e7eceb] bg-white/80 backdrop-blur px-4 py-3 rounded-b-3xl flex items-center justify-between">
-            <span className="text-xs text-gray-500">
-              {dirty ? "Μη αποθηκευμένες αλλαγές" : "Όλα αποθηκευμένα"}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setSubmitIntent("save_and_new_appt");
-                  document.getElementById("new-patient-form")?.requestSubmit();
-                }}
-                disabled={loading}
-                className="text-sm rounded-lg border border-[#cfd8d6] px-4 py-2 hover:bg-[#f7f9f8] transition disabled:opacity-50"
-              >
-                Αποθήκευση & Νέο Ραντεβού
-              </button>
-              <button
-                type="submit"
-                onClick={() => setSubmitIntent("save")}
-                disabled={loading}
-                className="bg-[#2e2c28] hover:bg-[#1f1e1b] text-white px-5 py-2 rounded-lg text-sm font-semibold tracking-wide shadow-md hover:shadow-lg transition disabled:opacity-50"
-              >
-                {loading ? "Αποθήκευση..." : "Καταχώρηση"}
-              </button>
+          {/* Sticky actions */}
+          <div className="sticky bottom-0 inset-x-0 z-20 mt-6 border-t bg-white/80 backdrop-blur">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+              <span className="text-xs text-stone-600">
+                {dirty ? "Μη αποθηκευμένες αλλαγές" : "Όλα αποθηκευμένα"}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubmitIntent("save_and_new_appt");
+                    document
+                      .getElementById("new-patient-form")
+                      ?.requestSubmit();
+                  }}
+                  disabled={loading}
+                  className="text-sm rounded-lg border border-stone-300 px-4 py-2 hover:bg-stone-50 transition disabled:opacity-50"
+                >
+                  Αποθήκευση & Νέο Ραντεβού
+                </button>
+                <button
+                  type="submit"
+                  onClick={() => setSubmitIntent("save")}
+                  disabled={loading}
+                  className="bg-[#2e2c28] hover:bg-[#1f1e1b] text-white px-5 py-2 rounded-lg text-sm font-semibold tracking-wide shadow-md hover:shadow-lg transition disabled:opacity-50"
+                >
+                  {loading ? "Αποθήκευση..." : "Καταχώρηση"}
+                </button>
+              </div>
             </div>
           </div>
         </form>
@@ -633,8 +674,8 @@ export default function NewPatientPage() {
 
 /* ---------- components ---------- */
 const Section = ({ title, children }) => (
-  <section className="rounded-2xl border border-[#dce6e4] bg-white/70 px-6 py-8 shadow-sm">
-    <h2 className="text-lg font-semibold mb-6 text-[#4a4a48] tracking-tight">
+  <section className="rounded-2xl border border-stone-200 bg-white/60 px-6 py-8 shadow-sm">
+    <h2 className="text-lg font-semibold mb-6 text-stone-700 tracking-tight">
       {title}
     </h2>
     {children}
@@ -648,6 +689,8 @@ const InputField = ({
   placeholder,
   value,
   onChange,
+  required = false,
+  hint,
   error = false,
   errorMessage = "",
   below,
@@ -655,9 +698,13 @@ const InputField = ({
   <div>
     <label
       htmlFor={name}
-      className="block text-sm font-medium text-[#514f4b] mb-1"
+      className="block text-sm font-medium text-stone-700 mb-1"
     >
       {label}
+      {required && <span className="ml-1 text-rose-500">*</span>}
+      {hint && (
+        <span className="ml-2 text-xs text-stone-500 font-normal">{hint}</span>
+      )}
     </label>
     <input
       type={type}
@@ -668,11 +715,13 @@ const InputField = ({
       onChange={onChange}
       aria-invalid={error ? "true" : "false"}
       aria-describedby={error ? `${name}-error` : undefined}
-      className={`w-full px-3 py-2 border rounded-md text-sm bg-white focus:outline-none transition ${
+      className={[
+        "w-full px-3 py-2 rounded-lg text-sm bg-white transition",
+        "border focus:outline-none focus:ring-2",
         error
-          ? "border-red-500 focus:ring-2 focus:ring-red-400"
-          : "border-[#d6d3cb] focus:ring-2 focus:ring-[#9e9483]"
-      }`}
+          ? "border-rose-400 focus:ring-rose-300"
+          : "border-stone-300 focus:ring-[#9e9483]",
+      ].join(" ")}
       autoComplete="off"
     />
     {error && (
@@ -686,15 +735,15 @@ const InputField = ({
         <p>{errorMessage}</p>
       </div>
     )}
-    {below && <div className="pt-1">{below}</div>}
+    {below && <div className="pt-2">{below}</div>}
   </div>
 );
 
-const SelectField = ({ name, label, value, onChange, options }) => (
+const SelectField = ({ name, label, value, onChange, options = [] }) => (
   <div>
     <label
       htmlFor={name}
-      className="block text-sm font-medium text-[#514f4b] mb-1"
+      className="block text-sm font-medium text-stone-700 mb-1"
     >
       {label}
     </label>
@@ -703,7 +752,7 @@ const SelectField = ({ name, label, value, onChange, options }) => (
       id={name}
       value={value}
       onChange={onChange}
-      className="w-full px-3 py-2 border border-[#d6d3cb] rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#9e9483] transition"
+      className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#9e9483] transition"
     >
       <option value="">Επιλέξτε</option>
       {options.map((opt) =>
@@ -733,7 +782,7 @@ const TextAreaField = ({
     <div>
       <label
         htmlFor={name}
-        className="block text-sm font-medium text-[#514f4b] mb-1"
+        className="block text-sm font-medium text-stone-700 mb-1"
       >
         {label}
       </label>
@@ -744,9 +793,9 @@ const TextAreaField = ({
         value={value}
         onChange={onChange}
         maxLength={maxLength}
-        className="w-full px-3 py-2 border border-[#d6d3cb] rounded-md text-sm bg-white resize-none focus:outline-none focus:ring-2 focus:ring-[#9e9483] transition"
+        className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-stone-300 resize-none focus:outline-none focus:ring-2 focus:ring-[#9e9483] transition"
       />
-      <div className="mt-1 text-xs text-gray-500 text-right">
+      <div className="mt-1 text-xs text-stone-500 text-right">
         {count}/{maxLength}
       </div>
     </div>
@@ -754,7 +803,7 @@ const TextAreaField = ({
 };
 
 const ConflictCard = ({ title, items }) => (
-  <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3 text-sm text-rose-800 shadow-sm">
+  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 shadow-sm">
     <div className="flex items-center gap-2 font-medium mb-1.5">
       <Users className="h-4 w-4" />
       <span>{title}</span>

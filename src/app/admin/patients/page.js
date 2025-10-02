@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/app/lib/supabaseClient";
 import PatientFormCard from "../../components/PatientFormCard";
+import PatientDetailsCard from "../../components/PatientDetailsCard";
+
 import { ScrollArea } from "@/components/ui/scroll-area";
 // shadcn/ui
 import {
@@ -54,6 +56,7 @@ import {
   TableBody,
   TableCell,
 } from "@/components/ui/table";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // icons
 import {
@@ -78,6 +81,8 @@ export default function PatientsPage() {
 
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
+  const [minAge, setMinAge] = useState("");
+  const [maxAge, setMaxAge] = useState("");
 
   // data
   const [patients, setPatients] = useState([]);
@@ -93,19 +98,69 @@ export default function PatientsPage() {
   // row actions
   const [selected, setSelected] = useState(null); // patient object for Sheet
   const [confirmDelete, setConfirmDelete] = useState(null); // patient object to delete
+  const [upcomingCheck, setUpcomingCheck] = useState({
+    loading: false,
+    count: 0,
+    items: [],
+  });
 
   // --- helpers ---
   const totalPages = useMemo(() => Math.ceil(total / PAGE_SIZE) || 1, [total]);
+  const openView = async (p) => {
+    setSelected({ ...p, _loading: true });
+    const { data, error } = await supabase
+      .from("patients")
+      .select("*")
+      .eq("id", p.id)
+      .single();
+    if (!error && data) setSelected({ ...data, _loading: false });
+    else setSelected({ ...p, _loading: false });
+  };
 
   const loadPatients = useCallback(async () => {
     setBusy(true);
     setError(null);
 
     try {
+      // guard: minAge cannot be greater than maxAge
+      if (minAge !== "" && maxAge !== "" && Number(minAge) > Number(maxAge)) {
+        setError(
+          "Η ελάχιστη ηλικία δεν μπορεί να είναι μεγαλύτερη από τη μέγιστη."
+        );
+        setBusy(false);
+        setLoading(false);
+        return;
+      }
+
+      // local helpers
+      const ymd = (d) => d.toISOString().split("T")[0];
+      const addYears = (date, years) => {
+        const d = new Date(date);
+        d.setFullYear(d.getFullYear() + years);
+        return d;
+      };
+
       let q = supabase
         .from("patients")
         .select(
-          "id, first_name, last_name, phone, email, amka, birth_date, gender, created_at",
+          [
+            "id",
+            "first_name",
+            "last_name",
+            "phone",
+            "email",
+            "amka",
+            "birth_date",
+            "gender",
+            "created_at",
+            "medications",
+            "gynecological_history",
+            "hereditary_history",
+            "current_disease",
+            "physical_exam",
+            "preclinical_screening",
+            "notes",
+          ].join(", "),
           { count: "exact" }
         );
 
@@ -115,7 +170,24 @@ export default function PatientsPage() {
           `first_name.ilike.%${qstr}%,last_name.ilike.%${qstr}%,phone.ilike.%${qstr}%,email.ilike.%${qstr}%,amka.ilike.%${qstr}%`
         );
       }
+
       if (gender !== "all") q = q.eq("gender", gender);
+
+      // --- Age filters -> birth_date bounds ---
+      const today = new Date();
+
+      // minAge: age >= minAge  => birth_date <= today - minAge years
+      if (minAge !== "" && !Number.isNaN(Number(minAge))) {
+        const latestDOB = addYears(today, -Number(minAge));
+        q = q.lte("birth_date", ymd(latestDOB));
+      }
+
+      // maxAge: age <= maxAge  => birth_date >= (today - (maxAge+1) years + 1 day)
+      if (maxAge !== "" && !Number.isNaN(Number(maxAge))) {
+        const earliestDOB = addYears(today, -(Number(maxAge) + 1));
+        earliestDOB.setDate(earliestDOB.getDate() + 1);
+        q = q.gte("birth_date", ymd(earliestDOB));
+      }
 
       q = q
         .order("last_name", { ascending: true })
@@ -133,7 +205,7 @@ export default function PatientsPage() {
       setBusy(false);
       setLoading(false);
     }
-  }, [page, query, gender]);
+  }, [page, query, gender, minAge, maxAge]);
 
   useEffect(() => {
     (async () => {
@@ -147,6 +219,39 @@ export default function PatientsPage() {
       await loadPatients();
     })();
   }, [router, loadPatients]);
+
+  useEffect(() => {
+    if (!confirmDelete?.id) {
+      setUpcomingCheck({ loading: false, count: 0, items: [] });
+      return;
+    }
+
+    (async () => {
+      setUpcomingCheck({ loading: true, count: 0, items: [] });
+      const nowISO = new Date().toISOString();
+
+      const { data, count, error } = await supabase
+        .from("appointments")
+        .select("id, appointment_time, status", { count: "exact" })
+        .eq("patient_id", confirmDelete.id)
+        .eq("status", "approved")
+        .gte("appointment_time", nowISO)
+        .order("appointment_time", { ascending: true })
+        .limit(3);
+
+      if (error) {
+        console.error("check upcoming appts error", error);
+        setUpcomingCheck({ loading: false, count: 0, items: [] });
+        return;
+      }
+
+      setUpcomingCheck({
+        loading: false,
+        count: count ?? 0,
+        items: data ?? [],
+      });
+    })();
+  }, [confirmDelete]);
 
   // --- actions ---
   const removePatient = async (id) => {
@@ -166,7 +271,11 @@ export default function PatientsPage() {
     }
   };
 
-  const exportCsv = () => {
+  const exportExcel = async () => {
+    // lazy-load to keep bundle small
+    const XLSX = await import("xlsx");
+    const { utils, writeFile } = XLSX;
+
     const headers = [
       "Ονοματεπώνυμο",
       "ΑΜΚΑ",
@@ -175,6 +284,7 @@ export default function PatientsPage() {
       "Ηλικία",
       "Φύλο",
     ];
+
     const rows = patients.map((p) => [
       fullName(p),
       p.amka ?? "",
@@ -183,16 +293,29 @@ export default function PatientsPage() {
       String(ageFromDOB(p.birth_date) ?? ""),
       genderLabel(p.gender),
     ]);
-    const csv = [headers, ...rows]
-      .map((r) => r.map(csvEscape).join(","))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "patients.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+
+    const aoa = [headers, ...rows];
+
+    // Sheet
+    const ws = utils.aoa_to_sheet(aoa);
+
+    // Optional: nicer column widths
+    ws["!cols"] = [
+      { wch: 24 }, // Ονοματεπώνυμο
+      { wch: 14 }, // ΑΜΚΑ
+      { wch: 14 }, // Τηλέφωνο
+      { wch: 28 }, // Email
+      { wch: 8 }, // Ηλικία
+      { wch: 10 }, // Φύλο
+    ];
+
+    // Workbook
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, "Ασθενείς");
+
+    // Filename with date
+    const filename = `patients_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    writeFile(wb, filename);
   };
 
   // --- render ---
@@ -203,6 +326,19 @@ export default function PatientsPage() {
         <section className="relative">
           <div className="pointer-events-none absolute inset-0 [mask-image:radial-gradient(60%_60%_at_50%_0%,#000_20%,transparent_70%)] bg-[radial-gradient(1200px_500px_at_10%_-10%,#f1efe8_20%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#ece9e0_20%,transparent)]" />
           <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-6">
+            {/* Back button */}
+            <div className="mb-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/admin")}
+                className="gap-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Επιστροφή
+              </Button>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">
@@ -216,11 +352,11 @@ export default function PatientsPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      onClick={exportCsv}
+                      onClick={exportExcel}
                       variant="outline"
                       className="gap-2"
                     >
-                      <DownloadIcon /> Εξαγωγή CSV
+                      <DownloadIcon /> Εξαγωγή σε Excel
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Εξαγωγή της τρέχουσας λίστας</TooltipContent>
@@ -305,6 +441,82 @@ export default function PatientsPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
+                {/* Age filters */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-stone-600">Ηλικία:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={minAge}
+                      onChange={(e) => {
+                        setPage(0);
+                        setMinAge(e.target.value.replace(/[^\d]/g, ""));
+                      }}
+                      placeholder="ελάχ."
+                      className="w-20 px-3 py-2 text-sm border rounded-md"
+                    />
+                    <span className="text-stone-400">–</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={maxAge}
+                      onChange={(e) => {
+                        setPage(0);
+                        setMaxAge(e.target.value.replace(/[^\d]/g, ""));
+                      }}
+                      placeholder="μέγ."
+                      className="w-20 px-3 py-2 text-sm border rounded-md"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setMinAge("");
+                        setMaxAge("");
+                        setPage(0);
+                      }}
+                      className="text-stone-600"
+                      title="Καθαρισμός ηλικίας"
+                    >
+                      Καθαρισμός
+                    </Button>
+                  </div>
+
+                  {/* Quick presets */}
+                  <div className="flex items-center gap-1">
+                    <Preset
+                      onClick={() => {
+                        setMinAge(18);
+                        setMaxAge(39);
+                        setPage(0);
+                      }}
+                    >
+                      18–39
+                    </Preset>
+                    <Preset
+                      onClick={() => {
+                        setMinAge(40);
+                        setMaxAge(64);
+                        setPage(0);
+                      }}
+                    >
+                      40–64
+                    </Preset>
+                    <Preset
+                      onClick={() => {
+                        setMinAge(65);
+                        setMaxAge("");
+                        setPage(0);
+                      }}
+                    >
+                      65+
+                    </Preset>
+                  </div>
+                </div>
+
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -350,7 +562,7 @@ export default function PatientsPage() {
                 />
               ) : (
                 <div className="overflow-x-auto">
-                  <Table>
+                  <Table className="min-w-[960px]">
                     <TableHeader>
                       <TableRow>
                         <TableHead>Ονοματεπώνυμο</TableHead>
@@ -390,20 +602,57 @@ export default function PatientsPage() {
                             </div>
                           </TableCell>
                           <TableCell className="tabular-nums">
-                            {p.amka ?? "—"}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  title={p.amka ?? ""}
+                                  className="whitespace-nowrap"
+                                >
+                                  {p.amka ?? "—"}
+                                </span>
+                              </TooltipTrigger>
+                              {p.amka && (
+                                <TooltipContent>{p.amka}</TooltipContent>
+                              )}
+                            </Tooltip>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1 text-sm">
                               <Phone className="h-4 w-4 text-stone-500" />
-                              <span>{p.phone ?? "—"}</span>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    title={p.phone ?? ""}
+                                    className="whitespace-nowrap"
+                                  >
+                                    {p.phone ?? "—"}
+                                  </span>
+                                </TooltipTrigger>
+                                {p.phone && (
+                                  <TooltipContent>{p.phone}</TooltipContent>
+                                )}
+                              </Tooltip>
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1 text-sm">
                               <Mail className="h-4 w-4 text-stone-500" />
-                              <span className="truncate max-w-[220px] inline-block align-bottom">
-                                {p.email ?? "—"}
-                              </span>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  {/* ch-based width scales better; allow wraps */}
+                                  <span
+                                    className="inline-block align-bottom max-w-[28ch] md:max-w-[40ch] break-words"
+                                    title={p.email ?? ""}
+                                  >
+                                    {p.email ?? "—"}
+                                  </span>
+                                </TooltipTrigger>
+                                {p.email && (
+                                  <TooltipContent className="max-w-xs break-words">
+                                    {p.email}
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
                             </div>
                           </TableCell>
                           <TableCell className="tabular-nums">
@@ -411,7 +660,7 @@ export default function PatientsPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <RowActions
-                              onView={() => setSelected(p)}
+                              onView={() => openView(p)}
                               onEdit={() =>
                                 router.push(`/admin/patients/${p.id}`)
                               }
@@ -474,15 +723,9 @@ export default function PatientsPage() {
               {selected ? (
                 <ScrollArea className="px-6 py-4 h-[calc(100vh-6rem)]">
                   {/* Read-only προβολή της καρτέλας */}
-                  <fieldset disabled>
-                    <PatientFormCard
-                      patient={selected}
-                      errors={{}}
-                      setField={() => {}}
-                      amkaExists={false}
-                      amkaMatches={[]}
-                    />
-                  </fieldset>
+
+                  <PatientDetailsCard patient={selected} />
+
                   <div className="mt-4 flex gap-2">
                     <Button
                       onClick={() =>
@@ -518,7 +761,48 @@ export default function PatientsPage() {
               <strong>{confirmDelete ? fullName(confirmDelete) : ""}</strong>. Η
               ενέργεια δεν μπορεί να αναιρεθεί.
             </DialogDescription>
-            <DialogFooter>
+
+            {/* Warning about upcoming approved appointments */}
+            {upcomingCheck.loading ? (
+              <div className="mt-2 text-sm text-stone-600 inline-flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Έλεγχος επερχόμενων ραντεβού…
+              </div>
+            ) : upcomingCheck.count > 0 ? (
+              <Alert variant="destructive" className="mt-3">
+                <AlertDescription>
+                  <div className="space-y-1">
+                    <p>
+                      <strong>Προσοχή:</strong> Ο ασθενής έχει{" "}
+                      <strong>{upcomingCheck.count}</strong> εγκεκριμένο/α
+                      επερχόμενο/α ραντεβού.
+                    </p>
+                    {upcomingCheck.items.length > 0 && (
+                      <ul className="list-disc pl-5 text-sm">
+                        {upcomingCheck.items.map((a) => (
+                          <li key={a.id}>
+                            {new Date(a.appointment_time).toLocaleString(
+                              "el-GR",
+                              {
+                                dateStyle: "short",
+                                timeStyle: "short",
+                              }
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="text-xs opacity-80">
+                      Με την διαγραφή ασθενούς το επερχόμενο ραντεβού του θα
+                      ακυρωθεί σιωπηρά. Προτείνεται να ενημερώσετε τον ασθενή
+                      πριν προχωρήσετε.
+                    </p>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            <DialogFooter className="mt-3">
               <Button variant="outline" onClick={() => setConfirmDelete(null)}>
                 Άκυρο
               </Button>
@@ -527,11 +811,7 @@ export default function PatientsPage() {
                 onClick={() => confirmDelete && removePatient(confirmDelete.id)}
                 disabled={busy}
               >
-                {busy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}{" "}
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Διαγραφή
               </Button>
             </DialogFooter>
@@ -656,5 +936,29 @@ function DownloadIcon(props) {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+function ymd(d) {
+  return d.toISOString().split("T")[0];
+}
+
+function addYears(date, years) {
+  const d = new Date(date);
+  d.setFullYear(d.getFullYear() + years);
+  return d;
+}
+
+function Preset({ onClick, children }) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={onClick}
+      className="h-8"
+    >
+      {children}
+    </Button>
   );
 }

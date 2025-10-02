@@ -552,9 +552,7 @@ export default function EditPatientPage() {
           {/* Danger zone */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base text-rose-700">
-                Danger zone
-              </CardTitle>
+              <CardTitle className="text-base text-rose-700">Προσοχή</CardTitle>
               <CardDescription>Οριστικές ενέργειες</CardDescription>
             </CardHeader>
             <CardContent>
