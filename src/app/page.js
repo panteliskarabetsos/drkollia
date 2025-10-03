@@ -13,7 +13,7 @@ import {
   Heart,
   Car,
 } from "lucide-react";
-
+import { useOnline } from "../lib/useOnline";
 const notoSerif = Noto_Serif({ subsets: ["latin"], weight: ["400", "700"] });
 
 export default function Home() {

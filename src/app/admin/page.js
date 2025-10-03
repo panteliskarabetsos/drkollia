@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-
 import { supabase } from "../lib/supabaseClient";
 
 // shadcn/ui
@@ -47,6 +46,7 @@ import {
   CalendarRange,
   Command,
   RefreshCcw,
+  WifiOff,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -57,17 +57,34 @@ export default function AdminPage() {
   const [profile, setProfile] = useState(null);
 
   const [loadingButton, setLoadingButton] = useState(null);
-
   const [stats, setStats] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-
   const [nextAppt, setNextAppt] = useState(null);
   const [nextApptErr, setNextApptErr] = useState(null);
-
   const [dayEdges, setDayEdges] = useState({ first: null, last: null });
+
+  // 🔌 online/offline state
+  const [online, setOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
 
   // ---------- Data loaders ----------
   const loadStats = useCallback(async () => {
+    if (!online) {
+      setStats(null);
+      return;
+    }
+
     const now = new Date();
     const startLocal = new Date(now);
     startLocal.setHours(0, 0, 0, 0);
@@ -89,45 +106,42 @@ export default function AdminPage() {
         .select("*", { count: "exact", head: true })
         .gte("appointment_time", startISO)
         .lte("appointment_time", endISO),
-
       supabase
         .from("appointments")
         .select("*", { count: "exact", head: true })
         .gte("appointment_time", startISO)
         .lte("appointment_time", endISO)
         .eq("status", "completed"),
-
       supabase
         .from("appointments")
         .select("*", { count: "exact", head: true })
         .gte("appointment_time", startISO)
         .lt("appointment_time", nowISO)
         .eq("status", "approved"),
-
       supabase.from("patients").select("*", { count: "exact", head: true }),
     ]);
 
     const completedToday = (completedFlipped || 0) + (approvedPastNow || 0);
-
     setStats({
       today: todayCount ?? 0,
       completedToday,
       patients: patientsCount ?? 0,
     });
-  }, []);
+  }, [online]);
 
   const handleRefresh = useCallback(async () => {
+    if (!online) return;
     try {
       setRefreshing(true);
-      // First sync backend-completed, then refresh UI data in parallel
       await syncCompleted();
       await Promise.all([loadStats(), loadDayEdges(), loadNextAppointment()]);
     } finally {
       setRefreshing(false);
     }
-  }, [loadStats]);
+  }, [online, loadStats]);
 
   const syncCompleted = useCallback(async () => {
+    if (!online) return;
     try {
       await fetch("/api/mark-completed", {
         method: "POST",
@@ -139,23 +153,35 @@ export default function AdminPage() {
     } catch (e) {
       console.error("syncCompleted failed", e);
     }
-  }, []);
+  }, [online]);
 
-  const loadProfile = useCallback(async (uid) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("name")
-      .eq("id", uid)
-      .single();
-    setProfile(data);
-  }, []);
+  const loadProfile = useCallback(
+    async (uid) => {
+      if (!online) {
+        setProfile(null);
+        return;
+      }
+      const { data } = await supabase
+        .from("profiles")
+        .select("name")
+        .eq("id", uid)
+        .single();
+      setProfile(data);
+    },
+    [online]
+  );
 
   const loadNextAppointment = useCallback(async () => {
+    if (!online) {
+      setNextAppt(null);
+      setNextApptErr(null);
+      return;
+    }
+
     setNextApptErr(null);
     try {
       const now = new Date();
       const nowISO = now.toISOString();
-
       const endOfDay = new Date(
         now.getFullYear(),
         now.getMonth(),
@@ -180,7 +206,10 @@ export default function AdminPage() {
       if (error) throw error;
 
       const appt = data?.[0] ?? null;
-      if (!appt) return setNextAppt(null);
+      if (!appt) {
+        setNextAppt(null);
+        return;
+      }
 
       if (appt.patient_id) {
         const { data: p } = await supabase
@@ -188,26 +217,28 @@ export default function AdminPage() {
           .select("first_name, last_name")
           .eq("id", appt.patient_id)
           .single();
-
         appt.patient_name = p
           ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()
           : null;
       }
-
       setNextAppt(appt);
     } catch (e) {
       console.error("loadNextAppointment error", e);
       setNextApptErr("Αδυναμία φόρτωσης επόμενου ραντεβού");
       setNextAppt(null);
     }
-  }, []);
+  }, [online]);
 
   const loadDayEdges = useCallback(async () => {
+    if (!online) {
+      setDayEdges({ first: null, last: null });
+      return;
+    }
+
     const startLocal = new Date();
     startLocal.setHours(0, 0, 0, 0);
     const endLocal = new Date();
     endLocal.setHours(23, 59, 59, 999);
-
     const startISO = startLocal.toISOString();
     const endISO = endLocal.toISOString();
 
@@ -247,12 +278,11 @@ export default function AdminPage() {
           `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || null;
       }
     }
-
     if (first) first.patient_name = namesById[first.patient_id] ?? null;
     if (last) last.patient_name = namesById[last.patient_id] ?? null;
 
     setDayEdges({ first, last });
-  }, []);
+  }, [online]);
 
   // ---------- Effects ----------
   useEffect(() => {
@@ -265,21 +295,19 @@ export default function AdminPage() {
       }
       setUser(session.user);
       setLoading(false);
-      await Promise.all([
-        loadStats(),
-        loadProfile(session.user.id),
-        loadDayEdges(),
-        loadNextAppointment(),
-      ]);
-      syncCompleted();
 
-      const interval = setInterval(() => {
-        loadStats();
-      }, 5 * 60 * 1000);
-      return () => clearInterval(interval);
+      if (online) {
+        await Promise.all([
+          loadStats(),
+          loadProfile(session.user.id),
+          loadDayEdges(),
+          loadNextAppointment(),
+        ]);
+        syncCompleted();
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [router, online]);
 
   useEffect(() => {
     const isTyping = (el) => {
@@ -292,11 +320,9 @@ export default function AdminPage() {
         tag === "select"
       );
     };
-
     const onKey = (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTyping(document.activeElement)) return;
-
       const k = e.key?.toLowerCase();
       if (k === "n") {
         e.preventDefault();
@@ -314,7 +340,6 @@ export default function AdminPage() {
         return;
       }
     };
-
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [router]);
@@ -330,32 +355,39 @@ export default function AdminPage() {
   );
 
   // ---------- UI helpers ----------
-  const navItems = [
-    {
-      title: "Ραντεβού",
-      description: "Διαχείριση προγραμματισμένων ραντεβού.",
-      href: "/admin/appointments",
-      icon: CalendarDays,
-    },
-    {
-      title: "Ασθενείς",
-      description: "Προβολή και επεξεργασία αρχείου ασθενών.",
-      href: "/admin/patients",
-      icon: UserIcon,
-    },
-    {
-      title: "Πρόγραμμα",
-      description: "Διαχείριση προγράμματος λειτουργίας και εξαιρέσεων.",
-      href: "/admin/schedule",
-      icon: Clock,
-    },
-    {
-      title: "Πρόσβαση",
-      description: "Διαχείριση και δημιουργία λογαριασμών διαχειριστών.",
-      href: "/admin/accounts",
-      icon: ShieldCheck,
-    },
-  ];
+  const navItems = useMemo(
+    () => [
+      {
+        title: "Ραντεβού",
+        description: "Διαχείριση προγραμματισμένων ραντεβού.",
+        href: "/admin/appointments",
+        icon: CalendarDays,
+        disabled: false,
+      },
+      {
+        title: "Ασθενείς",
+        description: "Προβολή και επεξεργασία αρχείου ασθενών.",
+        href: "/admin/patients",
+        icon: UserIcon,
+        disabled: false,
+      },
+      {
+        title: "Πρόγραμμα",
+        description: "Διαχείριση προγράμματος λειτουργίας και εξαιρέσεων.",
+        href: "/admin/schedule",
+        icon: Clock,
+        disabled: !online,
+      },
+      {
+        title: "Πρόσβαση",
+        description: "Διαχείριση και δημιουργία λογαριασμών διαχειριστών.",
+        href: "/admin/accounts",
+        icon: ShieldCheck,
+        disabled: !online,
+      },
+    ],
+    [online]
+  );
 
   const progressPct = useMemo(() => {
     if (!stats || stats.today === 0) return 0;
@@ -390,7 +422,6 @@ export default function AdminPage() {
         {/* Header / hero */}
         <section className="relative">
           <div className="pointer-events-none absolute inset-0 [mask-image:radial-gradient(60%_60%_at_50%_0%,#000_20%,transparent_70%)] bg-[radial-gradient(1200px_500px_at_10%_-10%,#f1efe8_20%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#ece9e0_20%,transparent)]" />
-
           <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
@@ -404,14 +435,13 @@ export default function AdminPage() {
                   Καλώς ήρθατε{profile?.name ? `, ${profile.name}` : ""}.
                 </p>
               </div>
-
               <div className="flex items-center gap-2">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="default"
                       onClick={handleRefresh}
-                      disabled={refreshing}
+                      disabled={refreshing || !online}
                       className="gap-2"
                     >
                       {refreshing ? (
@@ -422,7 +452,9 @@ export default function AdminPage() {
                       Ανανέωση
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Συγχρονισμός</TooltipContent>
+                  <TooltipContent>
+                    {online ? "Συγχρονισμός" : "Μη διαθέσιμο εκτός σύνδεσης"}
+                  </TooltipContent>
                 </Tooltip>
               </div>
             </div>
@@ -434,50 +466,73 @@ export default function AdminPage() {
         <section className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {/* Quick nav cards */}
-            {navItems.map((item, idx) => (
-              <Card
-                key={item.title}
-                role="link"
-                tabIndex={0}
-                onClick={() => {
-                  setLoadingButton(idx);
-                  router.push(item.href);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") router.push(item.href);
-                }}
-                className="transition hover:shadow-md cursor-pointer group"
-              >
-                <CardHeader className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <div className="rounded-lg border bg-white p-2 shadow-sm">
-                      <item.icon className="h-4 w-4 text-stone-700" />
+            {navItems.map((item, idx) => {
+              const Icon = item.icon;
+              const disabled = item.disabled;
+              return (
+                <Card
+                  key={item.title}
+                  role={disabled ? "button" : "link"}
+                  tabIndex={0}
+                  onClick={() => {
+                    if (disabled) return;
+                    setLoadingButton(idx);
+                    router.push(item.href);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !disabled) router.push(item.href);
+                  }}
+                  aria-disabled={disabled}
+                  className={[
+                    "transition hover:shadow-md group relative",
+                    disabled
+                      ? "opacity-60 cursor-not-allowed"
+                      : "cursor-pointer",
+                  ].join(" ")}
+                >
+                  <CardHeader className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-lg border bg-white p-2 shadow-sm">
+                        <Icon className="h-4 w-4 text-stone-700" />
+                      </div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        {item.title}
+                        {disabled && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-900">
+                            <WifiOff className="h-3 w-3" />
+                            Offline
+                          </span>
+                        )}
+                      </CardTitle>
                     </div>
-                    <CardTitle className="text-lg">{item.title}</CardTitle>
-                  </div>
-                  <CardDescription className="leading-relaxed">
-                    {item.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardFooter>
-                  <Button
-                    disabled={loadingButton !== null && loadingButton !== idx}
-                    variant="outline"
-                    className="ml-auto gap-2"
-                  >
-                    {loadingButton === idx ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" /> Φόρτωση...
-                      </>
-                    ) : (
-                      <>
-                        Μετάβαση <ArrowRight className="h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
+                    <CardDescription className="leading-relaxed">
+                      {item.description}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardFooter>
+                    <Button
+                      disabled={
+                        disabled ||
+                        (loadingButton !== null && loadingButton !== idx)
+                      }
+                      variant="outline"
+                      className="ml-auto gap-2"
+                    >
+                      {loadingButton === idx && !disabled ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />{" "}
+                          Φόρτωση...
+                        </>
+                      ) : (
+                        <>
+                          Μετάβαση <ArrowRight className="h-4 w-4" />
+                        </>
+                      )}
+                    </Button>
+                  </CardFooter>
+                </Card>
+              );
+            })}
 
             {/* Stats card */}
             <Card className="relative overflow-hidden">
@@ -489,109 +544,94 @@ export default function AdminPage() {
                   </div>
                   <CardTitle>Σύνοψη</CardTitle>
                 </div>
-                <Button
-                  asChild
-                  size="sm"
-                  variant="outline"
-                  className="rounded-full"
-                >
-                  <Link href="/admin/reports">Αναφορές</Link>
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {stats ? (
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex items-center justify-between text-sm text-stone-600">
-                        <span>Ραντεβού σήμερα</span>
-                        <span className="font-semibold text-stone-800 tabular-nums">
-                          {stats.today}
-                        </span>
-                      </div>
-                      <Progress value={progressPct} className="mt-2" />
-                      <div className="mt-1 text-xs text-stone-600">
-                        <span className="font-medium">
-                          {stats.completedToday}
-                        </span>{" "}
-                        από <span className="font-medium">{stats.today}</span>{" "}
-                        ολοκληρώθηκαν
-                      </div>
-                    </div>
 
-                    <Separator />
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-xl border p-3">
-                        <div className="flex items-center gap-2 text-[11px] text-stone-600">
-                          <CalendarRange className="h-4 w-4" /> Πρώτο
-                        </div>
-                        {dayEdges.first ? (
-                          <div className="mt-1">
-                            <div className="text-sm font-semibold tabular-nums">
-                              {new Date(
-                                dayEdges.first.appointment_time
-                              ).toLocaleTimeString("el-GR", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </div>
-                            <div className="text-xs text-stone-600 truncate">
-                              {dayEdges.first.patient_name ?? "—"}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-1 text-xs text-stone-500 italic">
-                            Δεν υπάρχουν
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="rounded-xl border p-3">
-                        <div className="flex items-center gap-2 text-[11px] text-stone-600">
-                          <CalendarRange className="h-4 w-4" /> Τελευταίο
-                        </div>
-                        {dayEdges.last ? (
-                          <div className="mt-1">
-                            <div className="text-sm font-semibold tabular-nums">
-                              {new Date(
-                                dayEdges.last.appointment_time
-                              ).toLocaleTimeString("el-GR", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </div>
-                            <div className="text-xs text-stone-600 truncate">
-                              {dayEdges.last.patient_name ?? "—"}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-1 text-xs text-stone-500 italic">
-                            Δεν υπάρχουν
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                {/* Reports button disabled when offline */}
+                {online ? (
+                  <Button
+                    asChild
+                    size="sm"
+                    variant="outline"
+                    className="rounded-full"
+                  >
+                    <Link href="/admin/reports">Αναφορές</Link>
+                  </Button>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="rounded-xl border p-3">
-                      <Skeleton className="h-4 w-28 mb-2" />
-                      <Skeleton className="h-3 w-full" />
-                      <Skeleton className="h-3 w-2/3 mt-2" />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full"
+                        disabled
+                      >
+                        Αναφορές
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Μη διαθέσιμο εκτός σύνδεσης</TooltipContent>
+                  </Tooltip>
+                )}
+              </CardHeader>
+
+              <CardContent>
+                {online ? (
+                  stats ? (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex items-center justify-between text-sm text-stone-600">
+                          <span>Ραντεβού σήμερα</span>
+                          <span className="font-semibold text-stone-800 tabular-nums">
+                            {stats.today}
+                          </span>
+                        </div>
+                        <Progress value={progressPct} className="mt-2" />
+                        <div className="mt-1 text-xs text-stone-600">
+                          <span className="font-medium">
+                            {stats.completedToday}
+                          </span>{" "}
+                          από <span className="font-medium">{stats.today}</span>{" "}
+                          ολοκληρώθηκαν
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <EdgeCard label="Πρώτο" data={dayEdges.first} />
+                        <EdgeCard label="Τελευταίο" data={dayEdges.last} />
+                      </div>
                     </div>
-                    <div className="rounded-xl border p-3">
-                      <Skeleton className="h-4 w-28 mb-2" />
-                      <Skeleton className="h-10 w-24" />
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="rounded-xl border p-3">
+                        <Skeleton className="h-4 w-28 mb-2" />
+                        <Skeleton className="h-3 w-full" />
+                        <Skeleton className="h-3 w-2/3 mt-2" />
+                      </div>
+                      <div className="rounded-xl border p-3">
+                        <Skeleton className="h-4 w-28 mb-2" />
+                        <Skeleton className="h-10 w-24" />
+                      </div>
                     </div>
+                  )
+                ) : (
+                  <div className="text-sm text-stone-600">
+                    Οι στατιστικές δεν είναι διαθέσιμες εκτός σύνδεσης.
                   </div>
                 )}
               </CardContent>
+
               <CardFooter>
-                <Button asChild variant="outline" className="gap-2">
-                  <Link href="/admin/reports">
+                {online ? (
+                  <Button asChild variant="outline" className="gap-2">
+                    <Link href="/admin/reports">
+                      Προβολή Αναφορών <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button variant="outline" className="gap-2" disabled>
                     Προβολή Αναφορών <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
+                  </Button>
+                )}
               </CardFooter>
             </Card>
 
@@ -616,72 +656,27 @@ export default function AdminPage() {
                 )}
               </CardHeader>
               <CardContent>
-                {nextApptErr ? (
-                  <p className="text-sm text-red-600">{nextApptErr}</p>
-                ) : nextAppt ? (
-                  <div className="flex items-start gap-3">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback>
-                        {(nextAppt.patient_name || "—")
-                          .split(" ")
-                          .map((s) => s?.[0])
-                          .filter(Boolean)
-                          .slice(0, 2)
-                          .join("")
-                          .toUpperCase() || "?"}
-                      </AvatarFallback>
-                    </Avatar>
-
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold truncate">
-                        {nextAppt.patient_name ?? "—"}
-                      </div>
-                      <div className="text-xs text-stone-600">
-                        {new Date(nextAppt.appointment_time).toLocaleDateString(
-                          "el-GR",
-                          {
-                            day: "2-digit",
-                            month: "2-digit",
-                          }
-                        )}{" "}
-                        • Διάρκεια {nextAppt.duration_minutes ?? 30}′
-                      </div>
-
-                      <Separator className="my-3" />
-
-                      <div className="text-sm">
-                        <span className="text-stone-600">Λόγος:</span>{" "}
-                        <span className="font-medium">
-                          {nextAppt.reason || "—"}
-                        </span>
-                      </div>
-
-                      <div className="mt-2">
-                        <Badge
-                          variant={
-                            nextAppt.status === "approved"
-                              ? "default"
-                              : nextAppt.status === "pending"
-                              ? "secondary"
-                              : "outline"
-                          }
-                          className="capitalize"
-                        >
-                          {nextAppt.status}
-                        </Badge>
+                {online ? (
+                  nextApptErr ? (
+                    <p className="text-sm text-red-600">{nextApptErr}</p>
+                  ) : nextAppt ? (
+                    <NextAppt appt={nextAppt} />
+                  ) : (
+                    <div>
+                      <p className="text-sm text-stone-600">
+                        Δεν υπάρχει επόμενο ραντεβού για σήμερα.
+                      </p>
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <Skeleton className="h-3" />
+                        <Skeleton className="h-3" />
+                        <Skeleton className="h-3" />
                       </div>
                     </div>
-                  </div>
+                  )
                 ) : (
-                  <div>
-                    <p className="text-sm text-stone-600">
-                      Δεν υπάρχει επόμενο ραντεβού για σήμερα.
-                    </p>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      <Skeleton className="h-3" />
-                      <Skeleton className="h-3" />
-                      <Skeleton className="h-3" />
-                    </div>
+                  <div className="text-sm text-stone-600">
+                    Η προβολή επόμενου ραντεβού δεν είναι διαθέσιμη εκτός
+                    σύνδεσης.
                   </div>
                 )}
               </CardContent>
@@ -712,6 +707,80 @@ export default function AdminPage() {
         </div>
       </main>
     </TooltipProvider>
+  );
+}
+
+function NextAppt({ appt }) {
+  return (
+    <div className="flex items-start gap-3">
+      <Avatar className="h-10 w-10">
+        <AvatarFallback>
+          {(appt.patient_name || "—")
+            .split(" ")
+            .map((s) => s?.[0])
+            .filter(Boolean)
+            .slice(0, 2)
+            .join("")
+            .toUpperCase() || "?"}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold truncate">
+          {appt.patient_name ?? "—"}
+        </div>
+        <div className="text-xs text-stone-600">
+          {new Date(appt.appointment_time).toLocaleDateString("el-GR", {
+            day: "2-digit",
+            month: "2-digit",
+          })}{" "}
+          • Διάρκεια {appt.duration_minutes ?? 30}′
+        </div>
+        <Separator className="my-3" />
+        <div className="text-sm">
+          <span className="text-stone-600">Λόγος:</span>{" "}
+          <span className="font-medium">{appt.reason || "—"}</span>
+        </div>
+        <div className="mt-2">
+          <Badge
+            variant={
+              appt.status === "approved"
+                ? "default"
+                : appt.status === "pending"
+                ? "secondary"
+                : "outline"
+            }
+            className="capitalize"
+          >
+            {appt.status}
+          </Badge>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EdgeCard({ label, data }) {
+  return (
+    <div className="rounded-xl border p-3">
+      <div className="flex items-center gap-2 text-[11px] text-stone-600">
+        <CalendarRange className="h-4 w-4" /> {label}
+      </div>
+      {data ? (
+        <div className="mt-1">
+          <div className="text-sm font-semibold tabular-nums">
+            {new Date(data.appointment_time).toLocaleTimeString("el-GR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </div>
+          <div className="text-xs text-stone-600 truncate">
+            {data.patient_name ?? "—"}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-1 text-xs text-stone-500 italic">Δεν υπάρχουν</div>
+      )}
+    </div>
   );
 }
 
