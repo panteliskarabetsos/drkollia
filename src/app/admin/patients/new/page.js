@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import { FaArrowLeft } from "react-icons/fa";
 import { AlertCircle, Users } from "lucide-react";
-
+import { db } from "../../../../lib/db";
+import { createPatient } from "../../../../lib/offlinePatients";
 /* ---------- helpers ---------- */
 const onlyDigits = (s) => (s || "").replace(/\D+/g, "");
 const normalizeAMKA = (s) => onlyDigits(s).slice(0, 11);
@@ -77,7 +78,7 @@ export default function NewPatientPage() {
   const [loading, setLoading] = useState(true);
   const [submitIntent, setSubmitIntent] = useState("save");
   const firstErrorRef = useRef(null);
-
+  const online = useOnline();
   // debounced duplicate checks
   const debouncedCheckDuplicate = useDebouncedCallback(async (field, value) => {
     await checkDuplicate(field, value);
@@ -178,7 +179,10 @@ export default function NewPatientPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
+    const isOnline =
+      typeof navigator !== "undefined" && typeof navigator.onLine === "boolean"
+        ? navigator.onLine
+        : true;
     const v = validate(form);
     setErrors(v);
     setFullNameError(!!(v.first_name || v.last_name));
@@ -196,6 +200,7 @@ export default function NewPatientPage() {
       return;
     }
 
+    // If previous async checks flagged duplicates, stop.
     if (amkaExists) {
       setMessage({
         type: "error",
@@ -214,93 +219,194 @@ export default function NewPatientPage() {
     setLoading(true);
     setMessage(null);
 
-    // apply custom smoking/alcohol
-    const preparedForm = {
-      ...form,
-      smoking:
-        form.smoking === "Προσαρμογή" ? form.customSmoking : form.smoking,
-      alcohol:
-        form.alcohol === "Προσαρμογή" ? form.customAlcohol : form.alcohol,
-    };
-    const { customSmoking, customAlcohol, ...cleanedFormRaw } = preparedForm;
+    try {
+      // apply custom smoking/alcohol
+      const preparedForm = {
+        ...form,
+        smoking:
+          form.smoking === "Προσαρμογή" ? form.customSmoking : form.smoking,
+        alcohol:
+          form.alcohol === "Προσαρμογή" ? form.customAlcohol : form.alcohol,
+      };
+      const { customSmoking, customAlcohol, ...cleanedFormRaw } = preparedForm;
 
-    // normalize gender values to schema
-    const genderMap = { Άνδρας: "male", Γυναίκα: "female", Άλλο: "other" };
+      // normalize gender values to schema
+      const genderMap = { Άνδρας: "male", Γυναίκα: "female", Άλλο: "other" };
+      const cleanedForm = {
+        ...cleanedFormRaw,
+        gender:
+          genderMap[cleanedFormRaw.gender] || cleanedFormRaw.gender || null,
+      };
 
-    const cleanedForm = {
-      ...cleanedFormRaw,
-      gender: genderMap[cleanedFormRaw.gender] || cleanedFormRaw.gender || null,
-    };
+      // empty strings → null
+      ["birth_date", "first_visit_date", "amka"].forEach((field) => {
+        if (cleanedForm[field]?.trim?.() === "") cleanedForm[field] = null;
+      });
 
-    // empty strings → null
-    ["birth_date", "first_visit_date", "amka"].forEach((field) => {
-      if (cleanedForm[field]?.trim?.() === "") cleanedForm[field] = null;
-    });
+      const nowISO = new Date().toISOString();
+      const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+      let newId;
+      if (online) {
+        // ---- ONLINE: save to Supabase and mirror to Dexie ----
+        const { data, error } = await supabase
+          .from("patients")
+          .insert([{ ...cleanedForm, created_at: nowISO, updated_at: nowISO }])
+          .select("id")
+          .single();
+        newId = data.id;
+        if (error) {
+          console.error("Supabase insert error:", error);
+          setMessage({ type: "error", text: "Σφάλμα κατά την αποθήκευση." });
+          return;
+        }
 
-    // return id so we can optionally jump to "new appointment"
-    const { data, error } = await supabase
-      .from("patients")
-      .insert([cleanedForm])
-      .select("id")
-      .single();
+        // Mirror to Dexie for offline use
+        try {
+          await db.patients.put({
+            id: data.id,
+            ...cleanedForm,
+            created_at: nowISO,
+            updated_at: nowISO,
+          });
+        } catch (dexErr) {
+          console.warn("[offline] Failed to mirror patient locally:", dexErr);
+        }
 
-    if (error) {
+        setMessage({
+          type: "success",
+          text: "Ο/η ασθενής καταχωρήθηκε με επιτυχία.",
+        });
+        setDirty(false);
+
+        if (submitIntent === "save_and_new_appt" && data?.id) {
+          router.push(`/admin/appointments/new?patient_id=${data.id}`);
+        } else {
+          router.push("/admin/patients");
+        }
+        return;
+      } else {
+        const created = await createPatient(cleanedForm);
+        newId = created.id;
+      }
+
+      // ---- OFFLINE: duplicate check against IndexedDB ----
+      if (cleanedForm.amka) {
+        const existsLocalAmka = await db.patients
+          .where("amka")
+          .equals(cleanedForm.amka)
+          .first();
+        if (existsLocalAmka) {
+          setMessage({
+            type: "error",
+            text: "Υπάρχει ήδη τοπικά ασθενής με αυτόν τον ΑΜΚΑ.",
+          });
+          return;
+        }
+      }
+      if (cleanedForm.phone) {
+        const existsLocalPhone = await db.patients
+          .where("phone")
+          .equals(cleanedForm.phone)
+          .first();
+        if (existsLocalPhone) {
+          setMessage({
+            type: "error",
+            text: "Υπάρχει ήδη τοπικά ασθενής με αυτό το τηλέφωνο.",
+          });
+          return;
+        }
+      }
+
+      // ---- OFFLINE: create local record + queue op ----
+      const localId =
+        "local-" +
+        (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
+      const localRow = {
+        id: localId,
+        ...cleanedForm,
+        created_at: nowISO,
+        updated_at: nowISO,
+        _local: { pending: true, op: "create" },
+      };
+
+      await db.transaction("rw", [db.patients, db.patientOps], async () => {
+        await db.patients.put(localRow);
+        await db.patientOps.add({
+          type: "create",
+          status: "pending",
+          ts: nowISO,
+          entityId: localId,
+          payload: cleanedForm,
+        });
+      });
+
+      setMessage({
+        type: "success",
+        text: "Αποθηκεύτηκε τοπικά (εκτός σύνδεσης). Θα συγχρονιστεί αυτόματα όταν επανέλθει το internet.",
+      });
+      setDirty(false);
+
+      if (submitIntent === "save_and_new_appt") {
+        // Tip: make /admin/appointments/new recognize ?patient_local_id=<id> and read from Dexie
+        router.push(`/admin/appointments/new?patient_local_id=${localId}`);
+      } else {
+        router.push("/admin/patients");
+      }
+    } catch (err) {
+      console.error(err);
       setMessage({ type: "error", text: "Σφάλμα κατά την αποθήκευση." });
-      console.error("Supabase insert error:", error);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setMessage({
-      type: "success",
-      text: "Ο/η ασθενής καταχωρήθηκε με επιτυχία.",
-    });
-    setDirty(false);
-
-    if (submitIntent === "save_and_new_appt" && data?.id) {
-      router.push(`/admin/appointments/new?patient_id=${data.id}`);
-    } else {
-      router.push("/admin/patients");
-    }
-
-    setLoading(false);
   };
 
   const checkDuplicate = async (field, value) => {
     if (!value?.trim()) return;
 
-    if (field === "amka") {
-      const { data, error } = await supabase
-        .from("patients")
-        .select("id, first_name, last_name, amka")
-        .eq("amka", value)
-        .limit(5);
+    const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
 
-      if (error) {
-        console.error("Error checking AMKA duplicates:", error);
-        return;
+    if (field === "amka") {
+      if (isOnline) {
+        const { data, error } = await supabase
+          .from("patients")
+          .select("id, first_name, last_name, amka")
+          .eq("amka", value)
+          .limit(5);
+        if (error) {
+          console.error("Error checking AMKA duplicates:", error);
+          return;
+        }
+        setAmkaExists((data?.length ?? 0) > 0);
+        setAmkaMatches(data || []);
+      } else {
+        const local = await findLocalByAMKA(value);
+        setAmkaExists(!!local);
+        setAmkaMatches(local ? [local] : []);
       }
-      setAmkaExists((data?.length ?? 0) > 0);
-      setAmkaMatches(data || []);
       return;
     }
 
     if (field === "phone") {
-      const { data, error } = await supabase
-        .from("patients")
-        .select("id")
-        .eq("phone", value)
-        .limit(1);
-      if (error) {
-        console.error("Error checking phone duplicates:", error);
-        return;
+      if (isOnline) {
+        const { data, error } = await supabase
+          .from("patients")
+          .select("id")
+          .eq("phone", value)
+          .limit(1);
+        if (error) {
+          console.error("Error checking phone duplicates:", error);
+          return;
+        }
+        setPhoneExists((data?.length ?? 0) > 0);
+      } else {
+        const local = await findLocalByPhone(value);
+        setPhoneExists(!!local);
       }
-      setPhoneExists((data?.length ?? 0) > 0);
     }
   };
 
   return (
-    <main className="min-h-screen text-stone-800 bg-[radial-gradient(1200px_500px_at_10%_-10%,#f3f1ea_25%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#f1eee6_25%,transparent)]">
+    <main className="py-8 min-h-screen text-stone-800 bg-[radial-gradient(1200px_500px_at_10%_-10%,#f3f1ea_25%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#f1eee6_25%,transparent)]">
       {/* Top bar */}
       <div className="sticky top-0 z-30 border-b bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
@@ -641,6 +747,13 @@ export default function NewPatientPage() {
               <span className="text-xs text-stone-600">
                 {dirty ? "Μη αποθηκευμένες αλλαγές" : "Όλα αποθηκευμένα"}
               </span>
+              {!online && (
+                <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2 text-sm">
+                  Είστε εκτός σύνδεσης. Τα νέα στοιχεία θα αποθηκευτούν τοπικά
+                  και θα συγχρονιστούν αυτόματα μόλις συνδεθείτε.
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -823,3 +936,22 @@ const ConflictCard = ({ title, items }) => (
     </ul>
   </div>
 );
+
+function useOnline() {
+  const [online, setOnline] = useState(true);
+
+  useEffect(() => {
+    const update = () =>
+      setOnline(typeof navigator !== "undefined" ? navigator.onLine : true);
+
+    update(); // set initial value after mount
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
+  return online;
+}

@@ -1,269 +1,317 @@
-// lib/offlineAppointments.js
-import { db, isoDateOnly } from "./db";
-import { supabase } from "./supabaseClient";
+// src/lib/offlineAppointments.js
+"use client";
 
-// Map server row -> local model (adds appointment_date)
-function mapAppt(row) {
+import { db, isoDateOnly } from "./db";
+import { supabase } from "@/app/lib/supabaseClient"; // ✅ correct path
+
+/* ---------------- utils ---------------- */
+const nowISO = () => new Date().toISOString();
+const randId =
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? () => crypto.randomUUID()
+    : () =>
+        `local-${Date.now().toString(16)}-${Math.random()
+          .toString(16)
+          .slice(2, 10)}`;
+
+const startOfDayISO = (d) => {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x.toISOString();
+};
+const endOfDayISO = (d) => {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x.toISOString();
+};
+
+/* ---------------- mappers ---------------- */
+function fromServer(row) {
   const t = row?.appointment_time ? new Date(row.appointment_time) : null;
   return {
-    ...row,
-    appointment_date: t ? isoDateOnly(t) : null,
+    id: row.id,
+    patient_id: row.patient_id ?? null,
+    reason: row.reason ?? "",
+    appointment_time: row.appointment_time, // ISO string
+    appointment_date: t ? isoDateOnly(t) : null, // YYYY-MM-DD
+    duration_minutes: row.duration_minutes ?? 30,
+    status: row.status ?? "scheduled", // DB allows: scheduled/completed/cancelled/approved/rejected
+    notes: row.notes ?? "",
+    is_exception: !!row.is_exception,
+    created_at: row.created_at ?? nowISO(),
+    updated_at: row.updated_at ?? row.created_at ?? nowISO(),
+    created_by: row.created_by ?? null,
   };
 }
 
-/* ---------------- Read ---------------- */
+function toServer(local) {
+  // Let Supabase fill created_by via default (auth.uid())
+  return {
+    id: local.id,
+    patient_id: local.patient_id ?? null,
+    reason: local.reason || null,
+    appointment_time: local.appointment_time, // ISO string
+    duration_minutes: Number(local.duration_minutes ?? 30),
+    status: local.status || "scheduled",
+    notes: local.notes || null,
+    is_exception: !!local.is_exception,
+  };
+}
 
-// Load a date range; works offline and online
+/* ---------------- reads (offline-first) ---------------- */
+
 export async function fetchAppointmentsRange({ from, to, patientId, status }) {
-  const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+  const online = typeof navigator !== "undefined" ? navigator.onLine : true;
 
-  // Build filters
-  const fromISO = from ? isoDateOnly(from) : null;
-  const toISO = to ? isoDateOnly(to) : null;
+  // Normalize inputs to strings for local compare
+  const fromDay = from ? isoDateOnly(from) : null;
+  const toDay = to ? isoDateOnly(to) : null;
 
-  if (isOnline) {
-    // 1) Online -> fetch from Supabase, mirror to Dexie
+  if (online) {
+    // Online: query Supabase with full-day bounds (local time)
     let q = supabase
       .from("appointments")
       .select(
-        "id, patient_id, reason, appointment_time, duration_minutes, status, notes, created_at, updated_at"
+        "id, patient_id, reason, appointment_time, duration_minutes, status, notes, is_exception, created_at, updated_at, created_by"
       );
+
     if (patientId) q = q.eq("patient_id", patientId);
     if (status) q = q.eq("status", status);
-    if (fromISO) q = q.gte("appointment_time", fromISO);
-    if (toISO) q = q.lte("appointment_time", toISO + "T23:59:59");
+    if (from) q = q.gte("appointment_time", startOfDayISO(from));
+    if (to) q = q.lte("appointment_time", endOfDayISO(to));
 
     const { data, error } = await q.order("appointment_time", {
       ascending: true,
     });
     if (error) throw error;
 
-    const mapped = (data || []).map(mapAppt);
-    // Mirror into Dexie (upsert)
-    await db.transaction("rw", db.appointments, async () => {
-      for (const a of mapped) await db.appointments.put(a);
-    });
+    const mapped = (data || []).map(fromServer);
+
+    // Mirror to IndexedDB
+    if (mapped.length) {
+      await db.appointments.bulkPut(mapped);
+    }
     return mapped;
   }
 
-  // 2) Offline -> read from Dexie
-  let collection = db.appointments.orderBy("appointment_date");
+  // Offline: query Dexie
+  let coll = db.appointments.orderBy("appointment_date");
 
-  // Range filter
-  if (fromISO && toISO) {
-    collection = db.appointments
+  if (fromDay && toDay) {
+    coll = db.appointments
       .where("appointment_date")
-      .between(fromISO, toISO, true, true);
-  } else if (fromISO) {
-    collection = db.appointments.where("appointment_date").gte(fromISO);
-  } else if (toISO) {
-    collection = db.appointments.where("appointment_date").lte(toISO);
+      .between(fromDay, toDay, true, true);
+  } else if (fromDay) {
+    coll = db.appointments.where("appointment_date").gte(fromDay);
+  } else if (toDay) {
+    coll = db.appointments.where("appointment_date").lte(toDay);
   }
 
-  let rows = await collection.toArray();
-
-  // Additional filters
+  let rows = await coll.toArray();
   if (patientId) rows = rows.filter((a) => a.patient_id === patientId);
   if (status) rows = rows.filter((a) => a.status === status);
 
-  // Sort by time
   rows.sort(
     (a, b) => new Date(a.appointment_time) - new Date(b.appointment_time)
   );
   return rows;
 }
 
-/* ---------------- Create / Update / Delete ---------------- */
+export async function listForDay(dateLike) {
+  const d = isoDateOnly(dateLike);
+  const rows = await db.appointments
+    .where("appointment_date")
+    .equals(d)
+    .sortBy("appointment_time");
+  return rows;
+}
 
-export async function createAppointment(payload) {
-  const isOnline = navigator.onLine;
+export async function getById(id) {
+  return db.appointments.get(id);
+}
 
-  if (isOnline) {
+/* ---------------- writes (offline-first) ---------------- */
+
+export async function createAppointment(input) {
+  const online = navigator.onLine;
+  const id = input.id || randId();
+  const local = fromServer({
+    ...input,
+    id,
+    appointment_time: input.appointment_time, // must be ISO string
+    status: input.status || "scheduled",
+    created_at: nowISO(),
+    updated_at: nowISO(),
+  });
+
+  if (online && !String(id).startsWith("local-")) {
     const { data, error } = await supabase
       .from("appointments")
-      .insert([payload])
+      .insert([toServer(local)])
       .select("*")
       .single();
     if (error) throw error;
-    const mapped = mapAppt(data);
-    await db.appointments.put(mapped);
-    return mapped;
+
+    const serverRow = fromServer(data);
+    await db.appointments.put(serverRow);
+    return serverRow;
   }
 
-  // Offline: create a local-ONLY record + queue
-  const localId = "local-" + crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  const localRow = mapAppt({
-    ...payload,
-    id: localId,
-    created_at: payload.created_at || now,
-    updated_at: now,
-    // Tag for UI
-    status: payload.status || "scheduled",
-    _local: { pending: true, op: "create" },
-  });
-
+  // Offline: write local & queue op
   await db.transaction("rw", [db.appointments, db.appointmentOps], async () => {
-    await db.appointments.put(localRow);
+    await db.appointments.put(local);
     await db.appointmentOps.add({
       type: "create",
       status: "pending",
-      ts: now,
-      entityId: localId,
-      payload,
+      ts: Date.now(),
+      entityId: id,
+      payload: toServer(local),
     });
   });
 
-  return localRow;
+  return local;
 }
 
 export async function updateAppointment(id, patch) {
-  const isOnline = navigator.onLine;
-  const now = new Date().toISOString();
+  const online = navigator.onLine;
+  const current = await db.appointments.get(id);
+  if (!current) throw new Error("Appointment not found");
 
-  if (isOnline && !String(id).startsWith("local-")) {
+  const merged = fromServer({
+    ...current,
+    ...patch,
+    appointment_time: patch.appointment_time ?? current.appointment_time, // keep ISO
+    updated_at: nowISO(),
+  });
+
+  if (online && !String(id).startsWith("local-")) {
     const { error } = await supabase
       .from("appointments")
-      .update({ ...patch, updated_at: now })
+      .update(toServer(merged))
       .eq("id", id);
     if (error) throw error;
-
-    // Mirror
-    const current = await db.appointments.get(id);
-    const merged = mapAppt({ ...(current || {}), ...patch, updated_at: now });
     await db.appointments.put(merged);
     return merged;
   }
 
-  // Offline or local id: update Dexie + queue
+  // Offline queue
   await db.transaction("rw", [db.appointments, db.appointmentOps], async () => {
-    const current = await db.appointments.get(id);
-    const merged = mapAppt({ ...(current || {}), ...patch, updated_at: now });
-    merged._local = { pending: true, op: "update" };
     await db.appointments.put(merged);
     await db.appointmentOps.add({
       type: "update",
       status: "pending",
-      ts: now,
+      ts: Date.now(),
       entityId: id,
-      payload: patch,
+      payload: toServer(merged),
     });
   });
 
-  return await db.appointments.get(id);
+  return merged;
 }
 
 export async function deleteAppointment(id) {
-  const isOnline = navigator.onLine;
-  if (isOnline && !String(id).startsWith("local-")) {
+  const online = navigator.onLine;
+
+  if (online && !String(id).startsWith("local-")) {
     const { error } = await supabase.from("appointments").delete().eq("id", id);
     if (error) throw error;
     await db.appointments.delete(id);
     return;
   }
 
-  const now = new Date().toISOString();
+  // Offline: remove locally and queue delete
   await db.transaction("rw", [db.appointments, db.appointmentOps], async () => {
-    // Tombstone locally so UI hides it
-    await db.appointments.put({
-      id,
-      _local: { pending: true, op: "delete", tombstone: true },
-    });
+    await db.appointments.delete(id);
     await db.appointmentOps.add({
       type: "delete",
       status: "pending",
-      ts: now,
+      ts: Date.now(),
       entityId: id,
     });
   });
 }
 
-/* ---------------- Sync queue ---------------- */
+/* ---------------- sync (push outbox + pull latest) ---------------- */
 
 export async function syncAppointments() {
   if (!navigator.onLine) return;
 
-  // Push local ops → server
+  // 1) Push outbox
   const ops = await db.appointmentOps
     .where("status")
     .equals("pending")
-    .toArray();
+    .sortBy("ts");
 
   for (const op of ops) {
     try {
       if (op.type === "create") {
-        // Create on server
         const { data, error } = await supabase
           .from("appointments")
-          .insert([{ ...op.payload }])
+          .insert([op.payload])
           .select("*")
           .single();
         if (error) throw error;
 
-        const serverRow = mapAppt(data);
+        const serverRow = fromServer(data);
 
-        // Replace local temp id
+        // Replace local temp id with server id
         await db.transaction("rw", db.appointments, async () => {
-          // Remove temp/local row
           await db.appointments.delete(op.entityId);
-          // Insert server one
           await db.appointments.put(serverRow);
         });
       } else if (op.type === "update") {
-        const id = op.entityId;
         const { error } = await supabase
           .from("appointments")
-          .update({ ...op.payload, updated_at: new Date().toISOString() })
-          .eq("id", id);
+          .update(op.payload)
+          .eq("id", op.entityId);
         if (error) throw error;
 
-        // Mirror locally
-        const current = await db.appointments.get(id);
+        const cur = await db.appointments.get(op.entityId);
         await db.appointments.put(
-          mapAppt({ ...(current || {}), ...op.payload })
+          fromServer({ ...(cur || {}), ...op.payload })
         );
       } else if (op.type === "delete") {
-        const id = op.entityId;
-        // Local-only temp ids don’t exist on server
-        if (!String(id).startsWith("local-")) {
+        if (!String(op.entityId).startsWith("local-")) {
           const { error } = await supabase
             .from("appointments")
             .delete()
-            .eq("id", id);
+            .eq("id", op.entityId);
           if (error) throw error;
         }
-        await db.appointments.delete(id);
+        await db.appointments.delete(op.entityId);
       }
 
-      // Mark op as done
       await db.appointmentOps.update(op.id, { status: "done" });
     } catch (err) {
-      // Leave as pending; you can add retry/backoff if you want
-      console.error("syncAppointments op failed:", err);
+      console.warn("syncAppointments op failed:", err);
+      // keep pending for retry
     }
   }
 
-  // Pull latest server data for the next 60 days (example window)
+  // 2) Pull window (past 14d → next 60d)
   const from = new Date();
   from.setDate(from.getDate() - 14);
   const to = new Date();
   to.setDate(to.getDate() + 60);
 
-  let q = supabase
+  const { data, error } = await supabase
     .from("appointments")
     .select(
-      "id, patient_id, reason, appointment_time, duration_minutes, status, notes, created_at, updated_at"
+      "id, patient_id, reason, appointment_time, duration_minutes, status, notes, is_exception, created_at, updated_at, created_by"
     )
-    .gte("appointment_time", isoDateOnly(from))
-    .lte("appointment_time", isoDateOnly(to) + "T23:59:59")
+    .gte("appointment_time", startOfDayISO(from))
+    .lte("appointment_time", endOfDayISO(to))
     .order("appointment_time", { ascending: true });
 
-  const { data, error } = await q;
   if (!error && data) {
-    const mapped = data.map(mapAppt);
-    await db.transaction("rw", db.appointments, async () => {
-      for (const a of mapped) await db.appointments.put(a);
-    });
+    const mapped = data.map(fromServer);
+    await db.appointments.bulkPut(mapped);
   }
+}
+
+// Auto-flush when back online
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => {
+    syncAppointments().catch(() => {});
+  });
 }

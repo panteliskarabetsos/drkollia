@@ -3,15 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "@/app/lib/supabaseClient";
-import PatientFormCard from "../../components/PatientFormCard";
+import { supabase } from "../../../lib/supabaseClient";
 import PatientDetailsCard from "../../components/PatientDetailsCard";
 import { db } from "../../../lib/db";
-import {
-  cachePatients,
-  getAllPatientsOffline,
-  filterPatientsLocal,
-} from "../../../lib/offline";
 import { ScrollArea } from "@/components/ui/scroll-area";
 // shadcn/ui
 import {
@@ -111,9 +105,18 @@ export default function PatientsPage() {
   });
 
   // --- helpers ---
+  const isLocalId = (id) => String(id || "").startsWith("local-");
+
+  const online = () =>
+    typeof navigator === "undefined" ? true : navigator.onLine;
+
   const totalPages = useMemo(() => Math.ceil(total / PAGE_SIZE) || 1, [total]);
   const openView = async (p) => {
     setSelected({ ...p, _loading: true });
+    if (!online() || isLocalId(p.id)) {
+      setSelected({ ...p, _loading: false });
+      return;
+    }
     const { data, error } = await supabase
       .from("patients")
       .select("*")
@@ -126,49 +129,26 @@ export default function PatientsPage() {
   const loadPatients = useCallback(async () => {
     setBusy(true);
     setError(null);
-    setIsOfflineData(false);
-
-    // helper for pagination
-    const paginate = (arr, page, size) => {
-      const start = page * size;
-      return arr.slice(start, start + size);
-    };
 
     try {
-      // ---- ONLINE path ----
-      let q = supabase
-        .from("patients")
-        .select(
-          [
-            "id",
-            "first_name",
-            "last_name",
-            "phone",
-            "email",
-            "amka",
-            "birth_date",
-            "gender",
-            "created_at",
-            "medications",
-            "gynecological_history",
-            "hereditary_history",
-            "current_disease",
-            "physical_exam",
-            "preclinical_screening",
-            "notes",
-          ].join(", "),
-          { count: "exact" }
-        );
-
-      if (query?.trim()) {
-        const s = query.trim();
-        q = q.or(
-          `first_name.ilike.%${s}%,last_name.ilike.%${s}%,phone.ilike.%${s}%,email.ilike.%${s}%,amka.ilike.%${s}%`
-        );
+      // --- validate age range ---
+      const min = minAge === "" ? null : Number(minAge);
+      const max = maxAge === "" ? null : Number(maxAge);
+      if (
+        (min !== null && Number.isNaN(min)) ||
+        (max !== null && Number.isNaN(max))
+      ) {
+        setError("Μη έγκυρο φίλτρο ηλικίας.");
+        return;
       }
-      if (gender !== "all") q = q.eq("gender", gender);
+      if (min !== null && max !== null && min > max) {
+        setError(
+          "Η ελάχιστη ηλικία δεν μπορεί να είναι μεγαλύτερη από τη μέγιστη."
+        );
+        return;
+      }
 
-      // Age filters (server-side)
+      // --- helpers reused for local filters ---
       const ymd = (d) => {
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -181,44 +161,183 @@ export default function PatientsPage() {
         d.setFullYear(d.getFullYear() - n);
         return d;
       };
-      const min = minAge === "" ? null : Number(minAge);
-      const max = maxAge === "" ? null : Number(maxAge);
-      if (min !== null) q = q.lte("birth_date", ymd(yearsAgo(min)));
-      if (max !== null) q = q.gte("birth_date", ymd(yearsAgo(max)));
+      const calcAge = (birth_date) => {
+        if (!birth_date) return null;
+        const b = new Date(birth_date);
+        const t = new Date();
+        let age = t.getFullYear() - b.getFullYear();
+        const m = t.getMonth() - b.getMonth();
+        if (m < 0 || (m === 0 && t.getDate() < b.getDate())) age--;
+        return age;
+      };
+      const norm = (s) => (s || "").toString().toLowerCase();
 
-      q = q
-        .order("last_name", { ascending: true })
-        .order("first_name", { ascending: true })
-        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+      const qstr = (query || "").trim();
+      const qLower = norm(qstr);
 
-      const { data, count, error } = await q;
-      if (error) throw error;
+      const localFilter = (p) => {
+        const matchesText =
+          !qLower ||
+          norm(p.first_name).includes(qLower) ||
+          norm(p.last_name).includes(qLower) ||
+          norm(p.phone).includes(qLower) ||
+          norm(p.email).includes(qLower) ||
+          norm(p.amka).includes(qLower);
 
-      // cache what we got
-      await cachePatients(data || []);
+        const matchesGender = gender === "all" || p.gender === gender;
 
-      setPatients(data ?? []);
-      setTotal(count ?? data?.length ?? 0);
-    } catch (err) {
-      console.warn("Falling back to offline cache:", err?.message || err);
-      // ---- OFFLINE fallback ----
-      const all = await getAllPatientsOffline();
-      const filtered = filterPatientsLocal(all, {
-        query,
-        gender,
-        minAge,
-        maxAge,
-      });
+        const age = calcAge(p.birth_date);
+        const matchesMin = min === null || (age !== null && age >= min);
+        const matchesMax = max === null || (age !== null && age <= max);
 
-      setTotal(filtered.length);
-      setPatients(paginate(filtered, page, PAGE_SIZE));
-      setIsOfflineData(true);
-      setError(null); // we have data, don't show red error
+        return matchesText && matchesGender && matchesMin && matchesMax;
+      };
+
+      let serverRows = [];
+      let serverCount = 0;
+
+      // ---------- SERVER (only if online) ----------
+      if (online()) {
+        try {
+          let q = supabase
+            .from("patients")
+            .select(
+              [
+                "id",
+                "first_name",
+                "last_name",
+                "phone",
+                "email",
+                "amka",
+                "birth_date",
+                "gender",
+                "created_at",
+                "medications",
+                "gynecological_history",
+                "hereditary_history",
+                "current_disease",
+                "physical_exam",
+                "preclinical_screening",
+                "notes",
+              ].join(", "),
+              { count: "exact" }
+            );
+
+          if (qstr) {
+            q = q.or(
+              `first_name.ilike.%${qstr}%,last_name.ilike.%${qstr}%,phone.ilike.%${qstr}%,email.ilike.%${qstr}%,amka.ilike.%${qstr}%`
+            );
+          }
+          if (gender !== "all") q = q.eq("gender", gender);
+          if (min !== null) q = q.lte("birth_date", ymd(yearsAgo(min)));
+          if (max !== null) q = q.gte("birth_date", ymd(yearsAgo(max)));
+
+          q = q
+            .order("last_name", { ascending: true })
+            .order("first_name", { ascending: true })
+            .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+
+          const { data, count, error } = await q;
+          if (error) throw error;
+
+          serverRows = data ?? [];
+          serverCount = count ?? 0;
+
+          // Optional: mirror cached server rows into Dexie for true offline view later
+          try {
+            await db.transaction("rw", db.patients, async () => {
+              for (const row of serverRows) {
+                await db.patients.put(row);
+              }
+            });
+          } catch (cacheErr) {
+            console.warn("[patients] cache mirror failed:", cacheErr);
+          }
+        } catch (serverErr) {
+          console.warn(
+            "[patients] server fetch failed; using local cache",
+            serverErr
+          );
+        }
+      }
+
+      // ---------- LOCAL (unsynced + cached) ----------
+      // Always include unsynced local rows (ids starting with local-)
+      // Unsynced local (ids start with local-)
+      let localUnsynced = [];
+      try {
+        localUnsynced = await db.patients
+          .where("id")
+          .startsWith("local-")
+          .toArray();
+        // hide any tombstoned local rows (in case of local-create then local-delete)
+        localUnsynced = localUnsynced.filter((p) => !isTombstoned(p));
+        localUnsynced = localUnsynced.filter(localFilter);
+        localUnsynced.sort((a, b) => {
+          const ln = (a.last_name || "").localeCompare(b.last_name || "");
+          return ln !== 0
+            ? ln
+            : (a.first_name || "").localeCompare(b.first_name || "");
+        });
+      } catch (dexieErr) {
+        console.warn("[patients] local unsynced read failed:", dexieErr);
+      }
+
+      // Cached server rows (used when offline OR when server fetch failed)
+      let cachedServer = [];
+      if (!online() || serverRows.length === 0) {
+        try {
+          cachedServer = (await db.patients.toArray())
+            .filter((p) => !isLocalId(p.id))
+            .filter((p) => !isTombstoned(p)) // <-- hide tombstones
+            .filter(localFilter)
+            .sort((a, b) => {
+              const ln = (a.last_name || "").localeCompare(b.last_name || "");
+              return ln !== 0
+                ? ln
+                : (a.first_name || "").localeCompare(b.first_name || "");
+            });
+        } catch (dexieErr) {
+          console.warn("[patients] cached server read failed:", dexieErr);
+        }
+      }
+
+      // ---------- MERGE ----------
+      const base = serverRows.length ? serverRows : cachedServer;
+      const merged = [...base, ...localUnsynced];
+
+      setPatients(merged);
+      setTotal(
+        (serverRows.length ? serverCount : cachedServer.length) +
+          localUnsynced.length
+      );
+    } catch (e) {
+      // Better diagnostics than logging an empty object
+      const msg =
+        e?.message ||
+        e?.error?.message ||
+        (typeof e === "object" ? JSON.stringify(e) : String(e));
+      console.error("loadPatients error:", msg, e);
+      setError("Αποτυχία φόρτωσης ασθενών");
     } finally {
       setBusy(false);
       setLoading(false);
     }
   }, [page, query, gender, minAge, maxAge]);
+
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
+  useEffect(() => {
+    const up = () => setIsOnline(true);
+    const down = () => setIsOnline(false);
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    return () => {
+      window.removeEventListener("online", up);
+      window.removeEventListener("offline", down);
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -245,10 +364,15 @@ export default function PatientsPage() {
       return;
     }
 
+    if (!isOnline || isLocalId(confirmDelete.id)) {
+      // No server lookups offline or for local-only rows
+      setUpcomingCheck({ loading: false, count: 0, items: [] });
+      return;
+    }
+
     (async () => {
       setUpcomingCheck({ loading: true, count: 0, items: [] });
       const nowISO = new Date().toISOString();
-
       const { data, count, error } = await supabase
         .from("appointments")
         .select("id, appointment_time, status", { count: "exact" })
@@ -270,20 +394,34 @@ export default function PatientsPage() {
         items: data ?? [],
       });
     })();
-  }, [confirmDelete]);
+  }, [confirmDelete, isOnline]);
 
   // --- actions ---
   const removePatient = async (id) => {
+    if (!isOnline) {
+      setError("Απαιτείται σύνδεση για διαγραφή ασθενούς.");
+      return;
+    }
+
     try {
       setBusy(true);
-      const { error } = await supabase.from("patients").delete().eq("id", id);
-      if (error) throw error;
+
+      if (isLocalId(id)) {
+        // Local-only (unsynced) patient while online:
+        // there's no server row—just remove from local cache.
+        await db.patients.delete(id);
+      } else {
+        // Server-backed patient:
+        const { error } = await supabase.from("patients").delete().eq("id", id);
+        if (error) throw error;
+        // keep local cache consistent so it won't reappear offline
+        await db.patients.delete(id);
+      }
+
       setConfirmDelete(null);
-      // if deleting the last row on last page, step back
-      if (patients.length === 1 && page > 0) setPage((p) => p - 1);
-      else await loadPatients();
+      await loadPatients();
     } catch (e) {
-      console.error(e);
+      console.error("removePatient error:", e);
       setError("Αποτυχία διαγραφής");
     } finally {
       setBusy(false);
@@ -687,6 +825,7 @@ export default function PatientsPage() {
                                 router.push(`/admin/patients/history/${p.id}`)
                               }
                               onDelete={() => setConfirmDelete(p)}
+                              online={isOnline}
                             />
                           </TableCell>
                         </TableRow>
@@ -857,7 +996,7 @@ export default function PatientsPage() {
 }
 
 // ------------- small components -------------
-function RowActions({ onView, onEdit, onHistory, onDelete }) {
+function RowActions({ onView, onEdit, onHistory, onDelete, online }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -877,7 +1016,12 @@ function RowActions({ onView, onEdit, onHistory, onDelete }) {
           Ιστορικό επισκέψεων
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onDelete} className="text-red-600">
+        <DropdownMenuItem
+          onClick={online ? onDelete : undefined}
+          disabled={!online}
+          className={!online ? "opacity-60 cursor-not-allowed" : "text-red-600"}
+          title={!online ? "Απαιτείται σύνδεση για διαγραφή" : undefined}
+        >
           Διαγραφή
         </DropdownMenuItem>
       </DropdownMenuContent>

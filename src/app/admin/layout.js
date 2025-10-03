@@ -24,7 +24,7 @@ import {
   Download,
 } from "lucide-react";
 import "../globals.css";
-
+import { syncPatients } from "../../lib/offlinePatients";
 const inter = Inter({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
@@ -119,6 +119,15 @@ export default function AdminLayout({ children }) {
     };
   }, [router]);
 
+  useEffect(() => {
+    const onOnline = async () => {
+      try {
+        await syncPatients();
+      } catch {}
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
   // Close menus on route change
   useEffect(() => {
     setMenuOpen(false);
@@ -318,6 +327,7 @@ export default function AdminLayout({ children }) {
                     </div>
                     <button
                       onClick={handleLogout}
+                      disabled={!online}
                       className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#f6f4ef] hover:pl-4 transition-all"
                     >
                       <LogOut className="w-4 h-4 text-red-600" />

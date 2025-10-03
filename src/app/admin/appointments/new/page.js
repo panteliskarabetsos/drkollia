@@ -8,6 +8,12 @@ import { Calendar as CalendarIcon } from "lucide-react";
 import { format, addMonths } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
+import { db } from "../../../../lib/db";
+import {
+  createAppointment,
+  fetchAppointmentsRange,
+  syncAppointments,
+} from "../../../../lib/offlineAppointments";
 
 import {
   Popover,
@@ -67,7 +73,7 @@ export default function NewAppointmentPage() {
   const [visitorCount, setVisitorCount] = useState(null);
   const [showVisitorMessage, setShowVisitorMessage] = useState(false);
   const [errors, setErrors] = useState({});
-
+  const [online, setOnline] = useState(true);
   const filteredPatients = patients.filter((p) => {
     const term = normalizeGreekText(searchTerm);
     const fullName = normalizeGreekText(`${p.first_name} ${p.last_name}`);
@@ -107,6 +113,13 @@ export default function NewAppointmentPage() {
 
   useEffect(() => {
     const fetchAvailableSlots = async () => {
+      if (!navigator.onLine) {
+        setAvailableSlots([]);
+        setAllScheduleSlots([]);
+        setHasFullDayException(false);
+        setLoadingSlots(false);
+        return;
+      }
       if (!formData.appointment_date) return;
       setLoadingSlots(true);
       const date = formData.appointment_date;
@@ -273,13 +286,28 @@ export default function NewAppointmentPage() {
 
   useEffect(() => {
     const fetchPatients = async () => {
-      const { data, error } = await supabase
-        .from("patients")
-        .select("id, first_name, last_name, email, amka, phone")
-        .order("last_name", { ascending: true })
-        .order("first_name", { ascending: true });
+      if (navigator.onLine) {
+        const { data, error } = await supabase
+          .from("patients")
+          .select("id, first_name, last_name, email, amka, phone")
+          .order("last_name", { ascending: true })
+          .order("first_name", { ascending: true });
 
-      if (!error) setPatients(data);
+        if (!error) {
+          setPatients(data || []);
+          // mirror to Dexie for offline search
+          await db.patients.bulkPut(
+            (data || []).map((p) => ({
+              ...p,
+              updated_at: new Date().toISOString(),
+            }))
+          );
+        }
+      } else {
+        // offline: read from Dexie
+        const rows = await db.patients.orderBy("last_name").toArray();
+        setPatients(rows || []);
+      }
     };
     fetchPatients();
   }, []);
@@ -287,7 +315,7 @@ export default function NewAppointmentPage() {
   useEffect(() => {
     const fetchBookedSlots = async () => {
       if (!formData.appointment_date) return;
-
+      if (!navigator.onLine) return;
       const start = new Date(formData.appointment_date);
       start.setHours(0, 0, 0, 0);
       const end = new Date(start);
@@ -326,7 +354,7 @@ export default function NewAppointmentPage() {
     if (isMedicalVisitor) {
       setSelectedPatient(null);
       setNewPatientMode(false);
-      setVisitorName((v) => v); // προαιρετικό, κρατά το όνομα αν υπήρχε
+      setVisitorName((v) => v);
     }
   }, [isMedicalVisitor]);
 
@@ -354,6 +382,24 @@ export default function NewAppointmentPage() {
     // Επιστροφή στην προηγούμενη σελίδα
     router.push("/admin/appointments");
   };
+
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    // when we come back online, push queued ops
+    const onOnline = () => syncAppointments().catch(() => {});
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
 
   const validateForm = () => {
     const newErrors = {};
@@ -431,6 +477,7 @@ export default function NewAppointmentPage() {
 
     checkPhone();
   }, [newPatientData.phone]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -445,13 +492,13 @@ export default function NewAppointmentPage() {
           : parseInt(formData.duration_minutes, 10);
 
       if (!Number.isFinite(duration) || duration <= 0) {
-        alert("Η διάρκεια του ραντεβού δεν είναι έγκυρη.");
+        toast.error("Η διάρκεια του ραντεβού δεν είναι έγκυρη.");
         return;
       }
 
       // ---- Έλεγχος ημερομηνίας/ώρας
       if (!formData.appointment_date || !formData.appointment_time) {
-        alert("Πρέπει να συμπληρωθούν Ημερομηνία και Ώρα.");
+        toast.error("Πρέπει να συμπληρωθούν Ημερομηνία και Ώρα.");
         return;
       }
 
@@ -468,33 +515,31 @@ export default function NewAppointmentPage() {
         const visitorTrimmed = visitor.trim();
 
         if (!visitorTrimmed) {
-          alert("Πρέπει να συμπληρωθεί το Όνομα Επισκέπτη.");
+          toast.error("Πρέπει να συμπληρωθεί το Όνομα Επισκέπτη.");
           return;
         }
 
-        const { error } = await supabase.from("appointments").insert([
-          {
-            patient_id: null,
-            appointment_time: combinedDate.toISOString(),
-            duration_minutes: duration,
-            reason:
-              formData.reason === "Προσαρμογή" && formData.customReason?.trim()
-                ? formData.customReason.trim()
-                : "Ιατρικός Επισκέπτης",
-            notes: [formData.notes, `Ιατρικός Επισκέπτης: ${visitorTrimmed}`]
-              .filter(Boolean)
-              .join(" • "),
-            status: "approved",
-          },
-        ]);
+        const payload = {
+          patient_id: null,
+          appointment_time: combinedDate.toISOString(),
+          duration_minutes: duration,
+          reason:
+            formData.reason === "Προσαρμογή" && formData.customReason?.trim()
+              ? formData.customReason.trim()
+              : "Ιατρικός Επισκέπτης",
+          notes: [formData.notes, `Ιατρικός Επισκέπτης: ${visitorTrimmed}`]
+            .filter(Boolean)
+            .join(" • "),
+          status: "approved",
+          is_exception: false,
+        };
 
-        if (error) {
-          console.error("Appointment insert error:", error);
-          alert("Σφάλμα κατά την καταχώρηση ραντεβού.");
-          return;
-        }
-
-        toast.success("✅ Το ραντεβού καταχωρήθηκε επιτυχώς!");
+        await createAppointment(payload); // <-- works offline too
+        toast.success(
+          navigator.onLine
+            ? "✅ Το ραντεβού καταχωρήθηκε."
+            : "✅ Το ραντεβού αποθηκεύτηκε τοπικά. Θα συγχρονιστεί όταν είστε online."
+        );
         router.push("/admin/appointments");
         return;
       }
@@ -506,6 +551,14 @@ export default function NewAppointmentPage() {
       let email = null;
       let name = "";
 
+      // Δημιουργία νέου ασθενή δεν υποστηρίζεται offline
+      if (newPatientMode && !navigator.onLine) {
+        toast.error(
+          "Δεν είναι δυνατή η δημιουργία νέου ασθενή χωρίς σύνδεση. Επιλέξτε υπάρχοντα ασθενή ή δοκιμάστε αργότερα."
+        );
+        return;
+      }
+
       if (newPatientMode) {
         const trimmedAmka = newPatientData.amka?.trim();
         if (trimmedAmka) {
@@ -516,7 +569,7 @@ export default function NewAppointmentPage() {
             .single();
 
           if (existingAmka) {
-            alert("Υπάρχει ήδη ασθενής με αυτό το ΑΜΚΑ.");
+            toast.error("Υπάρχει ήδη ασθενής με αυτό το ΑΜΚΑ.");
             return;
           }
         }
@@ -537,12 +590,12 @@ export default function NewAppointmentPage() {
 
         if (patientError || !data || data.length === 0) {
           console.error("❌ Patient insert error:", patientError);
-          alert("Σφάλμα κατά την καταχώρηση νέου ασθενή.");
+          toast.error("Σφάλμα κατά την καταχώρηση νέου ασθενή.");
           return;
         }
 
         patientId = data[0].id;
-        email = newPatientData.email;
+        email = newPatientData.email || null;
         name = `${newPatientData.first_name} ${newPatientData.last_name}`;
       } else {
         email = selectedPatient?.email || null;
@@ -552,54 +605,58 @@ export default function NewAppointmentPage() {
       }
 
       if (!patientId) {
-        alert("Πρέπει να επιλεγεί/καταχωρηθεί ασθενής.");
+        toast.error("Πρέπει να επιλεγεί/καταχωρηθεί ασθενής.");
         return;
       }
 
-      const { error } = await supabase.from("appointments").insert([
-        {
-          patient_id: patientId,
-          appointment_time: combinedDate.toISOString(),
-          duration_minutes: duration,
-          notes: formData.notes || null,
-          reason:
-            formData.reason === "Προσαρμογή" && formData.customReason?.trim()
-              ? formData.customReason.trim()
-              : formData.reason,
-          status: "approved",
-        },
-      ]);
+      const payload = {
+        patient_id: patientId,
+        appointment_time: combinedDate.toISOString(),
+        duration_minutes: duration,
+        notes: formData.notes || null,
+        reason:
+          formData.reason === "Προσαρμογή" && formData.customReason?.trim()
+            ? formData.customReason.trim()
+            : formData.reason,
+        status: "approved",
+        is_exception: false,
+      };
 
-      if (error) {
-        console.error("Appointment insert error:", error);
-        alert("Σφάλμα κατά την καταχώρηση ραντεβού.");
-        return;
-      }
+      await createAppointment(payload); // <-- queue offline or write online
 
-      // Εμφάνιση toast επιτυχίας
-      toast.success("✅ Το ραντεβού καταχωρήθηκε επιτυχώς!");
+      toast.success(
+        navigator.onLine
+          ? "✅ Το ραντεβού καταχωρήθηκε."
+          : "✅ Το ραντεβού αποθηκεύτηκε τοπικά. Θα συγχρονιστεί όταν είστε online."
+      );
 
-      if (email) {
-        await fetch("/api/send-confirmation", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email,
-            name,
-            date: formData.appointment_date.toISOString(),
-            time: formData.appointment_time,
-            reason:
-              formData.reason === "Προσαρμογή" && formData.customReason?.trim()
-                ? formData.customReason.trim()
-                : formData.reason,
-          }),
-        });
+      // Στέλνουμε email μόνο όταν υπάρχει σύνδεση
+      if (navigator.onLine && email) {
+        try {
+          await fetch("/api/send-confirmation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email,
+              name,
+              date: formData.appointment_date.toISOString(),
+              time: formData.appointment_time,
+              reason:
+                formData.reason === "Προσαρμογή" &&
+                formData.customReason?.trim()
+                  ? formData.customReason.trim()
+                  : formData.reason,
+            }),
+          });
+        } catch (_) {
+          // αν αποτύχει το email, δεν μπλοκάρουμε τη ροή
+        }
       }
 
       router.push("/admin/appointments");
     } catch (err) {
       console.error("Σφάλμα:", err);
-      alert("Προέκυψε σφάλμα.");
+      toast.error("Προέκυψε σφάλμα.");
     } finally {
       setIsSubmitting(false);
     }
@@ -641,6 +698,10 @@ export default function NewAppointmentPage() {
   }, [formData.appointment_date, formData.reason]);
 
   const findNextAvailableDate = async (startDate, duration) => {
+    if (!navigator.onLine) {
+      setNextAvailableDate(null);
+      return;
+    }
     for (let i = 1; i <= 30; i++) {
       const nextDate = new Date(startDate);
       nextDate.setDate(startDate.getDate() + i);
@@ -1121,100 +1182,180 @@ export default function NewAppointmentPage() {
               Επιλογή Ώρας
             </label>
 
-            {loadingSlots ? (
-              <div className="flex items-center justify-center py-4">
-                <svg
-                  className="animate-spin h-5 w-5 text-gray-600"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8v8H4z"
-                  />
-                </svg>
-                <span className="ml-2 text-gray-600 text-sm">
-                  Φόρτωση διαθέσιμων ωρών...
-                </span>
-              </div>
-            ) : hasFullDayException ? (
-              <p className="text-red-600 text-sm mt-2">
-                Το ιατρείο είναι κλειστό για όλη την ημέρα λόγω εξαίρεσης.
-              </p>
-            ) : allScheduleSlots.length === 0 ? (
-              <p className="text-red-600 text-sm mt-2">
-                Εκτός ωραρίου Ιατρείου για την επιλεγμένη ημέρα.
-              </p>
-            ) : availableSlots.length === 0 ? (
-              <p className="text-red-600 text-sm mt-2">
-                Δεν υπάρχει διαθέσιμο ραντεβού για τη διάρκεια που επιλέξατε.
-                {nextAvailableDate ? (
-                  <>
-                    {" "}
-                    Πρώτο διαθέσιμο:{" "}
-                    <strong>{format(nextAvailableDate, "dd/MM/yyyy")}</strong>
-                  </>
-                ) : (
-                  <> Δοκιμάστε άλλη ημερομηνία.</>
-                )}
-              </p>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {allScheduleSlots.map(({ time, available }) => {
-                  const [hour, minute] = time.split(":").map(Number);
-                  const start = new Date();
-                  start.setHours(hour, minute, 0, 0);
+            {(() => {
+              const isOnline =
+                typeof navigator !== "undefined" ? navigator.onLine : true;
 
-                  const duration = parseInt(
-                    formData.duration_minutes === "custom"
-                      ? formData.customDuration
-                      : formData.duration_minutes
-                  );
+              // OFFLINE: manual dropdown with 15' increments (00:00–23:45)
+              if (!isOnline) {
+                const timeOpts = Array.from({ length: 96 }, (_, i) => {
+                  const h = String(Math.floor(i / 4)).padStart(2, "0");
+                  const m = String((i % 4) * 15).padStart(2, "0");
+                  const startStr = `${h}:${m}`;
 
+                  // compute end label using selected date (for accuracy)
+                  const [sh, sm] = [Number(h), Number(m)];
+                  const start = new Date(formData.appointment_date);
+                  start.setHours(sh, sm, 0, 0);
                   const end = new Date(start);
-                  end.setMinutes(end.getMinutes() + duration);
-
-                  const endTimeStr = `${String(end.getHours()).padStart(
+                  end.setMinutes(end.getMinutes() + resolvedDuration);
+                  const endStr = `${String(end.getHours()).padStart(
                     2,
                     "0"
                   )}:${String(end.getMinutes()).padStart(2, "0")}`;
 
-                  return (
-                    <button
-                      key={time}
-                      type="button"
-                      onClick={() => {
-                        if (available)
-                          setFormData({ ...formData, appointment_time: time });
-                      }}
-                      disabled={!available}
-                      className={`px-3 py-2 text-sm rounded-lg border transition-all ${
-                        formData.appointment_time === time && available
-                          ? "bg-gray-800 text-white"
-                          : available
-                          ? "bg-white text-gray-800 border-gray-300 hover:bg-gray-100"
-                          : "bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed"
-                      }`}
-                      title={available ? "" : "Κλεισμένο ή μη διαθέσιμο"}
+                  return { value: startStr, label: `${startStr}–${endStr}` };
+                });
+
+                return (
+                  <>
+                    <div className="mb-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 inline-flex">
+                      Είστε εκτός σύνδεσης — δεν είναι δυνατός ο έλεγχος
+                      διαθεσιμότητας. Επιλέξτε χειροκίνητα την ώρα ραντεβού.
+                    </div>
+                    <select
+                      value={formData.appointment_time || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          appointment_time: e.target.value,
+                        })
+                      }
+                      className="w-full p-2 border border-gray-300 rounded-lg bg-white"
                     >
-                      {time}–{endTimeStr}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                      <option value="" disabled>
+                        -- Επιλέξτε ώρα --
+                      </option>
+                      {timeOpts.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                );
+              }
+
+              // ONLINE: keep your existing grid / states & messages
+              if (loadingSlots) {
+                return (
+                  <div className="flex items-center justify-center py-4">
+                    <svg
+                      className="animate-spin h-5 w-5 text-gray-600"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v8H4z"
+                      />
+                    </svg>
+                    <span className="ml-2 text-gray-600 text-sm">
+                      Φόρτωση διαθέσιμων ωρών...
+                    </span>
+                  </div>
+                );
+              }
+
+              if (hasFullDayException) {
+                return (
+                  <p className="text-red-600 text-sm mt-2">
+                    Το ιατρείο είναι κλειστό για όλη την ημέρα λόγω εξαίρεσης.
+                  </p>
+                );
+              }
+
+              if (allScheduleSlots.length === 0) {
+                return (
+                  <p className="text-red-600 text-sm mt-2">
+                    Εκτός ωραρίου Ιατρείου για την επιλεγμένη ημέρα.
+                  </p>
+                );
+              }
+
+              if (availableSlots.length === 0) {
+                return (
+                  <p className="text-red-600 text-sm mt-2">
+                    Δεν υπάρχει διαθέσιμο ραντεβού για τη διάρκεια που
+                    επιλέξατε.
+                    {nextAvailableDate ? (
+                      <>
+                        {" "}
+                        Πρώτο διαθέσιμο:{" "}
+                        <strong>
+                          {format(nextAvailableDate, "dd/MM/yyyy")}
+                        </strong>
+                      </>
+                    ) : (
+                      <> Δοκιμάστε άλλη ημερομηνία.</>
+                    )}
+                  </p>
+                );
+              }
+
+              // Online slot grid
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {allScheduleSlots.map(({ time, available }) => {
+                    const [h, m] = time.split(":").map(Number);
+                    const start = new Date(formData.appointment_date);
+                    start.setHours(h, m, 0, 0);
+
+                    const end = new Date(start);
+                    end.setMinutes(end.getMinutes() + resolvedDuration);
+
+                    const endTimeStr = `${String(end.getHours()).padStart(
+                      2,
+                      "0"
+                    )}:${String(end.getMinutes()).padStart(2, "0")}`;
+
+                    const selected = formData.appointment_time === time;
+
+                    return (
+                      <button
+                        key={time}
+                        type="button"
+                        onClick={() => {
+                          if (available)
+                            setFormData({
+                              ...formData,
+                              appointment_time: time,
+                            });
+                        }}
+                        disabled={!available}
+                        aria-pressed={selected && available ? "true" : "false"}
+                        title={available ? "" : "Κλεισμένο ή μη διαθέσιμο"}
+                        className={[
+                          "px-3 py-2 text-sm rounded-lg border transition-all",
+                          available
+                            ? "bg-white text-gray-800 border-gray-300 hover:bg-gray-100"
+                            : "bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed",
+                          selected && available
+                            ? "bg-gray-900 text-white border-gray-900 ring-2 ring-gray-900/20"
+                            : "",
+                        ].join(" ")}
+                      >
+                        {time}–{endTimeStr}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         )}
+
         {/* Σημειώσεις */}
         <div className="mb-6">
           <label className="block text-sm mb-1 text-gray-600">Σημειώσεις</label>
@@ -1281,7 +1422,21 @@ export default function NewAppointmentPage() {
               </div>
             </div>
           )}
+
+        {!online && (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 mb-2">
+            Μπορείτε να αποθηκεύσετε το ραντεβού, όμως αυτο θα καταχωρηθεί στο
+            σύστημα μόλις επανέλθει η σύνδεση.
+          </p>
+        )}
       </form>
     </main>
   );
+}
+
+function combineLocalISO(dateObj, timeStr) {
+  const [h, m] = timeStr.split(":").map(Number);
+  const d = new Date(dateObj);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
 }
