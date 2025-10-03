@@ -445,7 +445,6 @@ export default function SchedulePage() {
           <span className="text-sm font-medium text-stone-700">
             Ηλεκτρονικά ραντεβού
           </span>
-
           <label
             title={
               !online
@@ -462,31 +461,16 @@ export default function SchedulePage() {
               checked={acceptNewAppointments}
               onChange={(e) => toggleClinicAppointments(e.target.checked)}
               disabled={!online || settingsLoading}
-              aria-label="Ενεργοποίηση ηλεκτρονικών ραντεβού"
-              aria-disabled={!online || settingsLoading}
-              aria-busy={settingsLoading ? "true" : "false"}
             />
-            <div
-              className={`relative w-12 h-6 rounded-full transition-colors
-        bg-stone-300 peer-checked:bg-emerald-600
-        peer-disabled:bg-stone-200 ${settingsLoading ? "animate-pulse" : ""}`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform
-          peer-checked:translate-x-6 peer-disabled:bg-stone-100`}
-              />
+            <div className="relative w-12 h-6 rounded-full bg-stone-300 transition peer-checked:bg-emerald-600 peer-checked:[&>span]:translate-x-6">
+              <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform" />
             </div>
-            <span
-              className={`text-sm ${
-                online ? "text-stone-700" : "text-stone-500"
-              }`}
-            >
+            <span className="ml-2 text-sm text-stone-700">
               {acceptNewAppointments
                 ? "Δεχόμαστε νέα ραντεβού"
                 : "Δεν δεχόμαστε νέα ραντεβού"}
             </span>
           </label>
-
           {!online && (
             <p className="w-full text-center text-xs text-amber-700">
               Εκτός σύνδεσης — η ρύθμιση είναι προσωρινά απενεργοποιημένη.
