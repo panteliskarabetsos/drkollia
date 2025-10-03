@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { Calendar } from "@/components/ui/calendar";
 import { format, isSameDay, set } from "date-fns";
 import * as XLSX from "xlsx";
 import LiveClock from "../../components/LiveClock";
-import useAppointmentsRealtime from "../../components/useAppointmentsRealtime";
+import {
+  fetchAppointmentsRange,
+  syncAppointments,
+} from "../../../lib/offlineAppointments";
+import { db } from "../../../lib/db";
 
 import {
   Plus,
@@ -31,6 +35,9 @@ export default function AdminAppointmentsPage() {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionExists, setSessionExists] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [rows, setRows] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -112,7 +119,6 @@ export default function AdminAppointmentsPage() {
       const amka = normalizeText(appt.patients?.amka ?? "");
       const reason = normalizeText(appt.reason ?? "");
 
-      // If it matches the patient (or reason), RETURN TRUE now (skip date filter)
       return (
         fullName.includes(q) ||
         phone.includes(q) ||
@@ -188,79 +194,198 @@ export default function AdminAppointmentsPage() {
   };
 
   useEffect(() => {
-    const fetchAppointments = async () => {
-      const { data, error } = await supabase
-        .from("appointments")
-        .select(
-          `
-        id,
-        appointment_time,
-        reason,
-        status,
-        notes,
-        duration_minutes, 
-        is_exception,
-        created_at,
-        patients:patient_id (
-          id,
-          first_name,
-          last_name,
-          email,
-          phone,
-          amka
-        ),
-   creator:profiles!appointments_created_by_fkey (
-      id, name, email
-    )
-      `
-        )
-        .order("appointment_time", { ascending: true });
+    if (!sessionExists) return;
 
-      if (error) {
-        console.error("Error fetching appointments:", error.message);
-      } else {
-        setAppointments(data);
-      }
+    let unsubscribe = () => {};
+    let channel;
 
-      setLoading(false);
-      setIsLoading(false);
+    const attachLocalJoins = async (rows) => {
+      // When offline, rows in Dexie may not have nested patients/creator.
+      return Promise.all(
+        rows.map(async (r) => {
+          if (r.patients) return r;
+          const p = await db.patients.get(r.patient_id).catch(() => null);
+          return {
+            ...r,
+            patients: p
+              ? {
+                  id: p.id,
+                  first_name: p.first_name,
+                  last_name: p.last_name,
+                  email: p.email,
+                  phone: p.phone,
+                  amka: p.amka,
+                }
+              : null,
+          };
+        })
+      );
     };
 
-    if (sessionExists) {
-      fetchAppointments();
+    const putManyIntoDexie = async (rows) => {
+      await db.transaction("rw", db.appointments, async () => {
+        for (const row of rows) {
+          await db.appointments.put({
+            ...row,
+            // quick index for day queries; safe even if undefined
+            appointment_date: row.appointment_time
+              ? row.appointment_time.slice(0, 10)
+              : null,
+          });
+        }
+      });
+    };
 
-      // 🔴 Realtime updates
-      const channel = supabase
+    const refresh = async () => {
+      setLoading(true);
+      setIsLoading(true);
+      try {
+        if (navigator.onLine) {
+          const { data, error } = await supabase
+            .from("appointments")
+            .select(
+              `
+            id,
+            appointment_time,
+            reason,
+            status,
+            notes,
+            duration_minutes,
+            is_exception,
+            created_at,
+            patients:patient_id (
+              id,
+              first_name,
+              last_name,
+              email,
+              phone,
+              amka
+            ),
+            creator:profiles!appointments_created_by_fkey (
+              id, name, email
+            )
+          `
+            )
+            .order("appointment_time", { ascending: true });
+
+          if (error) throw error;
+
+          setAppointments(data || []);
+          await putManyIntoDexie(data || []);
+        } else {
+          // Offline: read from Dexie and enrich with patient info (if missing)
+          const local = await db.appointments
+            .orderBy("appointment_time")
+            .toArray();
+          const withJoins = await attachLocalJoins(local);
+          // Sort to be safe
+          withJoins.sort(
+            (a, b) =>
+              new Date(a.appointment_time) - new Date(b.appointment_time)
+          );
+          setAppointments(withJoins);
+        }
+      } catch (err) {
+        console.error("Error fetching appointments:", err);
+      } finally {
+        setLoading(false);
+        setIsLoading(false);
+      }
+    };
+
+    refresh();
+
+    // Realtime only when online
+    if (navigator.onLine) {
+      channel = supabase
         .channel("appointments-changes")
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "appointments" },
-          (payload) => {
-            setAppointments((prev) => {
-              if (payload.eventType === "INSERT") {
-                return prev.some((a) => a.id === payload.new.id)
-                  ? prev
-                  : [...prev, payload.new];
-              }
-              if (payload.eventType === "UPDATE") {
-                return prev.map((a) =>
-                  a.id === payload.new.id ? { ...a, ...payload.new } : a
-                );
-              }
+          async (payload) => {
+            try {
               if (payload.eventType === "DELETE") {
-                return prev.filter((a) => a.id !== payload.old.id);
+                const delId = payload.old?.id;
+                setAppointments((prev) => prev.filter((a) => a.id !== delId));
+                await db.appointments.delete(delId);
+                return;
               }
-              return prev;
-            });
+
+              // INSERT or UPDATE → refetch the single row with joins
+              const { data, error } = await supabase
+                .from("appointments")
+                .select(
+                  `
+                id,
+                appointment_time,
+                reason,
+                status,
+                notes,
+                duration_minutes,
+                is_exception,
+                created_at,
+                patients:patient_id (
+                  id,
+                  first_name,
+                  last_name,
+                  email,
+                  phone,
+                  amka
+                ),
+                creator:profiles!appointments_created_by_fkey (
+                  id, name, email
+                )
+              `
+                )
+                .eq("id", payload.new.id)
+                .single();
+
+              if (error || !data) return;
+
+              setAppointments((prev) => {
+                const idx = prev.findIndex((a) => a.id === data.id);
+                if (idx === -1) {
+                  const next = [...prev, data];
+                  next.sort(
+                    (a, b) =>
+                      new Date(a.appointment_time) -
+                      new Date(b.appointment_time)
+                  );
+                  return next;
+                }
+                const next = prev.slice();
+                next[idx] = { ...next[idx], ...data };
+                next.sort(
+                  (a, b) =>
+                    new Date(a.appointment_time) - new Date(b.appointment_time)
+                );
+                return next;
+              });
+
+              await db.appointments.put({
+                ...data,
+                appointment_date: data.appointment_time
+                  ? data.appointment_time.slice(0, 10)
+                  : null,
+              });
+            } catch (e) {
+              console.error(e);
+            }
           }
         )
         .subscribe();
 
-      // cleanup
-      return () => {
-        supabase.removeChannel(channel);
-      };
+      unsubscribe = () => supabase.removeChannel(channel);
     }
+
+    // Refresh when coming back online
+    const onOnline = () => refresh();
+    window.addEventListener("online", onOnline);
+
+    return () => {
+      window.removeEventListener("online", onOnline);
+      unsubscribe();
+    };
   }, [sessionExists]);
 
   useEffect(() => {

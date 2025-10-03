@@ -6,7 +6,12 @@ import Link from "next/link";
 import { supabase } from "@/app/lib/supabaseClient";
 import PatientFormCard from "../../components/PatientFormCard";
 import PatientDetailsCard from "../../components/PatientDetailsCard";
-
+import { db } from "../../../lib/db";
+import {
+  cachePatients,
+  getAllPatientsOffline,
+  filterPatientsLocal,
+} from "../../../lib/offline";
 import { ScrollArea } from "@/components/ui/scroll-area";
 // shadcn/ui
 import {
@@ -69,6 +74,7 @@ import {
   Mail,
   IdCard,
   Trash2,
+  History,
   Pencil,
   ArrowLeft,
   ArrowRight,
@@ -87,7 +93,7 @@ export default function PatientsPage() {
   // data
   const [patients, setPatients] = useState([]);
   const [total, setTotal] = useState(0);
-
+  const [isOfflineData, setIsOfflineData] = useState(false);
   // ui state
   const [query, setQuery] = useState("");
   const [gender, setGender] = useState("all"); // 'male' | 'female' | 'other' | 'all'
@@ -120,26 +126,16 @@ export default function PatientsPage() {
   const loadPatients = useCallback(async () => {
     setBusy(true);
     setError(null);
+    setIsOfflineData(false);
+
+    // helper for pagination
+    const paginate = (arr, page, size) => {
+      const start = page * size;
+      return arr.slice(start, start + size);
+    };
 
     try {
-      // guard: minAge cannot be greater than maxAge
-      if (minAge !== "" && maxAge !== "" && Number(minAge) > Number(maxAge)) {
-        setError(
-          "Η ελάχιστη ηλικία δεν μπορεί να είναι μεγαλύτερη από τη μέγιστη."
-        );
-        setBusy(false);
-        setLoading(false);
-        return;
-      }
-
-      // local helpers
-      const ymd = (d) => d.toISOString().split("T")[0];
-      const addYears = (date, years) => {
-        const d = new Date(date);
-        d.setFullYear(d.getFullYear() + years);
-        return d;
-      };
-
+      // ---- ONLINE path ----
       let q = supabase
         .from("patients")
         .select(
@@ -165,42 +161,59 @@ export default function PatientsPage() {
         );
 
       if (query?.trim()) {
-        const qstr = query.trim();
+        const s = query.trim();
         q = q.or(
-          `first_name.ilike.%${qstr}%,last_name.ilike.%${qstr}%,phone.ilike.%${qstr}%,email.ilike.%${qstr}%,amka.ilike.%${qstr}%`
+          `first_name.ilike.%${s}%,last_name.ilike.%${s}%,phone.ilike.%${s}%,email.ilike.%${s}%,amka.ilike.%${s}%`
         );
       }
-
       if (gender !== "all") q = q.eq("gender", gender);
 
-      // --- Age filters -> birth_date bounds ---
-      const today = new Date();
-
-      // minAge: age >= minAge  => birth_date <= today - minAge years
-      if (minAge !== "" && !Number.isNaN(Number(minAge))) {
-        const latestDOB = addYears(today, -Number(minAge));
-        q = q.lte("birth_date", ymd(latestDOB));
-      }
-
-      // maxAge: age <= maxAge  => birth_date >= (today - (maxAge+1) years + 1 day)
-      if (maxAge !== "" && !Number.isNaN(Number(maxAge))) {
-        const earliestDOB = addYears(today, -(Number(maxAge) + 1));
-        earliestDOB.setDate(earliestDOB.getDate() + 1);
-        q = q.gte("birth_date", ymd(earliestDOB));
-      }
+      // Age filters (server-side)
+      const ymd = (d) => {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}`;
+      };
+      const yearsAgo = (n) => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        d.setFullYear(d.getFullYear() - n);
+        return d;
+      };
+      const min = minAge === "" ? null : Number(minAge);
+      const max = maxAge === "" ? null : Number(maxAge);
+      if (min !== null) q = q.lte("birth_date", ymd(yearsAgo(min)));
+      if (max !== null) q = q.gte("birth_date", ymd(yearsAgo(max)));
 
       q = q
         .order("last_name", { ascending: true })
+        .order("first_name", { ascending: true })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
       const { data, count, error } = await q;
       if (error) throw error;
 
+      // cache what we got
+      await cachePatients(data || []);
+
       setPatients(data ?? []);
-      setTotal(count ?? 0);
-    } catch (e) {
-      console.error(e);
-      setError("Αποτυχία φόρτωσης ασθενών");
+      setTotal(count ?? data?.length ?? 0);
+    } catch (err) {
+      console.warn("Falling back to offline cache:", err?.message || err);
+      // ---- OFFLINE fallback ----
+      const all = await getAllPatientsOffline();
+      const filtered = filterPatientsLocal(all, {
+        query,
+        gender,
+        minAge,
+        maxAge,
+      });
+
+      setTotal(filtered.length);
+      setPatients(paginate(filtered, page, PAGE_SIZE));
+      setIsOfflineData(true);
+      setError(null); // we have data, don't show red error
     } finally {
       setBusy(false);
       setLoading(false);
@@ -219,6 +232,12 @@ export default function PatientsPage() {
       await loadPatients();
     })();
   }, [router, loadPatients]);
+
+  useEffect(() => {
+    const onOnline = () => loadPatients();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [loadPatients]);
 
   useEffect(() => {
     if (!confirmDelete?.id) {
@@ -664,6 +683,9 @@ export default function PatientsPage() {
                               onEdit={() =>
                                 router.push(`/admin/patients/${p.id}`)
                               }
+                              onHistory={() =>
+                                router.push(`/admin/patients/history/${p.id}`)
+                              }
                               onDelete={() => setConfirmDelete(p)}
                             />
                           </TableCell>
@@ -726,7 +748,7 @@ export default function PatientsPage() {
 
                   <PatientDetailsCard patient={selected} />
 
-                  <div className="mt-4 flex gap-2">
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <Button
                       onClick={() =>
                         router.push(`/admin/patients/${selected.id}`)
@@ -735,6 +757,18 @@ export default function PatientsPage() {
                     >
                       <Pencil className="h-4 w-4" /> Επεξεργασία
                     </Button>
+
+                    <Button
+                      variant="secondary"
+                      onClick={() =>
+                        router.push(`/admin/patients/history/${selected.id}`)
+                      }
+                      className="gap-2"
+                    >
+                      <History className="h-4 w-4" />
+                      Ιστορικό επισκέψεων
+                    </Button>
+
                     <Button variant="outline" onClick={() => setSelected(null)}>
                       Κλείσιμο
                     </Button>
@@ -823,7 +857,7 @@ export default function PatientsPage() {
 }
 
 // ------------- small components -------------
-function RowActions({ onView, onEdit, onDelete }) {
+function RowActions({ onView, onEdit, onHistory, onDelete }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -837,8 +871,11 @@ function RowActions({ onView, onEdit, onDelete }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={onView}>Προβολή</DropdownMenuItem>
+        <DropdownMenuItem onClick={onView}>Προβολή Καρτέλας</DropdownMenuItem>
         <DropdownMenuItem onClick={onEdit}>Επεξεργασία</DropdownMenuItem>
+        <DropdownMenuItem onClick={onHistory}>
+          Ιστορικό επισκέψεων
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onDelete} className="text-red-600">
           Διαγραφή

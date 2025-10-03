@@ -1,12 +1,12 @@
 "use client";
 
-import { Inter } from "next/font/google";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
 import clsx from "clsx";
-import "../globals.css";
+import { Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/app/lib/supabaseClient";
-import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState, useMemo } from "react";
 import {
   LogOut,
   LayoutDashboard,
@@ -17,7 +17,10 @@ import {
   Menu,
   ChevronDown,
   CircleUserRound,
+  RefreshCcw,
+  WifiOff,
 } from "lucide-react";
+import "../globals.css";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -34,7 +37,9 @@ export default function AdminLayout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [online, setOnline] = useState(true);
 
+  // Auth bootstrap + profile load
   useEffect(() => {
     const run = async () => {
       const { data } = await supabase.auth.getUser();
@@ -44,14 +49,48 @@ export default function AdminLayout({ children }) {
       if (user?.id) {
         const { data: prof } = await supabase
           .from("profiles")
-          .select("name, email, phone, role") // avatar_url not in schema; remove
+          .select("name, email, phone, role")
           .eq("id", user.id)
           .single();
         setProfile(prof || null);
       }
     };
     run();
+
+    // keep session in sync (if signed out from another tab)
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) router.replace("/login");
+    });
+    return () => {
+      sub?.subscription?.unsubscribe?.();
+    };
+  }, [router]);
+
+  // Close menus on route change
+  useEffect(() => {
+    setMenuOpen(false);
+    setMobileOpen(false);
+  }, [pathname]);
+
+  // Network status banner
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
   }, []);
+
+  // Prefetch common admin routes
+  useEffect(() => {
+    router.prefetch("/admin");
+    router.prefetch("/admin/appointments");
+    router.prefetch("/admin/patients");
+    router.prefetch("/admin/schedule");
+  }, [router]);
 
   const initials = useMemo(() => {
     return (profile?.name || profile?.email || me?.email || "U")
@@ -76,12 +115,13 @@ export default function AdminLayout({ children }) {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push("/login");
+    router.replace("/login");
   };
 
   const handleSync = async () => {
     try {
       setSyncing(true);
+      // let pages listen for “admin:refresh” if they want
       window.dispatchEvent(new CustomEvent("admin:refresh"));
       router.refresh();
     } finally {
@@ -96,6 +136,13 @@ export default function AdminLayout({ children }) {
         "font-sans bg-[#fdfaf6] text-[#3b3a36] antialiased selection:bg-[#fcefc0] min-h-screen"
       )}
     >
+      <a
+        href="#admin-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-[60] rounded-md bg-white px-3 py-2 text-sm shadow"
+      >
+        Μετάβαση στο περιεχόμενο
+      </a>
+
       {/* Toaster */}
       <Toaster position="top-right" richColors expand offset={80} />
 
@@ -108,8 +155,8 @@ export default function AdminLayout({ children }) {
         <div className="bg-white/90 backdrop-blur-xl border-b border-[#e5e1d8] shadow-[0_1px_0_0_#eee]">
           <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
             {/* Brand */}
-            <button
-              onClick={() => router.push("/admin")}
+            <Link
+              href="/admin"
               className="group inline-flex items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-[#f6f4ef] hover:scale-[1.02]"
               title="Πίνακας Διαχείρισης"
               aria-label="Πίνακας Διαχείρισης"
@@ -118,44 +165,65 @@ export default function AdminLayout({ children }) {
               <span className="font-semibold text-lg tracking-tight text-[#2f2e2b]">
                 Πίνακας Διαχείρισης
               </span>
-            </button>
+            </Link>
 
             {/* Desktop nav */}
             <nav className="hidden md:flex items-center gap-2">
               {nav.map(({ href, label, Icon }) => {
                 const active = isActive(href);
                 return (
-                  <button
+                  <Link
                     key={href}
-                    onClick={() => router.push(href)}
+                    href={href}
                     aria-current={active ? "page" : undefined}
-                    className={[
+                    className={clsx(
                       "relative inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm transition",
                       active
                         ? "bg-[#f6f4ef] border border-[#e5e1d8] text-[#2f2e2b]"
-                        : "border border-transparent text-[#3a3a38] hover:text-[#2f2e2b] hover:bg-[#f6f4ef] hover:border-[#e5e1d8] hover:shadow-sm",
-                    ].join(" ")}
-                    title={label}
+                        : "border border-transparent text-[#3a3a38] hover:text-[#2f2e2b] hover:bg-[#f6f4ef] hover:border-[#e5e1d8] hover:shadow-sm"
+                    )}
                   >
                     <Icon
-                      className={[
+                      className={clsx(
                         "w-4 h-4",
-                        active ? "text-[#8c7c68]" : "text-[#9a8f7d]",
-                      ].join(" ")}
+                        active ? "text-[#8c7c68]" : "text-[#9a8f7d]"
+                      )}
                     />
                     <span>{label}</span>
-                  </button>
+                  </Link>
                 );
               })}
             </nav>
 
-            {/* Right: user + mobile toggle */}
+            {/* Right: sync, user, mobile toggle */}
             <div className="flex items-center gap-2">
+              {/* Sync */}
+              <button
+                type="button"
+                onClick={handleSync}
+                disabled={syncing}
+                className={clsx(
+                  "hidden sm:inline-flex items-center gap-2 rounded-lg border border-[#e5e1d8] bg-white/90 px-3 py-1.5 text-sm shadow-sm transition",
+                  "hover:bg-[#f6f4ef] hover:shadow-md",
+                  syncing && "opacity-70"
+                )}
+                title="Ανανέωση δεδομένων"
+              >
+                <RefreshCcw
+                  className={clsx(
+                    "w-4 h-4 text-[#8c7c68]",
+                    syncing && "animate-spin"
+                  )}
+                />
+                Ανανέωση
+              </button>
+
               {/* User chip */}
               <div className="relative hidden sm:block">
                 <button
                   onClick={() => setMenuOpen((v) => !v)}
                   onBlur={() => setTimeout(() => setMenuOpen(false), 150)}
+                  aria-expanded={menuOpen}
                   className="inline-flex items-center gap-2 rounded-full border border-[#e5e1d8] bg-white/90 px-3 py-1.5 shadow-sm hover:bg-[#f6f4ef] hover:shadow-md hover:scale-[1.02] transition"
                   title={profile?.name || me?.email || "Λογαριασμός"}
                 >
@@ -185,10 +253,7 @@ export default function AdminLayout({ children }) {
                       )}
                     </div>
                     <button
-                      onClick={async () => {
-                        await supabase.auth.signOut();
-                        router.push("/login");
-                      }}
+                      onClick={handleLogout}
                       className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#f6f4ef] hover:pl-4 transition-all"
                     >
                       <LogOut className="w-4 h-4 text-red-600" />
@@ -214,12 +279,23 @@ export default function AdminLayout({ children }) {
             </div>
           </div>
 
+          {/* Offline banner */}
+          {!online && (
+            <div className="bg-amber-50 border-t border-b border-amber-200">
+              <div className="max-w-6xl mx-auto px-4 py-2 text-xs text-amber-900 flex items-center gap-2">
+                <WifiOff className="w-4 h-4" />
+                Είστε εκτός σύνδεσης. Ορισμένες λειτουργίες ενδέχεται να μην
+                λειτουργούν.
+              </div>
+            </div>
+          )}
+
           {/* Mobile drawer */}
           <div
-            className={[
+            className={clsx(
               "md:hidden border-t border-[#eeeae2] bg-white/95 backdrop-blur transition-[max-height,opacity] duration-300 overflow-hidden",
-              mobileOpen ? "max-h-[60vh] opacity-100" : "max-h-0 opacity-0",
-            ].join(" ")}
+              mobileOpen ? "max-h-[60vh] opacity-100" : "max-h-0 opacity-0"
+            )}
           >
             {/* user row on mobile */}
             <div className="px-4 py-3 flex items-center justify-between">
@@ -232,10 +308,7 @@ export default function AdminLayout({ children }) {
                 </span>
               </div>
               <button
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  router.push("/login");
-                }}
+                onClick={handleLogout}
                 className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-transparent hover:border-red-200 hover:bg-red-50 text-gray-700 hover:text-red-600 transition"
               >
                 <LogOut className="w-4 h-4" />
@@ -249,22 +322,19 @@ export default function AdminLayout({ children }) {
                 {nav.map(({ href, label }) => {
                   const active = isActive(href);
                   return (
-                    <button
+                    <Link
                       key={href}
-                      onClick={() => {
-                        setMobileOpen(false);
-                        router.push(href);
-                      }}
-                      className={[
+                      href={href}
+                      className={clsx(
                         "px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition border",
                         active
                           ? "bg-[#f6f4ef] border-[#e5e1d8] text-[#2f2e2b]"
-                          : "bg-white border-[#e5e1d8] text-[#3a3a38] hover:bg-[#f6f4ef]",
-                      ].join(" ")}
+                          : "bg-white border-[#e5e1d8] text-[#3a3a38] hover:bg-[#f6f4ef]"
+                      )}
                       title={label}
                     >
                       {label}
-                    </button>
+                    </Link>
                   );
                 })}
               </div>
@@ -275,25 +345,22 @@ export default function AdminLayout({ children }) {
               {nav.map(({ href, label, Icon }) => {
                 const active = isActive(href);
                 return (
-                  <button
+                  <Link
                     key={href + "-stack"}
-                    onClick={() => {
-                      setMobileOpen(false);
-                      router.push(href);
-                    }}
-                    className={[
+                    href={href}
+                    className={clsx(
                       "w-full flex items-center justify-between rounded-xl px-3 py-3 text-sm transition border",
                       active
                         ? "bg-[#f6f4ef] border-[#e5e1d8] text-[#2f2e2b]"
-                        : "bg-white border-[#e5e1d8] text-[#3a3a38] hover:bg-[#f6f4ef]",
-                    ].join(" ")}
+                        : "bg-white border-[#e5e1d8] text-[#3a3a38] hover:bg-[#f6f4ef]"
+                    )}
                   >
                     <span className="inline-flex items-center gap-2">
                       <Icon className="w-4 h-4 text-[#8c7c68]" />
                       {label}
                     </span>
                     <span className="text-[#8c7c68]">›</span>
-                  </button>
+                  </Link>
                 );
               })}
             </div>
@@ -301,8 +368,14 @@ export default function AdminLayout({ children }) {
         </div>
       </header>
 
-      {/* Content */}
-      <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
+      {/* Content (add top padding to clear the fixed header) */}
+      <main
+        id="admin-content"
+        className="max-w-6xl mx-auto px-4 pt-4 pb-6"
+        // pt-24 ≈ header height; adjust if you tweak header padding
+      >
+        {children}
+      </main>
     </div>
   );
 }
