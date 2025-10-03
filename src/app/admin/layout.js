@@ -1,6 +1,7 @@
+// app/admin/layout.js
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import clsx from "clsx";
@@ -19,6 +20,8 @@ import {
   CircleUserRound,
   RefreshCcw,
   WifiOff,
+  Wifi,
+  Download,
 } from "lucide-react";
 import "../globals.css";
 
@@ -27,6 +30,56 @@ const inter = Inter({
   weight: ["400", "500", "600"],
   variable: "--font-inter",
 });
+
+/* Small button that appears only when the app can be installed (PWA) */
+function InstallPWAButton() {
+  const [promptEvt, setPromptEvt] = useState(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const onBeforeInstall = (e) => {
+      e.preventDefault();
+      setPromptEvt(e);
+      setVisible(true);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    return () =>
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+  }, []);
+
+  const install = useCallback(async () => {
+    if (!promptEvt) return;
+    setVisible(false);
+    const choice = await promptEvt.prompt();
+
+    setPromptEvt(null);
+  }, [promptEvt]);
+
+  useEffect(() => {
+    const onChange = () => {
+      if (window.matchMedia("(display-mode: standalone)").matches) {
+        setVisible(false);
+      }
+    };
+    window.addEventListener("appinstalled", onChange);
+    onChange();
+    return () => window.removeEventListener("appinstalled", onChange);
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={install}
+      className="hidden sm:inline-flex items-center gap-2 rounded-lg border border-[#e5e1d8] bg-white/90 px-3 py-1.5 text-sm shadow-sm hover:bg-[#f6f4ef] hover:shadow-md transition"
+      title="Εγκατάσταση εφαρμογής"
+    >
+      <Download className="w-4 h-4 text-[#8c7c68]" />
+      Εγκατάσταση
+    </button>
+  );
+}
 
 export default function AdminLayout({ children }) {
   const router = useRouter();
@@ -72,6 +125,18 @@ export default function AdminLayout({ children }) {
     setMobileOpen(false);
   }, [pathname]);
 
+  // Close dropdown on Escape
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        setMobileOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   // Network status banner
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
@@ -84,7 +149,6 @@ export default function AdminLayout({ children }) {
     };
   }, []);
 
-  // Prefetch common admin routes
   useEffect(() => {
     router.prefetch("/admin");
     router.prefetch("/admin/appointments");
@@ -121,7 +185,6 @@ export default function AdminLayout({ children }) {
   const handleSync = async () => {
     try {
       setSyncing(true);
-      // let pages listen for “admin:refresh” if they want
       window.dispatchEvent(new CustomEvent("admin:refresh"));
       router.refresh();
     } finally {
@@ -133,7 +196,7 @@ export default function AdminLayout({ children }) {
     <div
       className={clsx(
         inter.variable,
-        "font-sans bg-[#fdfaf6] text-[#3b3a36] antialiased selection:bg-[#fcefc0] min-h-screen"
+        " font-sans bg-[#fdfaf6] text-[#3b3a36] antialiased selection:bg-[#fcefc0] min-h-screen"
       )}
     >
       <a
@@ -160,6 +223,7 @@ export default function AdminLayout({ children }) {
               className="group inline-flex items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-[#f6f4ef] hover:scale-[1.02]"
               title="Πίνακας Διαχείρισης"
               aria-label="Πίνακας Διαχείρισης"
+              aria-current={isActive("/admin") ? "page" : undefined}
             >
               <LayoutDashboard className="w-6 h-6 text-[#8c7c68] transition-transform group-hover:-translate-y-0.5" />
               <span className="font-semibold text-lg tracking-tight text-[#2f2e2b]">
@@ -195,8 +259,29 @@ export default function AdminLayout({ children }) {
               })}
             </nav>
 
-            {/* Right: sync, user, mobile toggle */}
+            {/* Right: install, sync, user, mobile toggle */}
             <div className="flex items-center gap-2">
+              {/* online/offline indicator */}
+              <div
+                className={clsx(
+                  "hidden sm:flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs",
+                  online
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-800"
+                )}
+                title={online ? "Συνδεδεμένο" : "Εκτός σύνδεσης"}
+              >
+                {online ? (
+                  <Wifi className="w-3.5 h-3.5" />
+                ) : (
+                  <WifiOff className="w-3.5 h-3.5" />
+                )}
+                {online ? "Online" : "Offline"}
+              </div>
+
+              {/* Install PWA */}
+              <InstallPWAButton />
+
               {/* Sync */}
               <button
                 type="button"
@@ -285,7 +370,7 @@ export default function AdminLayout({ children }) {
               <div className="max-w-6xl mx-auto px-4 py-2 text-xs text-amber-900 flex items-center gap-2">
                 <WifiOff className="w-4 h-4" />
                 Είστε εκτός σύνδεσης. Ορισμένες λειτουργίες ενδέχεται να μην
-                λειτουργούν.
+                λειτουργούν. Τα τελευταία αποθηκευμένα δεδομένα είναι διαθέσιμα.
               </div>
             </div>
           )}
@@ -325,6 +410,7 @@ export default function AdminLayout({ children }) {
                     <Link
                       key={href}
                       href={href}
+                      aria-current={active ? "page" : undefined}
                       className={clsx(
                         "px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition border",
                         active
@@ -340,7 +426,6 @@ export default function AdminLayout({ children }) {
               </div>
             </div>
 
-            {/* stacked nav for accessibility (large tap targets) */}
             <div className="px-3 pb-3 space-y-2">
               {nav.map(({ href, label, Icon }) => {
                 const active = isActive(href);
@@ -348,6 +433,7 @@ export default function AdminLayout({ children }) {
                   <Link
                     key={href + "-stack"}
                     href={href}
+                    aria-current={active ? "page" : undefined}
                     className={clsx(
                       "w-full flex items-center justify-between rounded-xl px-3 py-3 text-sm transition border",
                       active
@@ -368,12 +454,7 @@ export default function AdminLayout({ children }) {
         </div>
       </header>
 
-      {/* Content (add top padding to clear the fixed header) */}
-      <main
-        id="admin-content"
-        className="max-w-6xl mx-auto px-4 pt-4 pb-6"
-        // pt-24 ≈ header height; adjust if you tweak header padding
-      >
+      <main id="admin-content" className="max-w-6xl mx-auto px-4 pt-6 pb-6">
         {children}
       </main>
     </div>
