@@ -433,7 +433,7 @@ export default function AdminLayout({ children }) {
         </div>
       </header>
 
-      <main id="admin-content" className="max-w-6xl mx-auto px-4 pt-6 pb-6">
+      <main id="admin-content" className="max-w-6xl mx-auto px-4 pt-9 pb-6">
         {children}
       </main>
     </div>

@@ -6,7 +6,14 @@ import { el } from "date-fns/locale";
 import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "../../lib/supabaseClient";
 import { Button } from "@/components/ui/button";
-import { Clock, Trash2, ArrowLeft, Plus, AlertCircle } from "lucide-react";
+import {
+  Clock,
+  Trash2,
+  ArrowLeft,
+  Plus,
+  AlertCircle,
+  WifiOff,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -57,7 +64,21 @@ export default function SchedulePage() {
   // dialogs / errors
   const [formError, setFormError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState({ type: null, id: null });
+  //online check
+  const [online, setOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
 
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
   // ----- init -----
   useEffect(() => {
     router.prefetch("/admin");
@@ -424,23 +445,53 @@ export default function SchedulePage() {
           <span className="text-sm font-medium text-stone-700">
             Ηλεκτρονικά ραντεβού
           </span>
-          <label className="inline-flex items-center cursor-pointer">
+
+          <label
+            title={
+              !online
+                ? "Εκτός σύνδεσης — δεν μπορείτε να αλλάξετε τη ρύθμιση"
+                : undefined
+            }
+            className={`inline-flex items-center gap-2 select-none ${
+              online ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+            }`}
+          >
             <input
               type="checkbox"
               className="sr-only peer"
               checked={acceptNewAppointments}
               onChange={(e) => toggleClinicAppointments(e.target.checked)}
-              disabled={settingsLoading}
+              disabled={!online || settingsLoading}
+              aria-label="Ενεργοποίηση ηλεκτρονικών ραντεβού"
+              aria-disabled={!online || settingsLoading}
+              aria-busy={settingsLoading ? "true" : "false"}
             />
-            <div className="relative w-12 h-6 rounded-full bg-stone-300 transition peer-checked:bg-emerald-600 peer-checked:[&>span]:translate-x-6">
-              <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform" />
+            <div
+              className={`relative w-12 h-6 rounded-full transition-colors
+        bg-stone-300 peer-checked:bg-emerald-600
+        peer-disabled:bg-stone-200 ${settingsLoading ? "animate-pulse" : ""}`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform
+          peer-checked:translate-x-6 peer-disabled:bg-stone-100`}
+              />
             </div>
-            <span className="ml-2 text-sm text-stone-700">
+            <span
+              className={`text-sm ${
+                online ? "text-stone-700" : "text-stone-500"
+              }`}
+            >
               {acceptNewAppointments
                 ? "Δεχόμαστε νέα ραντεβού"
                 : "Δεν δεχόμαστε νέα ραντεβού"}
             </span>
           </label>
+
+          {!online && (
+            <p className="w-full text-center text-xs text-amber-700">
+              Εκτός σύνδεσης — η ρύθμιση είναι προσωρινά απενεργοποιημένη.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -474,6 +525,7 @@ export default function SchedulePage() {
                         size="sm"
                         onClick={() => setEditDay(actualIdx)}
                         className="gap-2 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                        disabled={!online}
                       >
                         <Plus className="h-4 w-4" /> Προσθήκη Ώρας
                       </Button>
@@ -491,6 +543,7 @@ export default function SchedulePage() {
                             {s.end_time.slice(0, 5)}
                             <button
                               type="button"
+                              disabled={!online}
                               onClick={() =>
                                 setConfirmDelete({ type: "schedule", id: s.id })
                               }
@@ -571,6 +624,7 @@ export default function SchedulePage() {
                           <Button
                             className="bg-emerald-600 hover:bg-emerald-700"
                             onClick={updateSchedule}
+                            disabled={!online}
                           >
                             Αποθήκευση
                           </Button>
@@ -735,6 +789,7 @@ export default function SchedulePage() {
                     className="w-full bg-emerald-600 hover:bg-emerald-700"
                     onClick={addException}
                     disabled={
+                      !online ||
                       isFullDay ||
                       (!exceptionTime.fullDay &&
                         (!exceptionTime.start || !exceptionTime.end))
