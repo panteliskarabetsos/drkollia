@@ -1,31 +1,41 @@
 // next.config.mjs
-import withPWAInit from "next-pwa";
+import withPWA from "@ducanh2912/next-pwa";
 
-/** Enable/disable the service worker in dev to avoid caching headaches */
-const isDev = process.env.NODE_ENV === "development";
-
-/** Runtime caching rules (tweak as needed) */
 const runtimeCaching = [
-  // Next.js build assets
+  // Cache admin navigations so the shell opens offline
   {
-    urlPattern: /^https:\/\/.*\/_next\/static\/.*/i,
-    handler: "CacheFirst",
+    urlPattern: ({ request, url }) =>
+      request.mode === "navigate" && url.pathname.startsWith("/admin"),
+    handler: "NetworkFirst",
     options: {
-      cacheName: "next-static",
-      expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
+      cacheName: "admin-pages",
+      networkTimeoutSeconds: 4,
+      matchOptions: { ignoreSearch: true },
     },
+  },
+  // Next.js static assets
+  {
+    urlPattern: ({ url }) => url.pathname.startsWith("/_next/static/"),
+    handler: "StaleWhileRevalidate",
+    options: { cacheName: "next-static" },
   },
   // Images & fonts
   {
-    urlPattern: /^https?:\/\/.*\.(?:png|jpg|jpeg|gif|webp|svg|woff2?)$/i,
+    urlPattern: ({ request }) =>
+      request.destination === "image" || request.destination === "font",
     handler: "StaleWhileRevalidate",
-    options: { cacheName: "assets" },
+    options: {
+      cacheName: "assets",
+      expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
+    },
   },
-  // Supabase REST (GET) – cache for offline reads
+  // Optional: Supabase REST GETs
   {
-    urlPattern: /^https:\/\/[^/]+\.supabase\.co\/rest\/v1\/.*/i,
-    handler: "StaleWhileRevalidate",
-    method: "GET",
+    urlPattern: ({ url, request }) =>
+      request.method === "GET" &&
+      url.hostname.endsWith(".supabase.co") &&
+      url.pathname.startsWith("/rest/v1/"),
+    handler: "NetworkFirst",
     options: {
       cacheName: "supabase-rest",
       expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 },
@@ -33,18 +43,20 @@ const runtimeCaching = [
   },
 ];
 
-const withPWA = withPWAInit({
+const withPWAFn = withPWA({
   dest: "public",
   register: true,
   skipWaiting: true,
-  disable: isDev, // no SW in dev
+  disable: process.env.NODE_ENV === "development", // no SW in dev
   runtimeCaching,
+  workboxOptions: {
+    navigateFallback: "/offline.html",
+  },
 });
 
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+export default withPWAFn({
   reactStrictMode: true,
-  // If you load images from Supabase Storage, allow them:
   images: {
     remotePatterns: [
       {
@@ -54,6 +66,4 @@ const nextConfig = {
       },
     ],
   },
-};
-
-export default withPWA(nextConfig);
+});

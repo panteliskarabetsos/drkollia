@@ -1,30 +1,13 @@
 {
-  "name": "Γεωργία Κόλλια — Ενδοκρινολόγος",
-  "short_name": "Ιατρείο",
-  "start_url": "/?source=pwa",
+  "name": "Εφαρμογή Διαχείρισης",
+  "short_name": "Admin",
+  "start_url": "/admin",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f7f4ee",
-  "theme_color": "#8c7c68",
-  "lang": "el",
+  "background_color": "#ffffff",
+  "theme_color": "#f6f4ef",
   "icons": [
-    {
-      "src": "/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/maskable-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }

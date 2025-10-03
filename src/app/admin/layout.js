@@ -282,27 +282,6 @@ export default function AdminLayout({ children }) {
               {/* Install PWA */}
               <InstallPWAButton />
 
-              {/* Sync */}
-              <button
-                type="button"
-                onClick={handleSync}
-                disabled={syncing}
-                className={clsx(
-                  "hidden sm:inline-flex items-center gap-2 rounded-lg border border-[#e5e1d8] bg-white/90 px-3 py-1.5 text-sm shadow-sm transition",
-                  "hover:bg-[#f6f4ef] hover:shadow-md",
-                  syncing && "opacity-70"
-                )}
-                title="Ανανέωση δεδομένων"
-              >
-                <RefreshCcw
-                  className={clsx(
-                    "w-4 h-4 text-[#8c7c68]",
-                    syncing && "animate-spin"
-                  )}
-                />
-                Ανανέωση
-              </button>
-
               {/* User chip */}
               <div className="relative hidden sm:block">
                 <button
