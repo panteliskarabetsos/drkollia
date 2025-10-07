@@ -1,34 +1,23 @@
-// middleware.js (root)
 import { NextResponse } from "next/server";
 
-export const config = {
-  // run only for admin routes
-  matcher: ["/admin/:path*"],
-};
+export const config = { matcher: ["/admin/:path*"] };
 
 export function middleware(req) {
-  const { nextUrl } = req;
-  const { pathname, search } = nextUrl;
+  const { pathname, search } = req.nextUrl;
 
-  // Always allow the admin login and offline pages
-  if (
-    pathname.startsWith("/admin/login") ||
-    pathname.startsWith("/admin/offline")
-  ) {
+  // Allow these without a session (must return 200 when online)
+  if (pathname === "/admin/offline-shell" || pathname === "/login")
     return NextResponse.next();
-  }
 
-  // If you use @supabase/auth-helpers-nextjs, a session cookie will exist.
-  // If you only use supabase-js (localStorage), middleware can't see it – in that case,
-  // keep auth checks in the client (AuthGate) and let middleware just route to /admin/login.
+  // If you rely on Supabase cookies, check here; otherwise let client-side gate handle it
   const hasSession =
     req.cookies.get("sb-access-token")?.value ||
     req.cookies.get("sb-refresh-token")?.value ||
     req.cookies.get("supabase-auth-token")?.value;
 
   if (!hasSession) {
-    const url = nextUrl.clone();
-    url.pathname = "/admin/login"; // keep login inside SW scope
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
     url.searchParams.set("redirect", pathname + search);
     return NextResponse.redirect(url);
   }
