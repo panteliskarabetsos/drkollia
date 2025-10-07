@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import { offlineAuth } from "../../lib/offlineAuth";
-import { useAdminGate } from "../../lib/useAdminGate";
-import { isOnline } from "../../lib/useOnline";
+
 // shadcn/ui
 import {
   Card,
@@ -53,7 +52,7 @@ import {
 
 export default function AdminPage() {
   const router = useRouter();
-
+  const redirectedRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -87,8 +86,7 @@ export default function AdminPage() {
 
       // If we're offline and offline-auth is NOT set up → go to /login (offline page is precached now)
       if (!isOnline && !hasOffline) {
-        redirected = true;
-        router.replace("/login?offline=1");
+        setLoading(false);
         return;
       }
 

@@ -6,17 +6,15 @@ const withPWAFn = withPWA({
   register: true,
   skipWaiting: true,
   clientsClaim: true,
-  // keep SW enabled in prod; disabled in dev is fine
   disable: process.env.NODE_ENV === "development",
 
-  // ✅ serve a static offline page instead of a guarded route
+  // serve a cached admin shell when navigations fail offline
   fallbacks: {
-    document: "/offline.html",
+    document: "/admin",
   },
 
-  // ✅ pre-cache the login and admin shell so first offline visit hydrates
+  // pre-cache the admin shell and key subpages so they work after a cold reload
   precachePages: [
-    "/login",
     "/admin",
     "/admin/appointments",
     "/admin/patients",
@@ -24,14 +22,13 @@ const withPWAFn = withPWA({
   ],
 
   runtimeCaching: [
-    // ✅ HTML navigations you care about while offline
+    // HTML navigations (keep admin routes usable offline)
     {
       urlPattern: ({ request, url }) =>
-        request.mode === "navigate" &&
-        (url.pathname === "/login" || url.pathname.startsWith("/admin")),
+        request.mode === "navigate" && url.pathname.startsWith("/admin"),
       handler: "NetworkFirst",
       options: {
-        cacheName: "pages",
+        cacheName: "admin-pages",
         networkTimeoutSeconds: 4,
         matchOptions: { ignoreSearch: true },
       },
@@ -44,12 +41,10 @@ const withPWAFn = withPWA({
       options: { cacheName: "next-static" },
     },
 
-    // Next image optimizer & static assets
+    // images/fonts
     {
-      urlPattern: ({ url, request }) =>
-        url.pathname.startsWith("/_next/image") ||
-        request.destination === "image" ||
-        request.destination === "font",
+      urlPattern: ({ request }) =>
+        request.destination === "image" || request.destination === "font",
       handler: "StaleWhileRevalidate",
       options: {
         cacheName: "assets",
@@ -57,15 +52,7 @@ const withPWAFn = withPWA({
       },
     },
 
-    // manifest / favicon (nice-to-have)
-    {
-      urlPattern: ({ url }) =>
-        url.pathname === "/manifest.json" || url.pathname === "/favicon.ico",
-      handler: "StaleWhileRevalidate",
-      options: { cacheName: "meta" },
-    },
-
-    // Optional: cache Supabase GETs
+    // optional: Supabase GET requests
     {
       urlPattern: ({ url, request }) =>
         request.method === "GET" &&
