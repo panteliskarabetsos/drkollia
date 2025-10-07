@@ -1,26 +1,39 @@
+// middleware.js
 import { NextResponse } from "next/server";
 
-export const config = { matcher: ["/admin/:path*"] };
+// Protect both /admin and /admin/...
+export const config = { matcher: ["/admin", "/admin/:path*"] };
 
 export function middleware(req) {
-  const { pathname, search } = req.nextUrl;
+  const { nextUrl, headers, method, cookies } = req;
+  const { pathname, search } = nextUrl;
 
-  // Allow these without a session (must return 200 when online)
-  if (pathname === "/admin/offline-shell" || pathname === "/login")
+  // Always allow these (must be 200 online so SW can precache them)
+  if (pathname === "/admin/offline-shell" || pathname === "/login") {
     return NextResponse.next();
-
-  // If you rely on Supabase cookies, check here; otherwise let client-side gate handle it
-  const hasSession =
-    req.cookies.get("sb-access-token")?.value ||
-    req.cookies.get("sb-refresh-token")?.value ||
-    req.cookies.get("supabase-auth-token")?.value;
-
-  if (!hasSession) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("redirect", pathname + search);
-    return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  // Only guard real page navigations. Let JSON, assets, prefetches pass.
+  const accept = headers.get("accept") || "";
+  const isPageNavigation = method === "GET" && accept.includes("text/html");
+  if (!isPageNavigation) return NextResponse.next();
+
+  // If you're NOT using @supabase/auth-helpers, this will be empty in prod.
+  // In that case, rely on your client-side guards (which you already added).
+  const hasSession = Boolean(
+    cookies.get("sb-access-token")?.value ||
+      cookies.get("sb-refresh-token")?.value ||
+      cookies.get("supabase-auth-token")?.value
+  );
+
+  if (hasSession) return NextResponse.next();
+
+  // No session → redirect to /login (but only for real navigations; see above)
+  const url = nextUrl.clone();
+  url.pathname = "/login";
+  // Keep one redirect param, don't duplicate
+  if (!url.searchParams.has("redirect")) {
+    url.searchParams.set("redirect", pathname + search);
+  }
+  return NextResponse.redirect(url);
 }

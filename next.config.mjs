@@ -8,14 +8,13 @@ const withPWAFn = withPWA({
   clientsClaim: true,
   disable: process.env.NODE_ENV === "development",
 
-  // serve a cached admin shell when navigations fail offline
-  fallbacks: {
-    document: "/admin",
-  },
+  // When a navigation fails offline, return a cached 200-page
+  fallbacks: { document: "/admin/offline-shell" },
 
-  // pre-cache the admin shell and key subpages so they work after a cold reload
+  // Try to precache useful pages
   precachePages: [
     "/admin",
+    "/admin/offline-shell",
     "/admin/appointments",
     "/admin/appointments/new",
     "/admin/patients",
@@ -24,8 +23,16 @@ const withPWAFn = withPWA({
     "/login",
   ],
 
+  // Guarantee they’re in the Workbox precache even if precachePages misses any
+  workboxOptions: {
+    additionalManifestEntries: [
+      { url: "/admin/offline-shell", revision: "1" },
+      { url: "/login", revision: "1" },
+    ],
+  },
+
   runtimeCaching: [
-    // HTML navigations (keep admin routes usable offline)
+    // HTML navigations under /admin
     {
       urlPattern: ({ request, url }) =>
         request.mode === "navigate" && url.pathname.startsWith("/admin"),
@@ -36,14 +43,12 @@ const withPWAFn = withPWA({
         matchOptions: { ignoreSearch: true },
       },
     },
-
     // Next static chunks
     {
       urlPattern: ({ url }) => url.pathname.startsWith("/_next/static/"),
       handler: "StaleWhileRevalidate",
       options: { cacheName: "next-static" },
     },
-
     // images/fonts
     {
       urlPattern: ({ request }) =>
@@ -54,8 +59,7 @@ const withPWAFn = withPWA({
         expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
       },
     },
-
-    // optional: Supabase GET requests
+    // Supabase GETs (optional)
     {
       urlPattern: ({ url, request }) =>
         request.method === "GET" &&
@@ -70,7 +74,6 @@ const withPWAFn = withPWA({
   ],
 });
 
-/** @type {import('next').NextConfig} */
 export default withPWAFn({
   reactStrictMode: true,
   images: {
