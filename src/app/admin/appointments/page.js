@@ -30,7 +30,6 @@ import {
   History,
 } from "lucide-react";
 import { el } from "date-fns/locale";
-import { o } from "framer-motion/dist/types.d-Bq-Qm38R";
 
 export default function AdminAppointmentsPage() {
   const router = useRouter();
@@ -938,7 +937,7 @@ export default function AdminAppointmentsPage() {
           {/* History button */}
           <div className="flex gap-3 justify-end items-center mb-6">
             <button
-              disabled={!online}
+              disabled={!isOnline}
               onClick={() => router.push("/admin/past-appointments")}
               className="group relative flex items-center gap-2 pl-3 pr-1 py-2 rounded-full border border-[#c8bfae] bg-white/70 backdrop-blur-md text-[#4c3f2c] shadow-sm hover:bg-[#f3899ea3] hover:shadow-md transition-all duration-300"
               title="Ιστορικό Ραντεβού"
