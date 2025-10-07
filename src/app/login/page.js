@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [canOffline, setCanOffline] = useState(false);
   const [needPin, setNeedPin] = useState(false);
   const [pin, setPin] = useState("");
+  const MIN_OFFLINE_PIN = 6;
   // reCAPTCHA
   const recaptchaRef = useRef(null);
   const [captchaValue, setCaptchaValue] = useState("");
@@ -80,19 +81,39 @@ export default function LoginPage() {
     setSubmitting(true);
     setErrorMsg("");
     try {
-      const ok = await offlineAuth.verifyPin(pin || "");
+      // Must have provisioned offline access + a valid PIN
+      if (!canOffline) {
+        setErrorMsg(
+          "Η offline πρόσβαση δεν είναι διαθέσιμη σε αυτή τη συσκευή."
+        );
+        return;
+      }
+      if (!needPin) {
+        setErrorMsg(
+          "Η offline πρόσβαση απαιτεί PIN που ορίζεται όταν είστε online."
+        );
+        return;
+      }
+      if ((pin || "").trim().length < MIN_OFFLINE_PIN) {
+        setErrorMsg(
+          `Ο offline κωδικός πρέπει να έχει τουλάχιστον ${MIN_OFFLINE_PIN} ψηφία.`
+        );
+        return;
+      }
+
+      const ok = await offlineAuth.verifyPin(pin);
       if (!ok) {
-        setErrorMsg("Λάθος offline PIN.");
+        setErrorMsg(
+          "Λάθος offline PIN ή έχει ενεργοποιηθεί προσωρινό κλείδωμα."
+        );
         return;
       }
       // Mark session as offline (optional)
       try {
         sessionStorage.setItem("offline_mode", "1");
       } catch {}
-      try {
-        sessionStorage.setItem("offline_mode", "1");
-      } catch {}
-      router.replace("/admin");
+      // Go to the offline shell so the app renders offline immediately
+      router.replace("/admin/offline-shell?target=/admin");
     } catch (err) {
       console.error("Offline unlock failed:", err);
       setErrorMsg("Αποτυχία offline σύνδεσης.");
@@ -276,20 +297,31 @@ export default function LoginPage() {
               Είστε εκτός σύνδεσης. Μπορείτε να συνδεθείτε σε{" "}
               <strong>offline</strong> λειτουργία.
             </p>
-            {needPin && (
+            {needPin ? (
               <div className="mb-3">
                 <label className="block text-sm mb-1">Offline PIN</label>
                 <input
                   type="password"
                   inputMode="numeric"
                   pattern="\d*"
+                  minLength={MIN_OFFLINE_PIN}
                   className="w-full border border-[#ddd2c2] rounded-lg px-4 py-2 bg-[#fdfaf6] focus:outline-none"
                   value={pin}
                   onChange={(e) => setPin(e.target.value)}
-                  placeholder="4–6 ψηφία"
+                  placeholder={`${MIN_OFFLINE_PIN}+ ψηφία`}
                   disabled={submitting}
+                  autoComplete="off"
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  Ο offline κωδικός πρέπει να έχει τουλάχιστον {MIN_OFFLINE_PIN}{" "}
+                  ψηφία.
+                </p>
               </div>
+            ) : (
+              <p className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                Η offline πρόσβαση απαιτεί PIN που ορίζεται όταν είστε online
+                (Ρυθμίσεις &rarr; Offline πρόσβαση).
+              </p>
             )}
             <button
               onClick={handleOfflineUnlock}
@@ -298,7 +330,9 @@ export default function LoginPage() {
                   ? "opacity-70 cursor-not-allowed"
                   : "hover:bg-[#5a564f]"
               }`}
-              disabled={submitting}
+              disabled={
+                submitting || (needPin && pin.trim().length < MIN_OFFLINE_PIN)
+              }
               type="button"
             >
               Είσοδος εκτός σύνδεσης
