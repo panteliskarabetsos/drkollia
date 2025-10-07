@@ -277,7 +277,7 @@ export default function LoginPage() {
                 ? "opacity-70 cursor-not-allowed"
                 : "hover:bg-[#2f2e2a]"
             }`}
-            disabled={submitting}
+            disabled={submitting || canOffline}
           >
             {submitting ? "Σύνδεση..." : "Σύνδεση"}
           </button>

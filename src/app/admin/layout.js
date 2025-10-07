@@ -24,6 +24,7 @@ import {
   WifiOff,
   Wifi,
   Download,
+  Settings,
 } from "lucide-react";
 import "../globals.css";
 import { syncPatients } from "../../lib/offlinePatients";
@@ -371,6 +372,16 @@ export default function AdminLayout({ children }) {
                         </p>
                       )}
                     </div>
+                    <Link
+                      href="/admin/settings"
+                      disabled={!online}
+                      className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#f6f4ef] hover:pl-4 transition-all"
+                      onClick={() => setMenuOpen(false)} // close menu on navigate
+                    >
+                      <Settings className="w-4 h-4 text-[#8c7c68]" />
+                      <span className="text-[#3a3a38]">Ρυθμίσεις</span>
+                    </Link>
+
                     <button
                       onClick={handleLogout}
                       disabled={!online}
