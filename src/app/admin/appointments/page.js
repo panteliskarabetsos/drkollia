@@ -1108,11 +1108,6 @@ export default function AdminAppointmentsPage() {
                        disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                                       >
                                         <Trash2 className="w-4 h-4" />
-                                        {!isOnline && (
-                                          <TooltipContent>
-                                            Απαιτείται σύνδεση
-                                          </TooltipContent>
-                                        )}
                                       </button>
                                     )}
                                   </>
