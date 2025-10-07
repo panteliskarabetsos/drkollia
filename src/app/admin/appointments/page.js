@@ -12,7 +12,7 @@ import {
   syncAppointments,
 } from "../../../lib/offlineAppointments";
 import { db } from "../../../lib/db";
-import { useAuthGate } from "../../../lib/useAuthGate";
+
 import {
   Plus,
   ArrowLeft,
@@ -38,7 +38,7 @@ export default function AdminAppointmentsPage() {
   const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const { ready, mode, user, isOnline } = useAuthGate();
+
   useEffect(() => {
     const checkAuth = async () => {
       const {
@@ -424,6 +424,10 @@ export default function AdminAppointmentsPage() {
     };
   }, [sessionExists]);
 
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
+
   useEffect(() => {
     const up = () => setIsOnline(true);
     const down = () => setIsOnline(false);
@@ -540,13 +544,12 @@ export default function AdminAppointmentsPage() {
     }
   };
 
-  if (!ready) {
+  if (!sessionChecked)
     return (
-      <main className="min-h-screen grid place-items-center">
-        Έλεγχος σύνδεσης…
+      <main className="min-h-screen flex items-center justify-center">
+        Έλεγχος σύνδεσης...
       </main>
     );
-  }
   if (!sessionExists) return null;
 
   if (loading) {
