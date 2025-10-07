@@ -6,16 +6,16 @@ export const dynamic = "force-static";
 import AdminPage from "../page";
 import PatientsPage from "../patients/page";
 import AppointmentsPage from "../appointments/page";
-import NewPatientPage from "../patients/new/page";
-import NewAppointmentPage from "../appointments/new/page";
+// import NewPatientPage from "../patients/new/page";
+// import NewAppointmentPage from "../appointments/new/page";
 // import SchedulePage from '../schedule/page';
 
 const VIEWS = {
   "/admin": AdminPage,
   "/admin/patients": PatientsPage,
-  "/admin/patients/new": NewPatientPage,
+  //   "/admin/patients/new": NewPatientPage,
   "/admin/appointments": AppointmentsPage,
-  "/admin/appointments/new": NewAppointmentPage,
+  //   "/admin/appointments/new": NewAppointmentPage,
   // '/admin/schedule': SchedulePage,
 };
 function resolveTarget() {
