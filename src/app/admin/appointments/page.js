@@ -7,6 +7,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { format, isSameDay, set } from "date-fns";
 import * as XLSX from "xlsx";
 import LiveClock from "../../components/LiveClock";
+import { offlineAuth } from "../../../lib/offlineAuth";
 import {
   fetchAppointmentsRange,
   syncAppointments,
@@ -32,6 +33,8 @@ import { el } from "date-fns/locale";
 
 export default function AdminAppointmentsPage() {
   const router = useRouter();
+  const redirectedRef = useRef(false);
+
   const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionExists, setSessionExists] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -44,19 +47,30 @@ export default function AdminAppointmentsPage() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+      const online = typeof navigator === "undefined" ? true : navigator.onLine;
+      const hasOffline = !!offlineAuth?.isEnabled?.();
 
-      if (!session) {
-        setTimeout(() => {
-          router.push("/login"); // αποφυγή scroll reset λόγω immediate redirect
-        }, 0);
-      } else {
-        setSessionExists(true);
+      if (!session && !hasOffline) {
+        // No session and no offline unlock
+        if (online && !redirectedRef.current) {
+          redirectedRef.current = true;
+          router.replace("/login?redirect=/admin/appointments");
+          return;
+        }
+        // offline: don't navigate (prevents loop); show offline banner UI
+        setSessionExists(false);
+        setSessionChecked(true);
+        return;
       }
+
+      // session exists OR offline unlock active
+      setSessionExists(true);
       setSessionChecked(true);
     };
-
     checkAuth();
-  }, []);
+    // router in deps to avoid lint noise; behavior is stable
+  }, [router]);
+
   const normalize = (text) =>
     text
       ?.normalize("NFD") // διαχωρίζει γράμμα και τόνο
@@ -550,8 +564,35 @@ export default function AdminAppointmentsPage() {
         Έλεγχος σύνδεσης...
       </main>
     );
-  if (!sessionExists) return null;
-
+  if (!sessionExists) {
+    // We're either offline without an offline unlock, or mid-redirect when online
+    const online = typeof navigator === "undefined" ? true : navigator.onLine;
+    if (!online) {
+      return (
+        <main className="min-h-screen grid place-items-center p-6">
+          <div className="max-w-md text-center space-y-3">
+            <h1 className="text-xl font-semibold">Είστε εκτός σύνδεσης</h1>
+            <p className="text-stone-600">
+              Η πρώτη χρήση εκτός σύνδεσης απαιτεί αρχική σύνδεση. Όταν
+              επανέλθει το δίκτυο, συνδεθείτε για να ενεργοποιηθεί η offline
+              λειτουργία.
+            </p>
+            <button
+              className="mt-2 inline-flex items-center rounded border px-3 py-1.5"
+              onClick={() =>
+                router.replace("/login?offline=1&redirect=/admin/appointments")
+              }
+              disabled={!online}
+            >
+              Μετάβαση στη σύνδεση
+            </button>
+          </div>
+        </main>
+      );
+    }
+    // online case: a replace('/login') is in flight; render nothing briefly
+    return null;
+  }
   if (loading) {
     return (
       <main className="min-h-screen flex items-center justify-center">

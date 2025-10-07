@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabaseClient";
@@ -84,7 +84,9 @@ const PAGE_SIZE = 12;
 
 export default function PatientsPage() {
   const router = useRouter();
-
+  const redirectedRef = useRef(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [isAuthed, setIsAuthed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [minAge, setMinAge] = useState("");
@@ -222,35 +224,46 @@ export default function PatientsPage() {
 
   useEffect(() => {
     (async () => {
-      const hasOffline =
-        typeof window !== "undefined" &&
-        !!localStorage.getItem("offline_session"); // simple offline flag
-
       const { data } = await supabase.auth.getSession();
       const session = data?.session;
+      const online = typeof navigator === "undefined" ? true : navigator.onLine;
+      const hasOffline =
+        (typeof offlineAuth !== "undefined" &&
+          typeof offlineAuth.isEnabled === "function" &&
+          !!offlineAuth.isEnabled()) ||
+        (typeof window !== "undefined" &&
+          !!localStorage.getItem("offline_session"));
 
       if (!session && !hasOffline) {
-        router.push("/login");
+        // Only redirect when ONLINE; never navigate when offline (prevents loop)
+        if (online && !redirectedRef.current) {
+          redirectedRef.current = true;
+          router.replace("/login?redirect=/admin/patients");
+        }
+        setAuthReady(true);
+        setIsAuthed(false);
         return;
       }
 
-      // allow page to work with either real session or offline mode
+      // session exists OR offline-unlock enabled → allow page & load data
       setUser(session?.user || { id: "offline-user" });
-
+      setIsAuthed(true);
+      setAuthReady(true);
       await loadPatients();
     })();
   }, [router, loadPatients]);
 
   useEffect(() => {
+    if (!isAuthed) return;
     const onOnline = () => loadPatients();
-    const onOffline = () => loadPatients();
+    const onOffline = () => loadPatients(); // show cached Dexie data
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     return () => {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [loadPatients]);
+  }, [isAuthed, loadPatients]);
 
   useEffect(() => {
     if (!confirmDelete?.id) {
@@ -368,6 +381,45 @@ export default function PatientsPage() {
     const filename = `patients_${new Date().toISOString().slice(0, 10)}.xlsx`;
     writeFile(wb, filename);
   };
+
+  // --- auth gating render ---
+  if (!authReady) {
+    return (
+      <main className="min-h-screen grid place-items-center p-6">
+        Έλεγχος σύνδεσης...
+      </main>
+    );
+  }
+  if (!isAuthed) {
+    const onlineNow =
+      typeof navigator === "undefined" ? true : navigator.onLine;
+    if (!onlineNow) {
+      // Offline and not authed → show banner instead of redirecting (prevents SW loop)
+      return (
+        <main className="min-h-screen grid place-items-center p-6">
+          <div className="max-w-md text-center space-y-3">
+            <h1 className="text-xl font-semibold">Είστε εκτός σύνδεσης</h1>
+            <p className="text-stone-600">
+              Η πρώτη χρήση εκτός σύνδεσης απαιτεί αρχική σύνδεση. Όταν
+              επανέλθει το δίκτυο, συνδεθείτε για να ενεργοποιηθεί η offline
+              λειτουργία.
+            </p>
+            <Button
+              onClick={() =>
+                router.replace("/login?offline=1&redirect=/admin/patients")
+              }
+              disabled={!onlineNow}
+              variant="outline"
+            >
+              Μετάβαση στη σύνδεση
+            </Button>
+          </div>
+        </main>
+      );
+    }
+    // Online case: redirect is in flight; render nothing briefly
+    return null;
+  }
 
   // --- render ---
   return (
