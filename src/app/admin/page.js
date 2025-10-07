@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import { offlineAuth } from "../../lib/offlineAuth";
+import { useAdminGate } from "../../lib/useAdminGate";
 import { isOnline } from "../../lib/useOnline";
 // shadcn/ui
 import {
@@ -68,9 +69,9 @@ export default function AdminPage() {
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine
   );
+
   useEffect(() => {
     const update = () => setIsOnline(navigator.onLine);
-    update();
     window.addEventListener("online", update);
     window.addEventListener("offline", update);
     return () => {
@@ -78,6 +79,36 @@ export default function AdminPage() {
       window.removeEventListener("offline", update);
     };
   }, []);
+
+  useEffect(() => {
+    let redirected = false;
+    (async () => {
+      const hasOffline = !!offlineAuth?.isEnabled?.();
+
+      // If we're offline and offline-auth is NOT set up → go to /login (offline page is precached now)
+      if (!isOnline && !hasOffline) {
+        redirected = true;
+        router.replace("/login?offline=1");
+        return;
+      }
+
+      // Online path
+      const { data } = await supabase.auth.getSession();
+      const session = data?.session || null;
+
+      if (!session && !hasOffline) {
+        redirected = true;
+        router.replace("/login");
+        return;
+      }
+
+      // allowed to render dashboard (online session or offline enabled)
+      setLoading(false);
+    })();
+    return () => {
+      /* nothing */
+    };
+  }, [isOnline, router]);
 
   // ---------- Data loaders ----------
   const loadStats = useCallback(async () => {
