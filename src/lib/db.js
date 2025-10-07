@@ -36,6 +36,8 @@ db.version(4)
     appointments:
       "id, appointment_date, appointment_time, patient_id, status, created_at, updated_at, [patient_id+appointment_date]",
     appointmentOps: "++id, type, ts, status, entityId",
+
+    kv: "&key",
   })
   .upgrade(async (tx) => {
     // Ensure legacy records have the new fields (no-op safe)

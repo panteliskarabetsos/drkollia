@@ -7,6 +7,12 @@ import { supabase } from "../../../lib/supabaseClient";
 import PatientDetailsCard from "../../components/PatientDetailsCard";
 import { db } from "../../../lib/db";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import offlineAuth from "../../../lib/offlineAuth";
+import {
+  getPatientsPage,
+  syncPatients,
+  refreshPatientsCacheFromServer,
+} from "../../../lib/offlinePatients";
 // shadcn/ui
 import {
   Card,
@@ -110,6 +116,9 @@ export default function PatientsPage() {
   const online = () =>
     typeof navigator === "undefined" ? true : navigator.onLine;
 
+  const isOnlineNow =
+    typeof navigator === "undefined" ? true : Boolean(navigator.onLine);
+
   const totalPages = useMemo(() => Math.ceil(total / PAGE_SIZE) || 1, [total]);
   const openView = async (p) => {
     setSelected({ ...p, _loading: true });
@@ -130,195 +139,67 @@ export default function PatientsPage() {
     setBusy(true);
     setError(null);
 
-    try {
-      // --- validate age range ---
-      const min = minAge === "" ? null : Number(minAge);
-      const max = maxAge === "" ? null : Number(maxAge);
-      if (
-        (min !== null && Number.isNaN(min)) ||
-        (max !== null && Number.isNaN(max))
-      ) {
-        setError("Μη έγκυρο φίλτρο ηλικίας.");
-        return;
-      }
-      if (min !== null && max !== null && min > max) {
-        setError(
-          "Η ελάχιστη ηλικία δεν μπορεί να είναι μεγαλύτερη από τη μέγιστη."
-        );
-        return;
-      }
+    const isOnline =
+      typeof navigator === "undefined" ? true : Boolean(navigator.onLine);
 
-      // --- helpers reused for local filters ---
-      const ymd = (d) => {
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, "0");
-        const dd = String(d.getDate()).padStart(2, "0");
-        return `${yyyy}-${mm}-${dd}`;
-      };
-      const yearsAgo = (n) => {
-        const d = new Date();
-        d.setHours(0, 0, 0, 0);
-        d.setFullYear(d.getFullYear() - n);
-        return d;
-      };
-      const calcAge = (birth_date) => {
-        if (!birth_date) return null;
-        const b = new Date(birth_date);
-        const t = new Date();
-        let age = t.getFullYear() - b.getFullYear();
-        const m = t.getMonth() - b.getMonth();
-        if (m < 0 || (m === 0 && t.getDate() < b.getDate())) age--;
-        return age;
-      };
-      const norm = (s) => (s || "").toString().toLowerCase();
-
-      const qstr = (query || "").trim();
-      const qLower = norm(qstr);
-
-      const localFilter = (p) => {
-        const matchesText =
-          !qLower ||
-          norm(p.first_name).includes(qLower) ||
-          norm(p.last_name).includes(qLower) ||
-          norm(p.phone).includes(qLower) ||
-          norm(p.email).includes(qLower) ||
-          norm(p.amka).includes(qLower);
-
-        const matchesGender = gender === "all" || p.gender === gender;
-
-        const age = calcAge(p.birth_date);
-        const matchesMin = min === null || (age !== null && age >= min);
-        const matchesMax = max === null || (age !== null && age <= max);
-
-        return matchesText && matchesGender && matchesMin && matchesMax;
-      };
-
-      let serverRows = [];
-      let serverCount = 0;
-
-      // ---------- SERVER (only if online) ----------
-      if (online()) {
-        try {
-          let q = supabase
-            .from("patients")
-            .select(
-              [
-                "id",
-                "first_name",
-                "last_name",
-                "phone",
-                "email",
-                "amka",
-                "birth_date",
-                "gender",
-                "created_at",
-                "medications",
-                "gynecological_history",
-                "hereditary_history",
-                "current_disease",
-                "physical_exam",
-                "preclinical_screening",
-                "notes",
-              ].join(", "),
-              { count: "exact" }
-            );
-
-          if (qstr) {
-            q = q.or(
-              `first_name.ilike.%${qstr}%,last_name.ilike.%${qstr}%,phone.ilike.%${qstr}%,email.ilike.%${qstr}%,amka.ilike.%${qstr}%`
-            );
-          }
-          if (gender !== "all") q = q.eq("gender", gender);
-          if (min !== null) q = q.lte("birth_date", ymd(yearsAgo(min)));
-          if (max !== null) q = q.gte("birth_date", ymd(yearsAgo(max)));
-
-          q = q
-            .order("last_name", { ascending: true })
-            .order("first_name", { ascending: true })
-            .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
-
-          const { data, count, error } = await q;
-          if (error) throw error;
-
-          serverRows = data ?? [];
-          serverCount = count ?? 0;
-
-          // Optional: mirror cached server rows into Dexie for true offline view later
-          try {
-            await db.transaction("rw", db.patients, async () => {
-              for (const row of serverRows) {
-                await db.patients.put(row);
-              }
-            });
-          } catch (cacheErr) {
-            console.warn("[patients] cache mirror failed:", cacheErr);
-          }
-        } catch (serverErr) {
-          console.warn(
-            "[patients] server fetch failed; using local cache",
-            serverErr
-          );
-        }
-      }
-
-      // ---------- LOCAL (unsynced + cached) ----------
-      // Always include unsynced local rows (ids starting with local-)
-      // Unsynced local (ids start with local-)
-      let localUnsynced = [];
-      try {
-        localUnsynced = await db.patients
-          .where("id")
-          .startsWith("local-")
-          .toArray();
-        // hide any tombstoned local rows (in case of local-create then local-delete)
-        localUnsynced = localUnsynced.filter((p) => !isTombstoned(p));
-        localUnsynced = localUnsynced.filter(localFilter);
-        localUnsynced.sort((a, b) => {
-          const ln = (a.last_name || "").localeCompare(b.last_name || "");
-          return ln !== 0
-            ? ln
-            : (a.first_name || "").localeCompare(b.first_name || "");
-        });
-      } catch (dexieErr) {
-        console.warn("[patients] local unsynced read failed:", dexieErr);
-      }
-
-      // Cached server rows (used when offline OR when server fetch failed)
-      let cachedServer = [];
-      if (!online() || serverRows.length === 0) {
-        try {
-          cachedServer = (await db.patients.toArray())
-            .filter((p) => !isLocalId(p.id))
-            .filter((p) => !isTombstoned(p)) // <-- hide tombstones
-            .filter(localFilter)
-            .sort((a, b) => {
-              const ln = (a.last_name || "").localeCompare(b.last_name || "");
-              return ln !== 0
-                ? ln
-                : (a.first_name || "").localeCompare(b.first_name || "");
-            });
-        } catch (dexieErr) {
-          console.warn("[patients] cached server read failed:", dexieErr);
-        }
-      }
-
-      // ---------- MERGE ----------
-      const base = serverRows.length ? serverRows : cachedServer;
-      const merged = [...base, ...localUnsynced];
-
-      setPatients(merged);
-      setTotal(
-        (serverRows.length ? serverCount : cachedServer.length) +
-          localUnsynced.length
+    // validate ages
+    const min = minAge === "" ? null : Number(minAge);
+    const max = maxAge === "" ? null : Number(maxAge);
+    if (
+      (min !== null && Number.isNaN(min)) ||
+      (max !== null && Number.isNaN(max))
+    ) {
+      setBusy(false);
+      setLoading(false);
+      setError("Μη έγκυρο φίλτρο ηλικίας.");
+      return;
+    }
+    if (min !== null && max !== null && min > max) {
+      setBusy(false);
+      setLoading(false);
+      setError(
+        "Η ελάχιστη ηλικία δεν μπορεί να είναι μεγαλύτερη από τη μέγιστη."
       );
+      return;
+    }
+
+    try {
+      // when online: push pending ops & refresh local cache first
+      if (isOnline) {
+        await syncPatients();
+        await refreshPatientsCacheFromServer();
+      }
+
+      const { rows, total } = await getPatientsPage({
+        page,
+        pageSize: PAGE_SIZE,
+        text: query,
+        gender,
+        minAge: min,
+        maxAge: max,
+      });
+
+      setPatients(rows);
+      setTotal(total);
+      setIsOfflineData(!isOnline);
     } catch (e) {
-      // Better diagnostics than logging an empty object
-      const msg =
-        e?.message ||
-        e?.error?.message ||
-        (typeof e === "object" ? JSON.stringify(e) : String(e));
-      console.error("loadPatients error:", msg, e);
-      setError("Αποτυχία φόρτωσης ασθενών");
+      console.error("loadPatients failed; falling back to Dexie:", e);
+      // last-resort offline fallback
+      try {
+        const { rows, total } = await getPatientsPage({
+          page,
+          pageSize: PAGE_SIZE,
+          text: query,
+          gender,
+          minAge: min,
+          maxAge: max,
+        });
+        setPatients(rows);
+        setTotal(total);
+        setIsOfflineData(true);
+      } catch {
+        setError("Αποτυχία φόρτωσης ασθενών");
+      }
     } finally {
       setBusy(false);
       setLoading(false);
@@ -341,21 +222,34 @@ export default function PatientsPage() {
 
   useEffect(() => {
     (async () => {
+      const hasOffline =
+        typeof window !== "undefined" &&
+        !!localStorage.getItem("offline_session"); // simple offline flag
+
       const { data } = await supabase.auth.getSession();
       const session = data?.session;
-      if (!session) {
+
+      if (!session && !hasOffline) {
         router.push("/login");
         return;
       }
-      setUser(session.user);
+
+      // allow page to work with either real session or offline mode
+      setUser(session?.user || { id: "offline-user" });
+
       await loadPatients();
     })();
   }, [router, loadPatients]);
 
   useEffect(() => {
     const onOnline = () => loadPatients();
+    const onOffline = () => loadPatients();
     window.addEventListener("online", onOnline);
-    return () => window.removeEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
   }, [loadPatients]);
 
   useEffect(() => {
@@ -703,7 +597,11 @@ export default function PatientsPage() {
             <CardHeader className="pb-0">
               <CardTitle className="text-base">Λίστα ασθενών</CardTitle>
               <CardDescription>
-                {busy ? "Φόρτωση…" : `${total.toLocaleString("el-GR")} σύνολο`}
+                {busy
+                  ? "Φόρτωση…"
+                  : `${total.toLocaleString("el-GR")} σύνολο${
+                      isOfflineData ? " (εκτός σύνδεσης)" : ""
+                    }`}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -888,25 +786,60 @@ export default function PatientsPage() {
                   <PatientDetailsCard patient={selected} />
 
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Button
-                      onClick={() =>
-                        router.push(`/admin/patients/${selected.id}`)
-                      }
-                      className="gap-2"
-                    >
-                      <Pencil className="h-4 w-4" /> Επεξεργασία
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className={!isOnline ? "inline-block" : undefined}
+                        >
+                          <Button
+                            disabled={!isOnline}
+                            onClick={() =>
+                              router.push(`/admin/patients/${selected.id}`)
+                            }
+                            className={`gap-2 ${
+                              !isOnline ? "opacity-60 cursor-not-allowed" : ""
+                            }`}
+                            title={!isOnline ? "Απαιτείται σύνδεση" : undefined}
+                            aria-disabled={!isOnline}
+                          >
+                            <Pencil className="h-4 w-4" /> Επεξεργασία
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      {!isOnline && (
+                        <TooltipContent>Απαιτείται σύνδεση</TooltipContent>
+                      )}
+                    </Tooltip>
 
-                    <Button
-                      variant="secondary"
-                      onClick={() =>
-                        router.push(`/admin/patients/history/${selected.id}`)
-                      }
-                      className="gap-2"
-                    >
-                      <History className="h-4 w-4" />
-                      Ιστορικό επισκέψεων
-                    </Button>
+                    {/* Ιστορικό επισκέψεων */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className={!isOnline ? "inline-block" : undefined}
+                        >
+                          <Button
+                            variant="secondary"
+                            disabled={!isOnline}
+                            onClick={() =>
+                              router.push(
+                                `/admin/patients/history/${selected.id}`
+                              )
+                            }
+                            className={`gap-2 ${
+                              !isOnline ? "opacity-60 cursor-not-allowed" : ""
+                            }`}
+                            title={!isOnline ? "Απαιτείται σύνδεση" : undefined}
+                            aria-disabled={!isOnline}
+                          >
+                            <History className="h-4 w-4" />
+                            Ιστορικό επισκέψεων
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      {!isOnline && (
+                        <TooltipContent>Απαιτείται σύνδεση</TooltipContent>
+                      )}
+                    </Tooltip>
 
                     <Button variant="outline" onClick={() => setSelected(null)}>
                       Κλείσιμο
@@ -966,9 +899,9 @@ export default function PatientsPage() {
                       </ul>
                     )}
                     <p className="text-xs opacity-80">
-                      Με την διαγραφή ασθενούς το επερχόμενο ραντεβού του θα
-                      ακυρωθεί σιωπηρά. Προτείνεται να ενημερώσετε τον ασθενή
-                      πριν προχωρήσετε.
+                      Με την διαγραφή ασθενούς, τα επερχόμενα ραντεβού του θα
+                      ακυρωθούν σιωπηρά. Προτείνεται η ενημέρωση του ασθενή πριν
+                      προχωρήσετε.
                     </p>
                   </div>
                 </AlertDescription>
@@ -1011,8 +944,10 @@ function RowActions({ onView, onEdit, onHistory, onDelete, online }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={onView}>Προβολή Καρτέλας</DropdownMenuItem>
-        <DropdownMenuItem onClick={onEdit}>Επεξεργασία</DropdownMenuItem>
-        <DropdownMenuItem onClick={onHistory}>
+        <DropdownMenuItem disabled={!online} onClick={onEdit}>
+          Επεξεργασία
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={!online} onClick={onHistory}>
           Ιστορικό επισκέψεων
         </DropdownMenuItem>
         <DropdownMenuSeparator />

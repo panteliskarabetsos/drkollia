@@ -8,6 +8,8 @@ import clsx from "clsx";
 import { Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/app/lib/supabaseClient";
+import { offlineAuth } from "../../lib/offlineAuth";
+
 import {
   LogOut,
   LayoutDashboard,
@@ -94,28 +96,72 @@ export default function AdminLayout({ children }) {
 
   // Auth bootstrap + profile load
   useEffect(() => {
-    const run = async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user || null;
-      setMe(user);
+    let authSub; // keep a ref to unsubscribe on cleanup
 
-      if (user?.id) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("name, email, phone, role")
-          .eq("id", user.id)
-          .single();
-        setProfile(prof || null);
+    const run = async () => {
+      const isOnline =
+        typeof navigator === "undefined" ? true : navigator.onLine;
+
+      if (isOnline) {
+        // ---- Online: normal Supabase auth flow ----
+        const { data } = await supabase.auth.getUser();
+        const user = data?.user || null;
+
+        if (!user) {
+          router.replace("/login");
+          return;
+        }
+
+        setMe(user);
+
+        if (user?.id) {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("name, email, phone, role")
+            .eq("id", user.id)
+            .single();
+          setProfile(prof || null);
+        }
+
+        // keep session in sync (if signed out from another tab)
+        const sub = supabase.auth.onAuthStateChange((_event, session) => {
+          if (!session) {
+            try {
+              sessionStorage.removeItem("offline_mode");
+            } catch {}
+            router.replace("/login");
+          }
+        });
+        authSub = sub?.data?.subscription || sub?.subscription;
+      } else {
+        // ---- Offline: accept cached offline session ----
+        const offlineFlag =
+          typeof window !== "undefined"
+            ? sessionStorage.getItem("offline_mode")
+            : null;
+        const cached = await offlineAuth.getUser();
+
+        if (!offlineFlag || !cached) {
+          router.replace("/login");
+          return;
+        }
+
+        // Minimal shapes used by the UI
+        setMe({ id: cached.id, email: cached.email });
+        setProfile({
+          name: cached.name || cached.email,
+          email: cached.email,
+          phone: cached.phone || null,
+          role: cached.role || "admin",
+        });
+        // NOTE: no Supabase listener while offline
       }
     };
+
     run();
 
-    // keep session in sync (if signed out from another tab)
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) router.replace("/login");
-    });
     return () => {
-      sub?.subscription?.unsubscribe?.();
+      authSub?.unsubscribe?.();
     };
   }, [router]);
 
