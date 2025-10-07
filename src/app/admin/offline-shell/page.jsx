@@ -6,7 +6,8 @@ export const dynamic = "force-static";
 import AdminPage from "../page";
 import PatientsPage from "../patients/page";
 import AppointmentsPage from "../appointments/page";
-// (Optional) import SchedulePage if you want it offline too:
+import NewPatientPage from "../patients/new/page";
+import NewAppointmentPage from "../appointments/new/page";
 // import SchedulePage from '../schedule/page';
 
 const VIEWS = {
