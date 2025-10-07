@@ -817,7 +817,6 @@ export default function NewAppointmentPage() {
     setNextAvailableDate(null); // Δεν βρέθηκε διαθέσιμη ημερομηνία
   };
 
-  // ❗️Το `if (loading)` πρέπει να είναι **μετά** από όλους τους hooks
   if (loading) {
     return (
       <div className="flex justify-center items-center h-screen bg-white">
@@ -870,6 +869,7 @@ export default function NewAppointmentPage() {
           {/* Κουμπί κάτω από τον τίτλο */}
           <div className="mt-6 flex justify-center gap-3 flex-wrap">
             <button
+              disabled={!online}
               type="button"
               onClick={() => setNewPatientMode(!newPatientMode)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 hover:border-gray-400 hover:text-black text-sm font-medium shadow-sm hover:shadow-md transition-all"
@@ -889,6 +889,7 @@ export default function NewAppointmentPage() {
 
             <button
               type="button"
+              disabled={!online}
               onClick={() => router.push("/admin/appointments/exception")}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 hover:border-gray-400 hover:text-black text-sm font-medium shadow-sm hover:shadow-md transition-all"
             >
