@@ -1,48 +1,36 @@
-// app/lib/offlineAuth.js
+// app/admin/offline-shell/page.jsx
 "use client";
+export const dynamic = "force-static";
 
-const USER_KEY = "offline_user";
-const PIN_KEY = "offline_pin_hash";
+// Import the real views (they should already be offline-safe)
+import AdminPage from "../page";
+import PatientsPage from "../patients/page";
+import AppointmentsPage from "../appointments/page";
+// (Optional) import SchedulePage if you want it offline too:
+// import SchedulePage from '../schedule/page';
 
-async function sha256(text) {
-  const enc = new TextEncoder().encode(text);
-  const buf = await crypto.subtle.digest("SHA-256", enc);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+const VIEWS = {
+  "/admin": AdminPage,
+  "/admin/patients": PatientsPage,
+  "/admin/appointments": AppointmentsPage,
+  // '/admin/schedule': SchedulePage,
+};
+
+function resolveTarget() {
+  if (typeof window === "undefined") return "/admin";
+  const url = new URL(window.location.href);
+  const qTarget = url.searchParams.get("target");
+  const path = url.pathname; // ← current path (works offline)
+  const last = localStorage.getItem("lastAdminPath");
+
+  const candidate = qTarget || path || last || "/admin";
+  return Object.prototype.hasOwnProperty.call(VIEWS, candidate)
+    ? candidate
+    : "/admin";
 }
 
-export const offlineAuth = {
-  async saveUser({ id, email, name, role }) {
-    localStorage.setItem(USER_KEY, JSON.stringify({ id, email, name, role }));
-  },
-  async getUser() {
-    try {
-      return JSON.parse(localStorage.getItem(USER_KEY) || "null");
-    } catch {
-      return null;
-    }
-  },
-  async hasPin() {
-    return !!localStorage.getItem(PIN_KEY);
-  },
-  async setPin(pin) {
-    const user = await this.getUser();
-    if (!user) throw new Error("No cached user");
-    const hash = await sha256(`${user.email}|${pin}`);
-    localStorage.setItem(PIN_KEY, hash);
-  },
-  async verifyPin(pin) {
-    const user = await this.getUser();
-    if (!user) return false;
-    const saved = localStorage.getItem(PIN_KEY);
-    // If no PIN set, allow offline without PIN
-    if (!saved) return true;
-    const hash = await sha256(`${user.email}|${pin}`);
-    return hash === saved;
-  },
-  clear() {
-    localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(PIN_KEY);
-  },
-};
+export default function OfflineShell() {
+  const target = resolveTarget();
+  const View = VIEWS[target] || AdminPage;
+  return <View __fromOfflineShell />;
+}
