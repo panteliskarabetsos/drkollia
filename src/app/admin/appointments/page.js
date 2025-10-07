@@ -388,6 +388,26 @@ export default function AdminAppointmentsPage() {
     };
   }, [sessionExists]);
 
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
+
+  useEffect(() => {
+    const up = () => setIsOnline(true);
+    const down = () => setIsOnline(false);
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    return () => {
+      window.removeEventListener("online", up);
+      window.removeEventListener("offline", down);
+    };
+  }, []);
+
+  const safeUpdateStatus = (id, status) => {
+    if (!isOnline) return;
+    updateStatus(id, status);
+  };
+
   useEffect(() => {
     if (!editNoteModalOpen) return;
     setEditMounted(true);
@@ -980,7 +1000,7 @@ export default function AdminAppointmentsPage() {
 
                             <td className="px-4 py-3 text-right no-print">
                               <div className="inline-flex items-center gap-2 flex-wrap justify-end">
-                                {/* Σχόλια */}
+                                {/* Σχόλια (επιτρέπεται και offline) */}
                                 <button
                                   onClick={() => openAppointmentNoteModal(appt)}
                                   className={`p-1.5 rounded-full border transition ${
@@ -993,7 +1013,7 @@ export default function AdminAppointmentsPage() {
                                   <StickyNote className="w-4 h-4 no-print" />
                                 </button>
 
-                                {/* Οι υπόλοιπες ενέργειες μόνο αν ΔΕΝ είναι completed */}
+                                {/* Οι υπόλοιπες ενέργειες μόνο αν ΔΕΝ είναι completed / past-approved */}
                                 {!(
                                   appt.status === "completed" ||
                                   (appt.status === "approved" &&
@@ -1004,11 +1024,20 @@ export default function AdminAppointmentsPage() {
                                     {/* Έγκριση */}
                                     {appt.status === "scheduled" && (
                                       <button
-                                        onClick={() =>
-                                          updateStatus(appt.id, "approved")
+                                        type="button"
+                                        onClick={() => {
+                                          if (!isOnline) return;
+                                          updateStatus(appt.id, "approved");
+                                        }}
+                                        disabled={!isOnline}
+                                        aria-disabled={!isOnline}
+                                        title={
+                                          isOnline
+                                            ? "Έγκριση"
+                                            : "Απαιτείται σύνδεση"
                                         }
-                                        className="p-1.5 rounded-full border border-green-300 text-green-700 hover:bg-green-50"
-                                        title="Έγκριση"
+                                        className="p-1.5 rounded-full border border-green-300 text-green-700 hover:bg-green-50 transition
+                       disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                                       >
                                         <Check className="w-4 h-4" />
                                       </button>
@@ -1017,11 +1046,20 @@ export default function AdminAppointmentsPage() {
                                     {/* Απόρριψη */}
                                     {appt.status === "scheduled" && (
                                       <button
-                                        onClick={() =>
-                                          updateStatus(appt.id, "rejected")
+                                        type="button"
+                                        onClick={() => {
+                                          if (!isOnline) return;
+                                          updateStatus(appt.id, "rejected");
+                                        }}
+                                        disabled={!isOnline}
+                                        aria-disabled={!isOnline}
+                                        title={
+                                          isOnline
+                                            ? "Απόρριψη"
+                                            : "Απαιτείται σύνδεση"
                                         }
-                                        className="p-1.5 rounded-full border border-red-300 text-red-700 hover:bg-red-50"
-                                        title="Απόρριψη"
+                                        className="p-1.5 rounded-full border border-red-300 text-red-700 hover:bg-red-50 transition
+                       disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                                       >
                                         <X className="w-4 h-4" />
                                       </button>
@@ -1030,12 +1068,21 @@ export default function AdminAppointmentsPage() {
                                     {/* Ακύρωση */}
                                     {appt.status === "approved" && (
                                       <button
+                                        type="button"
                                         onClick={() => {
+                                          if (!isOnline) return;
                                           setCancelTargetId(appt.id);
                                           setCancelDialogOpen(true);
                                         }}
-                                        className="p-1.5 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-100"
-                                        title="Ακύρωση"
+                                        disabled={!isOnline}
+                                        aria-disabled={!isOnline}
+                                        title={
+                                          isOnline
+                                            ? "Ακύρωση"
+                                            : "Απαιτείται σύνδεση"
+                                        }
+                                        className="p-1.5 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-100 transition
+                       disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                                       >
                                         <Ban className="w-4 h-4" />
                                       </button>
@@ -1044,14 +1091,28 @@ export default function AdminAppointmentsPage() {
                                     {/* Διαγραφή */}
                                     {appt.status === "cancelled" && (
                                       <button
+                                        type="button"
                                         onClick={() => {
+                                          if (!isOnline) return;
                                           setDeleteTargetId(appt.id);
                                           setDeleteDialogOpen(true);
                                         }}
-                                        className="p-1.5 rounded-full border border-red-300 text-red-600 hover:bg-red-50"
-                                        title="Διαγραφή"
+                                        disabled={!isOnline}
+                                        aria-disabled={!isOnline}
+                                        title={
+                                          isOnline
+                                            ? "Διαγραφή"
+                                            : "Απαιτείται σύνδεση"
+                                        }
+                                        className="p-1.5 rounded-full border border-red-300 text-red-600 hover:bg-red-50 transition
+                       disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                                       >
                                         <Trash2 className="w-4 h-4" />
+                                        {!isOnline && (
+                                          <TooltipContent>
+                                            Απαιτείται σύνδεση
+                                          </TooltipContent>
+                                        )}
                                       </button>
                                     )}
                                   </>
