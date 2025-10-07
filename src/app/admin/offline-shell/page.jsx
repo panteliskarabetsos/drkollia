@@ -12,10 +12,11 @@ import AppointmentsPage from "../appointments/page";
 const VIEWS = {
   "/admin": AdminPage,
   "/admin/patients": PatientsPage,
+  "/admin/patients/new": NewPatientPage,
   "/admin/appointments": AppointmentsPage,
+  "/admin/appointments/new": NewAppointmentPage,
   // '/admin/schedule': SchedulePage,
 };
-
 function resolveTarget() {
   if (typeof window === "undefined") return "/admin";
   const url = new URL(window.location.href);
