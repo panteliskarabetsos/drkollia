@@ -28,6 +28,10 @@ const withPWAFn = withPWA({
     additionalManifestEntries: [
       { url: "/admin/offline-shell", revision: "1" },
       { url: "/login", revision: "1" },
+      { url: "/admin/patients", revision: "1" },
+      { url: "/admin/patients/new", revision: "1" },
+      { url: "/admin/appointments", revision: "1" },
+      { url: "/admin/appointments/new", revision: "1" },
     ],
   },
 
