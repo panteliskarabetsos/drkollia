@@ -97,6 +97,40 @@ export default function AdminAppointmentsPage() {
       weekStartsOn: 1, // Ξεκινά η εβδομάδα από Δευτέρα
     },
   };
+
+  // status filter: 'all' | 'scheduled' | 'approved' | 'cancelled' | 'rejected' | 'completed'
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const statusPills = [
+    { key: "all", label: "Όλα" },
+    // { key: "scheduled", label: "Σε αναμονή" },
+    { key: "approved", label: "Εγκεκριμένα" },
+    { key: "cancelled", label: "Ακυρωμένα" },
+    // { key: "rejected", label: "Απορρίφθηκαν" },
+    { key: "completed", label: "Ολοκληρωμένα" },
+  ];
+
+  const effectiveStatus = (appt) =>
+    appt.status === "approved" && new Date(appt.appointment_time) < new Date()
+      ? "completed"
+      : appt.status;
+
+  const statusStyles = {
+    scheduled: "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+    approved: "bg-green-100 text-green-800 ring-1 ring-green-200",
+    cancelled: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
+    rejected: "bg-red-100 text-red-800 ring-1 ring-red-200",
+    completed: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
+  };
+
+  const statusLabel = {
+    scheduled: "scheduled",
+    approved: "approved",
+    cancelled: "cancelled",
+    rejected: "rejected",
+    completed: "completed",
+  };
+
   const normalizeText = (text) =>
     text
       ?.normalize("NFD") // διαχωρίζει γράμμα και τόνο
@@ -138,9 +172,11 @@ export default function AdminAppointmentsPage() {
     } else {
       isInRange = isSameDay(apptDate, selectedDate);
     }
-
+    const eff = effectiveStatus(appt);
+    if (statusFilter !== "all" && eff !== statusFilter) return false;
     return isInRange;
   });
+
   const patientAppointmentDates = useMemo(() => {
     if (!patientSearchActive) return [];
     const set = new Set();
@@ -468,6 +504,7 @@ export default function AdminAppointmentsPage() {
       return "—";
     }
   }
+
   // sendEmail comes from the modal checkbox (true/false)
   const updateStatus = async (id, status, sendEmail = false) => {
     const appointment = appointments.find((app) => app.id === id);
@@ -823,6 +860,26 @@ export default function AdminAppointmentsPage() {
               />
             </svg>
           </div>
+          {/* Status pills */}
+          <div className="mt-2 flex flex-wrap gap-2">
+            {statusPills.map((p) => {
+              const active = statusFilter === p.key;
+              return (
+                <button
+                  key={p.key}
+                  onClick={() => setStatusFilter(p.key)}
+                  className={`px-3 py-1.5 text-xs rounded-full transition 
+          ${
+            active
+              ? "bg-[#2f2e2b] text-white shadow-sm"
+              : "bg-white text-[#3b3a36] border border-gray-200 hover:bg-gray-50"
+          }`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
 
           {/* History button */}
           <div className="flex gap-3 justify-end items-center mb-6">
@@ -880,6 +937,7 @@ export default function AdminAppointmentsPage() {
             </button>
           </div>
         </div>
+
         <div id="printable-content">
           {Object.keys(groupedAppointments).length === 0 ? (
             <p className="text-center text-gray-500">
@@ -982,20 +1040,8 @@ export default function AdminAppointmentsPage() {
                                 ? `${appt.duration_minutes} λεπτά`
                                 : "-"}
                             </td>
-                            <td className="px-4 py-3 ">
-                              <span
-                                className={`inline-block text-xs px-2 py-1 rounded-full font-medium ${statusColor}`}
-                              >
-                                {appt.status === "approved" &&
-                                new Date(appt.appointment_time) < new Date()
-                                  ? "completed"
-                                  : appt.status}
-                                {appt.is_exception && (
-                                  <span className="ml-2 text-orange-400 text-xs font-semibold">
-                                    (εξαίρεση)
-                                  </span>
-                                )}
-                              </span>
+                            <td className="px-4 py-3">
+                              <StatusBadge appt={appt} />
                             </td>
 
                             <td className="px-4 py-3 text-right no-print">
@@ -1582,3 +1628,33 @@ export default function AdminAppointmentsPage() {
     }
   }
 `}</style>;
+
+function StatusBadge({ appt }) {
+  const eff =
+    appt?.status === "approved" &&
+    appt?.appointment_time &&
+    new Date(appt.appointment_time) < new Date()
+      ? "completed"
+      : appt?.status;
+
+  const styles = {
+    scheduled: "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+    approved: "bg-green-100 text-green-800 ring-1 ring-green-200",
+    cancelled: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
+    rejected: "bg-red-100 text-red-800 ring-1 ring-red-200",
+    completed: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${
+        styles[eff] || "bg-gray-100 text-gray-700 ring-1 ring-gray-200"
+      }`}
+    >
+      {eff || "—"}
+      {appt?.is_exception && (
+        <span className="ml-1 text-amber-700">(εξαίρεση)</span>
+      )}
+    </span>
+  );
+}
