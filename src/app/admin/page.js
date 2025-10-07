@@ -469,6 +469,15 @@ export default function AdminPage() {
       <main className="min-h-screen bg-gradient-to-b from-stone-50/70 via-white to-white text-stone-800">
         {/* Header / hero */}
         <section className="relative">
+          {!isOnline && !offlineAuth?.isEnabled?.() && (
+            <div className="p-3 text-sm rounded border bg-amber-50 text-amber-900">
+              Πρώτη χρήση εκτός σύνδεσης απαιτεί αρχική σύνδεση. Μετάβαση στη{" "}
+              <Link href="/login" className="underline">
+                σελίδα σύνδεσης
+              </Link>
+              .
+            </div>
+          )}
           <div className="pointer-events-none absolute inset-0 [mask-image:radial-gradient(60%_60%_at_50%_0%,#000_20%,transparent_70%)] bg-[radial-gradient(1200px_500px_at_10%_-10%,#f1efe8_20%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#ece9e0_20%,transparent)]" />
           <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
