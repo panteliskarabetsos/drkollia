@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { FaTrash, FaPlus, FaArrowLeft } from "react-icons/fa";
@@ -10,30 +10,56 @@ export default function AdminAccountsPage() {
   const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sessionUser, setSessionUser] = useState(null);
+  const redirectedRef = useRef(false);
 
   useEffect(() => {
-    const load = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
-        router.replace("/login");
+    let alive = true;
+    (async () => {
+      const online = typeof navigator === "undefined" ? true : navigator.onLine;
+
+      const { data } = await supabase.auth.getSession();
+      const session = data?.session || null;
+      const hasOffline = !!offlineAuth?.hasActiveSession?.();
+
+      // Not authed (no Supabase session) and no offline unlock
+      if (!session && !hasOffline) {
+        // Redirect only when ONLINE — never offline (prevents SW fallback loops)
+        if (online && !redirectedRef.current) {
+          redirectedRef.current = true;
+          router.replace("/login?redirect=" + encodeURIComponent("/admin")); // or use usePathname()
+        }
+        if (alive) setLoading(false);
         return;
       }
-      setSessionUser(session.user);
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, name, email, role, phone")
-        .eq("role", "admin");
+      // We’re allowed: set a user (Supabase user when online, cached user when offline)
+      if (session?.user) {
+        setSessionUser(session.user);
+      } else {
+        const cached = await offlineAuth.getUser?.();
+        setSessionUser(cached || { id: "offline-user" });
+      }
 
-      if (!error) setAdmins(data);
-      else console.error("Error fetching admins:", error);
+      // Data load: only hit Supabase when ONLINE
+      if (online && session) {
+        const { data: admins, error } = await supabase
+          .from("profiles")
+          .select("id, name, email, role, phone")
+          .eq("role", "admin");
 
-      setLoading(false);
+        if (!error && alive) setAdmins(admins || []);
+        else if (error) console.error("Error fetching admins:", error);
+      } else {
+        // Offline: skip network; optionally read from Dexie/local cache here
+        if (alive) setAdmins((prev) => prev ?? []);
+      }
+
+      if (alive) setLoading(false);
+    })();
+
+    return () => {
+      alive = false;
     };
-
-    load();
   }, [router]);
 
   const handleDelete = async (id) => {

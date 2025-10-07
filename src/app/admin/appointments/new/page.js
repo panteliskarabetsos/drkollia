@@ -1,7 +1,7 @@
 // admin/appointments/new/page.js
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import { Calendar as CalendarIcon } from "lucide-react";
@@ -32,7 +32,8 @@ import {
 import Link from "next/link";
 import { startOfMonth, endOfMonth } from "date-fns";
 import { el } from "date-fns/locale";
-import { Session } from "@supabase/auth-helpers-nextjs";
+import offlineAuth from "@/lib/offlineAuth";
+import { usePathname } from "next/navigation";
 
 function normalizeGreekText(text) {
   return text
@@ -42,6 +43,7 @@ function normalizeGreekText(text) {
 }
 
 export default function NewAppointmentPage() {
+  const pathname = usePathname();
   const [patients, setPatients] = useState([]);
   const [session, setSession] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -85,6 +87,8 @@ export default function NewAppointmentPage() {
     );
   });
   const router = useRouter();
+  const redirectedRef = useRef(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const isMedicalVisitor = formData.reason === "Ιατρικός Επισκέπτης";
   const [visitorName, setVisitorName] = useState("");
 
@@ -97,19 +101,41 @@ export default function NewAppointmentPage() {
   };
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
-        router.push("/login");
-      } else {
-        setSession(session);
-        setLoading(false);
+    let alive = true;
+    (async () => {
+      const online = typeof navigator === "undefined" ? true : navigator.onLine;
+      const { data } = await supabase.auth.getSession();
+      const sess = data?.session || null;
+      const hasOffline = !!offlineAuth?.hasActiveSession?.(); // requires PIN unlock
+
+      if (!sess && !hasOffline) {
+        if (online && !redirectedRef.current) {
+          redirectedRef.current = true;
+          router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
+        }
+        if (alive) {
+          setAuthChecked(true);
+          setLoading(false); // show offline banner/disabled UI instead of navigating
+        }
+        return;
       }
+
+      if (alive) {
+        setSession(sess || { user: { id: "offline-user" } });
+        setAuthChecked(true);
+        setLoading(false);
+        // remember path for offline shell
+        if (online) {
+          try {
+            localStorage.setItem("lastAdminPath", pathname);
+          } catch {}
+        }
+      }
+    })();
+    return () => {
+      alive = false;
     };
-    checkAuth();
-  }, []);
+  }, [router, pathname]);
 
   useEffect(() => {
     const fetchAvailableSlots = async () => {

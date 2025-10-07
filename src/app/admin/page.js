@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import { offlineAuth } from "../../lib/offlineAuth";
@@ -53,6 +53,7 @@ import {
 
 export default function AdminPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const redirectedRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
@@ -82,44 +83,32 @@ export default function AdminPage() {
 
   useEffect(() => {
     (async () => {
-      const hasOffline = !!offlineAuth?.isEnabled?.();
       const online = typeof navigator === "undefined" ? true : navigator.onLine;
-
-      // 1) Offline with no offline-unlock → don't navigate; render offline UI
-      if (!isOnline && !hasOffline) {
-        setLoading(false);
-        return;
-      }
-
-      // 2) Check Supabase session (works if session persisted)
       const { data } = await supabase.auth.getSession();
       const session = data?.session || null;
+      const hasOffline = !!offlineAuth?.hasActiveSession?.(); // requires PIN unlock
 
-      // 3) Not authed & no offline-unlock → redirect ONLY when online (once)
+      // Not authenticated at all
       if (!session && !hasOffline) {
         if (online && !redirectedRef.current) {
           redirectedRef.current = true;
-          router.replace("/login?redirect=/admin");
+          router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
         }
         setLoading(false);
         return;
       }
 
-      // 4) Auth OK (session or offline-unlock) → allow render
+      // Allowed (session OR active offline session)
       setLoading(false);
 
-      // 5) Optional: remember last page so the offline shell can open here
+      // Remember for offline shell & warm caches when online
       if (online) {
         try {
-          localStorage.setItem("lastAdminPath", "/admin");
+          localStorage.setItem("lastAdminPath", pathname);
         } catch {}
-      }
-
-      // 6) Optional: warm offline caches when online (uncomment if you have these helpers)
-      if (online) {
         try {
           await Promise.all([
-            refreshPatientsCacheFromServer(), // fills Dexie patients
+            refreshPatientsCacheFromServer(),
             fetchAppointmentsRange({
               startISO: new Date(Date.now() - 7 * 864e5).toISOString(),
               endISO: new Date(Date.now() + 7 * 864e5).toISOString(),
@@ -130,7 +119,7 @@ export default function AdminPage() {
         }
       }
     })();
-  }, [isOnline, router]);
+  }, [isOnline, router, pathname]);
 
   // ---------- Data loaders ----------
   const loadStats = useCallback(async () => {
@@ -148,8 +137,7 @@ export default function AdminPage() {
     const startISO = startLocal.toISOString();
     const endISO = endLocal.toISOString();
     const nowISO = now.toISOString();
-    const offline = !isOnline;
-    const hasOffline = !!offlineAuth?.isEnabled?.();
+
     const [
       { count: todayCount },
       { count: completedFlipped },
@@ -342,23 +330,26 @@ export default function AdminPage() {
   // ---------- Effects ----------
   useEffect(() => {
     (async () => {
-      const hasOffline = !!offlineAuth?.isEnabled?.();
+      const online = typeof navigator === "undefined" ? true : navigator.onLine;
       const { data } = await supabase.auth.getSession();
       const session = data?.session || null;
+      const hasOffline = !!offlineAuth?.hasActiveSession?.();
 
       if (!session && !hasOffline) {
-        // No session and offline login not enabled → go to login
-        router.replace("/login");
+        // Only redirect online; offline just render minimal UI
+        if (online && !redirectedRef.current) {
+          redirectedRef.current = true;
+          router.replace(`/login?redirect=${encodeURIComponent("/admin")}`);
+        }
+        setLoading(false);
         return;
       }
 
-      // Allow page to work either with a real session or in offline mode
-      const u = session?.user || { id: "offline-user" };
-      setUser(u);
+      setUser(session?.user || { id: "offline-user" });
       setLoading(false);
 
-      // Only hit Supabase when we actually have network connectivity
-      if (isOnline && session?.user?.id) {
+      // Only hit Supabase when online & we have a real session
+      if (online && session?.user?.id) {
         await Promise.all([
           loadStats(),
           loadProfile(session.user.id),

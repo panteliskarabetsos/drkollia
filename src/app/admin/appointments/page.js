@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { Calendar } from "@/components/ui/calendar";
 import { format, isSameDay, set } from "date-fns";
@@ -34,6 +34,7 @@ import { el } from "date-fns/locale";
 export default function AdminAppointmentsPage() {
   const router = useRouter();
   const redirectedRef = useRef(false);
+  const pathname = usePathname();
 
   const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionExists, setSessionExists] = useState(false);
@@ -43,33 +44,43 @@ export default function AdminAppointmentsPage() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    let alive = true;
+    (async () => {
       const online = typeof navigator === "undefined" ? true : navigator.onLine;
-      const hasOffline = !!offlineAuth?.isEnabled?.();
+
+      const { data } = await supabase.auth.getSession();
+      const session = data?.session || null;
+      const hasOffline = !!offlineAuth?.hasActiveSession?.(); // <-- requires PIN unlock
 
       if (!session && !hasOffline) {
-        // No session and no offline unlock
         if (online && !redirectedRef.current) {
           redirectedRef.current = true;
-          router.replace("/login?redirect=/admin/appointments");
+          router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
           return;
         }
-        // offline: don't navigate (prevents loop); show offline banner UI
-        setSessionExists(false);
-        setSessionChecked(true);
+        if (alive) {
+          setSessionExists(false);
+          setSessionChecked(true);
+        }
         return;
       }
 
-      // session exists OR offline unlock active
-      setSessionExists(true);
-      setSessionChecked(true);
+      if (alive) {
+        setSessionExists(true);
+        setSessionChecked(true);
+        // optional: remember for offline shell
+        if (online) {
+          try {
+            localStorage.setItem("lastAdminPath", pathname);
+          } catch {}
+        }
+      }
+    })();
+
+    return () => {
+      alive = false;
     };
-    checkAuth();
-    // router in deps to avoid lint noise; behavior is stable
-  }, [router]);
+  }, [router, pathname]);
 
   const normalize = (text) =>
     text
@@ -593,6 +604,7 @@ export default function AdminAppointmentsPage() {
     // online case: a replace('/login') is in flight; render nothing briefly
     return null;
   }
+
   if (loading) {
     return (
       <main className="min-h-screen flex items-center justify-center">
