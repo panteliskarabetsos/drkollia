@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import { offlineAuth } from "../../lib/offlineAuth";
+import { isOnline } from "../../lib/useOnline";
 // shadcn/ui
 import {
   Card,
@@ -64,11 +65,11 @@ export default function AdminPage() {
   const [dayEdges, setDayEdges] = useState({ first: null, last: null });
 
   // 🔌 online/offline state
-  const [online, setOnline] = useState(
+  const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine
   );
   useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
+    const update = () => setIsOnline(navigator.onLine);
     update();
     window.addEventListener("online", update);
     window.addEventListener("offline", update);
@@ -80,7 +81,7 @@ export default function AdminPage() {
 
   // ---------- Data loaders ----------
   const loadStats = useCallback(async () => {
-    if (!online) {
+    if (!isOnline) {
       setStats(null);
       return;
     }
@@ -94,7 +95,8 @@ export default function AdminPage() {
     const startISO = startLocal.toISOString();
     const endISO = endLocal.toISOString();
     const nowISO = now.toISOString();
-
+    const offline = !isOnline;
+    const hasOffline = !!offlineAuth?.isEnabled?.();
     const [
       { count: todayCount },
       { count: completedFlipped },
@@ -127,10 +129,10 @@ export default function AdminPage() {
       completedToday,
       patients: patientsCount ?? 0,
     });
-  }, [online]);
+  }, [isOnline]);
 
   const handleRefresh = useCallback(async () => {
-    if (!online) return;
+    if (!isOnline) return;
     try {
       setRefreshing(true);
       await syncCompleted();
@@ -138,10 +140,10 @@ export default function AdminPage() {
     } finally {
       setRefreshing(false);
     }
-  }, [online, loadStats]);
+  }, [isOnline, loadStats]);
 
   const syncCompleted = useCallback(async () => {
-    if (!online) return;
+    if (!isOnline) return;
     try {
       await fetch("/api/mark-completed", {
         method: "POST",
@@ -153,11 +155,11 @@ export default function AdminPage() {
     } catch (e) {
       console.error("syncCompleted failed", e);
     }
-  }, [online]);
+  }, [isOnline]);
 
   const loadProfile = useCallback(
     async (uid) => {
-      if (!online) {
+      if (!isOnline) {
         setProfile(null);
         return;
       }
@@ -168,11 +170,11 @@ export default function AdminPage() {
         .single();
       setProfile(data);
     },
-    [online]
+    [isOnline]
   );
 
   const loadNextAppointment = useCallback(async () => {
-    if (!online) {
+    if (!isOnline) {
       setNextAppt(null);
       setNextApptErr(null);
       return;
@@ -227,10 +229,10 @@ export default function AdminPage() {
       setNextApptErr("Αδυναμία φόρτωσης επόμενου ραντεβού");
       setNextAppt(null);
     }
-  }, [online]);
+  }, [isOnline]);
 
   const loadDayEdges = useCallback(async () => {
-    if (!online) {
+    if (!isOnline) {
       setDayEdges({ first: null, last: null });
       return;
     }
@@ -282,7 +284,7 @@ export default function AdminPage() {
     if (last) last.patient_name = namesById[last.patient_id] ?? null;
 
     setDayEdges({ first, last });
-  }, [online]);
+  }, [isOnline]);
 
   // ---------- Effects ----------
   useEffect(() => {
@@ -303,7 +305,7 @@ export default function AdminPage() {
       setLoading(false);
 
       // Only hit Supabase when we actually have network connectivity
-      if (online && session?.user?.id) {
+      if (isOnline && session?.user?.id) {
         await Promise.all([
           loadStats(),
           loadProfile(session.user.id),
@@ -316,7 +318,7 @@ export default function AdminPage() {
     // keep all deps that affect the loaders
   }, [
     router,
-    online,
+    isOnline,
     loadStats,
     loadProfile,
     loadDayEdges,
@@ -391,17 +393,17 @@ export default function AdminPage() {
         description: "Διαχείριση προγράμματος λειτουργίας και εξαιρέσεων.",
         href: "/admin/schedule",
         icon: Clock,
-        disabled: !online,
+        disabled: !isOnline,
       },
       {
         title: "Πρόσβαση",
         description: "Διαχείριση και δημιουργία λογαριασμών διαχειριστών.",
         href: "/admin/accounts",
         icon: ShieldCheck,
-        disabled: !online,
+        disabled: !isOnline,
       },
     ],
-    [online]
+    [isOnline]
   );
 
   const progressPct = useMemo(() => {
@@ -456,7 +458,7 @@ export default function AdminPage() {
                     <Button
                       variant="default"
                       onClick={handleRefresh}
-                      disabled={refreshing || !online}
+                      disabled={refreshing || !isOnline}
                       className="gap-2"
                     >
                       {refreshing ? (
@@ -468,7 +470,7 @@ export default function AdminPage() {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {online ? "Συγχρονισμός" : "Μη διαθέσιμο εκτός σύνδεσης"}
+                    {isOnline ? "Συγχρονισμός" : "Μη διαθέσιμο εκτός σύνδεσης"}
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -561,7 +563,7 @@ export default function AdminPage() {
                 </div>
 
                 {/* Reports button disabled when offline */}
-                {online ? (
+                {isOnline ? (
                   <Button
                     asChild
                     size="sm"
@@ -588,7 +590,7 @@ export default function AdminPage() {
               </CardHeader>
 
               <CardContent>
-                {online ? (
+                {isOnline ? (
                   stats ? (
                     <div className="space-y-4">
                       <div>
@@ -636,7 +638,7 @@ export default function AdminPage() {
               </CardContent>
 
               <CardFooter>
-                {online ? (
+                {isOnline ? (
                   <Button asChild variant="outline" className="gap-2">
                     <Link href="/admin/reports">
                       Προβολή Αναφορών <ArrowRight className="h-4 w-4" />
@@ -671,7 +673,7 @@ export default function AdminPage() {
                 )}
               </CardHeader>
               <CardContent>
-                {online ? (
+                {isOnline ? (
                   nextApptErr ? (
                     <p className="text-sm text-red-600">{nextApptErr}</p>
                   ) : nextAppt ? (
@@ -709,7 +711,7 @@ export default function AdminPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                disabled={!online}
+                disabled={!isOnline}
                 className="rounded-full shadow-lg h-12 w-12"
                 onClick={() => router.push("/admin/help")}
                 aria-label="Χρειάζεστε βοήθεια;"

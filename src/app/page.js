@@ -21,7 +21,6 @@ export default function Home() {
     <main
       className={`min-h-screen bg-[#fdfaf6] text-[#3b3a36] ${notoSerif.className}`}
     >
-     
       <section className="relative flex flex-col items-center justify-center h-[100vh] text-center px-6 overflow-hidden">
         <video
           autoPlay
