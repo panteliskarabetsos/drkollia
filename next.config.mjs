@@ -17,8 +17,11 @@ const withPWAFn = withPWA({
   precachePages: [
     "/admin",
     "/admin/appointments",
+    "/admin/appointments/new",
     "/admin/patients",
+    "/admin/patients/new",
     "/admin/schedule",
+    "/login",
   ],
 
   runtimeCaching: [
