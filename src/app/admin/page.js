@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "../lib/supabaseClient";
-
+import { supabase } from "../../lib/supabaseClient";
+import { offlineAuth } from "../../lib/offlineAuth";
 // shadcn/ui
 import {
   Card,
@@ -287,16 +287,23 @@ export default function AdminPage() {
   // ---------- Effects ----------
   useEffect(() => {
     (async () => {
+      const hasOffline = !!offlineAuth?.isEnabled?.();
       const { data } = await supabase.auth.getSession();
-      const session = data?.session;
-      if (!session) {
-        router.push("/login");
+      const session = data?.session || null;
+
+      if (!session && !hasOffline) {
+        // No session and offline login not enabled → go to login
+        router.replace("/login");
         return;
       }
-      setUser(session.user);
+
+      // Allow page to work either with a real session or in offline mode
+      const u = session?.user || { id: "offline-user" };
+      setUser(u);
       setLoading(false);
 
-      if (online) {
+      // Only hit Supabase when we actually have network connectivity
+      if (online && session?.user?.id) {
         await Promise.all([
           loadStats(),
           loadProfile(session.user.id),
@@ -306,8 +313,16 @@ export default function AdminPage() {
         syncCompleted();
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, online]);
+    // keep all deps that affect the loaders
+  }, [
+    router,
+    online,
+    loadStats,
+    loadProfile,
+    loadDayEdges,
+    loadNextAppointment,
+    syncCompleted,
+  ]);
 
   useEffect(() => {
     const isTyping = (el) => {
