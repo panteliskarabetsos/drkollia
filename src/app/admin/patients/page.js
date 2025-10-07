@@ -421,6 +421,21 @@ export default function PatientsPage() {
     return null;
   }
 
+  if (!isOnline && !busy && patients.length === 0) {
+    return (
+      <main className="min-h-screen grid place-items-center p-6 text-center">
+        <div>
+          <h1 className="text-lg font-semibold">
+            Δεν υπάρχουν αποθηκευμένοι ασθενείς
+          </h1>
+          <p className="text-stone-600 mt-2">
+            Ανοίξτε τη σελίδα «Ασθενείς» μία φορά με σύνδεση για να είναι
+            διαθέσιμη εκτός σύνδεσης.
+          </p>
+        </div>
+      </main>
+    );
+  }
   // --- render ---
   return (
     <TooltipProvider>

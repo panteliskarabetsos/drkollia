@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import { offlineAuth } from "../../lib/offlineAuth";
-
+import { refreshPatientsCacheFromServer } from "../../lib/offlinePatients";
+import { fetchAppointmentsRange } from "../../lib/offlineAppointments";
 // shadcn/ui
 import {
   Card,
@@ -80,32 +81,55 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    let redirected = false;
     (async () => {
       const hasOffline = !!offlineAuth?.isEnabled?.();
+      const online = typeof navigator === "undefined" ? true : navigator.onLine;
 
-      // If we're offline and offline-auth is NOT set up → go to /login (offline page is precached now)
+      // 1) Offline with no offline-unlock → don't navigate; render offline UI
       if (!isOnline && !hasOffline) {
         setLoading(false);
         return;
       }
 
-      // Online path
+      // 2) Check Supabase session (works if session persisted)
       const { data } = await supabase.auth.getSession();
       const session = data?.session || null;
 
+      // 3) Not authed & no offline-unlock → redirect ONLY when online (once)
       if (!session && !hasOffline) {
-        redirected = true;
-        router.replace("/login");
+        if (online && !redirectedRef.current) {
+          redirectedRef.current = true;
+          router.replace("/login?redirect=/admin");
+        }
+        setLoading(false);
         return;
       }
 
-      // allowed to render dashboard (online session or offline enabled)
+      // 4) Auth OK (session or offline-unlock) → allow render
       setLoading(false);
+
+      // 5) Optional: remember last page so the offline shell can open here
+      if (online) {
+        try {
+          localStorage.setItem("lastAdminPath", "/admin");
+        } catch {}
+      }
+
+      // 6) Optional: warm offline caches when online (uncomment if you have these helpers)
+      if (online) {
+        try {
+          await Promise.all([
+            refreshPatientsCacheFromServer(), // fills Dexie patients
+            fetchAppointmentsRange({
+              startISO: new Date(Date.now() - 7 * 864e5).toISOString(),
+              endISO: new Date(Date.now() + 7 * 864e5).toISOString(),
+            }),
+          ]);
+        } catch (e) {
+          console.warn("Warm cache failed:", e);
+        }
+      }
     })();
-    return () => {
-      /* nothing */
-    };
   }, [isOnline, router]);
 
   // ---------- Data loaders ----------
