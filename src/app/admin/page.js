@@ -615,7 +615,7 @@ export default function AdminPage() {
                   )
                 ) : (
                   <div className="text-sm text-stone-600">
-                    Οι στατιστικές δεν είναι διαθέσιμες εκτός σύνδεσης.
+                    Τα στατιστικά δεν ειναι διαθέσιμα εκτός σύνδεσης.
                   </div>
                 )}
               </CardContent>
@@ -694,12 +694,12 @@ export default function AdminPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                size="icon"
+                disabled={!online}
                 className="rounded-full shadow-lg h-12 w-12"
                 onClick={() => router.push("/admin/help")}
                 aria-label="Χρειάζεστε βοήθεια;"
               >
-                <LifeBuoy className="h-6 w-6" />
+                <LifeBuoy size={32} className="shrink-0" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Χρειάζεστε βοήθεια;</TooltipContent>
