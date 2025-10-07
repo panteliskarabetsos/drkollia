@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import offlineAuth from "../../../../lib/offlineAuth";
 import { FaArrowLeft } from "react-icons/fa";
 import { AlertCircle, Users } from "lucide-react";
 import { db } from "../../../../lib/db";
@@ -12,6 +13,20 @@ const onlyDigits = (s) => (s || "").replace(/\D+/g, "");
 const normalizeAMKA = (s) => onlyDigits(s).slice(0, 11);
 const normalizePhone = (s) => onlyDigits(s).slice(0, 10);
 
+async function findLocalByAMKA(value) {
+  try {
+    return await db.patients.where("amka").equals(value).first();
+  } catch {
+    return null;
+  }
+}
+async function findLocalByPhone(value) {
+  try {
+    return await db.patients.where("phone").equals(value).first();
+  } catch {
+    return null;
+  }
+}
 function useDebouncedCallback(fn, delay = 400) {
   const t = useRef(null);
   return (...args) => {
@@ -38,7 +53,7 @@ function validate(form) {
 export default function NewPatientPage() {
   const [session, setSession] = useState(null);
   const router = useRouter();
-
+  const redirectedRef = useRef(false);
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -85,18 +100,25 @@ export default function NewPatientPage() {
   }, 500);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
-        router.push("/login");
-      } else {
-        setSession(session);
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const s = data?.session || null;
+      const hasOffline = !!offlineAuth?.isEnabled?.();
+      const online = typeof navigator === "undefined" ? true : navigator.onLine;
+
+      if (!s && !hasOffline) {
+        // redirect ONLY when online (prevents offline loop)
+        if (online && !redirectedRef.current) {
+          redirectedRef.current = true;
+          router.replace("/login?redirect=/admin/patients/new");
+        }
         setLoading(false);
+        return;
       }
-    };
-    checkAuth();
+      // allow form offline if offline-unlock is enabled
+      setSession(s || { id: "offline-user" });
+      setLoading(false);
+    })();
   }, [router]);
 
   // warn when leaving with unsaved changes
@@ -285,60 +307,38 @@ export default function NewPatientPage() {
         }
         return;
       } else {
-        const created = await createPatient(cleanedForm);
-        newId = created.id;
-      }
-
-      // ---- OFFLINE: duplicate check against IndexedDB ----
-      if (cleanedForm.amka) {
-        const existsLocalAmka = await db.patients
-          .where("amka")
-          .equals(cleanedForm.amka)
-          .first();
-        if (existsLocalAmka) {
-          setMessage({
-            type: "error",
-            text: "Υπάρχει ήδη τοπικά ασθενής με αυτόν τον ΑΜΚΑ.",
-          });
-          return;
+        // ---- OFFLINE: duplicate checks first ----
+        if (cleanedForm.amka) {
+          const existsLocalAmka = await findLocalByAMKA(cleanedForm.amka);
+          if (existsLocalAmka) {
+            setMessage({
+              type: "error",
+              text: "Υπάρχει ήδη τοπικά ασθενής με αυτόν τον ΑΜΚΑ.",
+            });
+            setLoading(false);
+            return;
+          }
         }
-      }
-      if (cleanedForm.phone) {
-        const existsLocalPhone = await db.patients
-          .where("phone")
-          .equals(cleanedForm.phone)
-          .first();
-        if (existsLocalPhone) {
-          setMessage({
-            type: "error",
-            text: "Υπάρχει ήδη τοπικά ασθενής με αυτό το τηλέφωνο.",
-          });
-          return;
+        if (cleanedForm.phone) {
+          const existsLocalPhone = await findLocalByPhone(cleanedForm.phone);
+          if (existsLocalPhone) {
+            setMessage({
+              type: "error",
+              text: "Υπάρχει ήδη τοπικά ασθενής με αυτό το τηλέφωνο.",
+            });
+            setLoading(false);
+            return;
+          }
         }
-      }
 
-      // ---- OFFLINE: create local record + queue op ----
-      const localId =
-        "local-" +
-        (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
-      const localRow = {
-        id: localId,
-        ...cleanedForm,
-        created_at: nowISO,
-        updated_at: nowISO,
-        _local: { pending: true, op: "create" },
-      };
-
-      await db.transaction("rw", [db.patients, db.patientOps], async () => {
-        await db.patients.put(localRow);
-        await db.patientOps.add({
-          type: "create",
-          status: "pending",
-          ts: nowISO,
-          entityId: localId,
-          payload: cleanedForm,
+        // ---- OFFLINE: write once via helper (stores in Dexie + queues op) ----
+        const created = await createPatient({
+          ...cleanedForm,
+          created_at: nowISO,
+          updated_at: nowISO,
         });
-      });
+        newId = created?.id;
+      }
 
       setMessage({
         type: "success",
@@ -347,8 +347,11 @@ export default function NewPatientPage() {
       setDirty(false);
 
       if (submitIntent === "save_and_new_appt") {
-        // Tip: make /admin/appointments/new recognize ?patient_local_id=<id> and read from Dexie
-        router.push(`/admin/appointments/new?patient_local_id=${localId}`);
+        const param =
+          online && newId && !String(newId).startsWith("local-")
+            ? `patient_id=${newId}`
+            : `patient_local_id=${newId}`;
+        router.push(`/admin/appointments/new?${param}`);
       } else {
         router.push("/admin/patients");
       }
