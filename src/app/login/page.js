@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
 import ReCAPTCHA from "react-google-recaptcha";
@@ -27,6 +27,10 @@ export default function LoginPage() {
 
   const handleCaptchaChange = (value) => setCaptchaValue(value || "");
 
+  const [online, setOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
+
   // Bootstrap failed attempts from localStorage
   useEffect(() => {
     const saved = Number(localStorage.getItem(STORAGE_KEY) || "0");
@@ -34,32 +38,69 @@ export default function LoginPage() {
     setShowCaptcha(saved >= 3);
   }, []);
 
-  // Check if already logged in
-  useEffect(() => {
-    const checkUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        router.replace("/admin");
-      } else {
-        // If offline, try local cached user
-        if (typeof navigator !== "undefined" && !navigator.onLine) {
-          try {
-            const cached = await offlineAuth.getUser();
-            if (cached) {
-              setCanOffline(true);
-              setNeedPin(await offlineAuth.hasPin());
-              setCheckingAuth(false);
-              return;
-            }
-          } catch {}
-        }
-        setCheckingAuth(false);
+  const checkUser = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // Already online-authed → go straight in
+    if (user) {
+      router.replace("/admin");
+      return;
+    }
+
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+
+    // Active offline session → skip screen
+    if (offline && offlineAuth.hasActiveSession()) {
+      const redirect =
+        (typeof window !== "undefined" &&
+          new URLSearchParams(window.location.search).get("redirect")) ||
+        "/admin";
+      router.replace(redirect);
+      return;
+    }
+
+    // Show/hide offline unlock UI depending on state
+    if (offline) {
+      try {
+        const cached = await offlineAuth.getUser();
+        setCanOffline(Boolean(cached));
+        setNeedPin(Boolean(cached) && offlineAuth.hasPin());
+      } catch {
+        setCanOffline(false);
+        setNeedPin(false);
       }
-    };
-    checkUser();
+    } else {
+      setCanOffline(false);
+      setNeedPin(false);
+    }
+
+    setCheckingAuth(false);
   }, [router]);
+
+  // run once on mount
+  useEffect(() => {
+    checkUser();
+  }, [checkUser]);
+
+  // keep `online` in sync and re-check on flips
+  useEffect(() => {
+    const onChange = () => setOnline(navigator.onLine);
+    window.addEventListener("online", onChange);
+    window.addEventListener("offline", onChange);
+    return () => {
+      window.removeEventListener("online", onChange);
+      window.removeEventListener("offline", onChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    // optional: clear transient UI on state flip
+    setErrorMsg("");
+    setSubmitting(false);
+    checkUser();
+  }, [online, checkUser]);
 
   const incrementFailures = () => {
     const next = failedAttempts + 1;
@@ -80,15 +121,15 @@ export default function LoginPage() {
     e.preventDefault?.();
     setSubmitting(true);
     setErrorMsg("");
+
     try {
-      // Must have provisioned offline access + a valid PIN
       if (!canOffline) {
         setErrorMsg(
           "Η offline πρόσβαση δεν είναι διαθέσιμη σε αυτή τη συσκευή."
         );
         return;
       }
-      if (!needPin) {
+      if (!offlineAuth.hasPin()) {
         setErrorMsg(
           "Η offline πρόσβαση απαιτεί PIN που ορίζεται όταν είστε online."
         );
@@ -101,19 +142,17 @@ export default function LoginPage() {
         return;
       }
 
-      const ok = await offlineAuth.verifyPin(pin);
+      const ok = await offlineAuth.verifyPin(pin); // ← this now starts a persistent TTL session
       if (!ok) {
         setErrorMsg(
           "Λάθος offline PIN ή έχει ενεργοποιηθεί προσωρινό κλείδωμα."
         );
         return;
       }
-      // Mark session as offline (optional)
-      try {
-        sessionStorage.setItem("offline_mode", "1");
-      } catch {}
-      // Go to the offline shell so the app renders offline immediately
-      router.replace("/admin/offline-shell?target=/admin");
+
+      const redirect =
+        new URLSearchParams(window.location.search).get("redirect") || "/admin";
+      router.replace(redirect);
     } catch (err) {
       console.error("Offline unlock failed:", err);
       setErrorMsg("Αποτυχία offline σύνδεσης.");
