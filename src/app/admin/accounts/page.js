@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { FaTrash, FaPlus, FaArrowLeft } from "react-icons/fa";
-
+import { offlineAuth } from "../../../lib/offlineAuth";
 export default function AdminAccountsPage() {
   const router = useRouter();
   const [admins, setAdmins] = useState([]);
