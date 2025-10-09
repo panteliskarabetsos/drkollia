@@ -2,9 +2,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { supabase } from "@/app/lib/supabaseClient";
+import { supabase } from "../../../lib/supabaseClient";
 // ⬅️ adjust this path to where your offlineAuth actually lives
-import offlineAuth from "@/app/lib/offlineAuth";
+import offlineAuth from "../../../lib/offlineAuth";
 
 export default function AuthGate({ children, splash = null }) {
   const router = useRouter();
