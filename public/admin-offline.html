@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="el">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Εκτός σύνδεσης</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu,
+        "Noto Sans", sans-serif;
+      background: #f7f4ee;
+      color: #2f2e2b;
+      margin: 0;
+    }
+    .wrap {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      max-width: 560px;
+      width: 100%;
+      background: #fff;
+      border: 1px solid #e5e1d8;
+      border-radius: 16px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+      padding: 24px;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0 0 8px;
+    }
+    p {
+      margin: 6px 0;
+      color: #6b675f;
+    }
+    .actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    a,
+    button {
+      appearance: none;
+      border: 1px solid #e5e1d8;
+      background: #f6f4ef;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 14px;
+      color: #2f2e2b;
+      text-decoration: none;
+    }
+  </style>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Εκτός σύνδεσης</h1>
+        <p>
+          Δεν ήταν δυνατή η φόρτωση της εφαρμογής. Αυτή είναι η offline σελίδα
+          ασφαλείας.
+        </p>
+        <div class="actions">
+          <button onclick="location.reload()">Δοκιμή ξανά</button>
+          <a href="/admin">Πίνακας Διαχείρισης</a>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -9,8 +9,7 @@ const withPWAFn = withPWA({
   disable: process.env.NODE_ENV === "development",
 
   // When a navigation fails offline, return a cached 200-page
-  fallbacks: { document: "/admin/offline-shell" },
-
+  fallbacks: { document: "/admin-offline.html" },
   // Try to precache useful pages
   precachePages: [
     "/admin",
@@ -26,6 +25,7 @@ const withPWAFn = withPWA({
   // Guarantee they’re in the Workbox precache even if precachePages misses any
   workboxOptions: {
     additionalManifestEntries: [
+      { url: "/admin-offline.html", revision: "1" },
       { url: "/admin/offline-shell", revision: "1" },
       { url: "/login", revision: "1" },
       { url: "/admin/patients", revision: "1" },

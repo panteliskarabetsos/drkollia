@@ -3,6 +3,7 @@ import "./globals.css";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 import ClientShell from "./ClientShell"; // client wrapper
+import Script from "next/script";
 
 const notoSerif = Noto_Serif({
   subsets: ["latin"],
@@ -59,6 +60,31 @@ export default function RootLayout({ children }) {
           antialiased selection:bg-[#fcefc0] selection:text-[#4c3f2c]
         `}
       >
+        {/* Offline rescue: if a JS chunk fails to load (e.g. stale cached HTML points
+           to a new bundle URL), redirect to a static offline page that needs no JS. */}
+        <Script
+          id="offline-rescue"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+(function(){
+  function goOffline(){
+    // Use your static fallback (served from /public)
+    location.replace('/admin-offline.html');
+  }
+  addEventListener('error', function(e){
+    var msg = String(e && e.message || '');
+    // Next/Workbox chunk load failures
+    if (msg.includes('ChunkLoadError') || msg.includes('Loading chunk')) goOffline();
+  }, true);
+  addEventListener('unhandledrejection', function(e){
+    var m = String((e && e.reason && e.reason.message) || e);
+    if (m.includes('ChunkLoadError') || m.includes('Loading chunk')) goOffline();
+  });
+})();`,
+          }}
+        />
+
         <ClientShell>{children}</ClientShell>
 
         <SpeedInsights />
