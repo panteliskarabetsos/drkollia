@@ -1,9 +1,8 @@
-// app/layout.js (no auth/redirect logic here)
 import { Noto_Serif } from "next/font/google";
 import "./globals.css";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
-import ClientShell from "./ClientShell";
+import ClientShell from "./ClientShell"; // client wrapper
 
 const notoSerif = Noto_Serif({
   subsets: ["latin"],
@@ -16,6 +15,8 @@ export const metadata = {
   title: "Γεωργία Κόλλια - Ενδοκρινολόγος - Διαβητολόγος",
   description:
     "Ενδοκρινολογία - Διαβήτης - Μεταβολισμός | Ορμονική Υγεία & Φροντίδα Διαβήτη",
+
+  // PWA
   manifest: "/manifest.json",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f7f4ee" },
@@ -28,6 +29,7 @@ export const metadata = {
     statusBarStyle: "black-translucent",
   },
   formatDetection: { telephone: false },
+
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
@@ -44,8 +46,6 @@ export const metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
-
-  viewportFit: "cover",
   themeColor: "#f7f4ee",
 };
 
@@ -59,7 +59,6 @@ export default function RootLayout({ children }) {
           antialiased selection:bg-[#fcefc0] selection:text-[#4c3f2c]
         `}
       >
-        {/* ClientShell should handle SW registration + any online/offline UI, not auth */}
         <ClientShell>{children}</ClientShell>
 
         <SpeedInsights />
