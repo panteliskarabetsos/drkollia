@@ -2,7 +2,7 @@
 "use client";
 
 import { db, isoDateOnly } from "./db";
-import { supabase } from "@/app/lib/supabaseClient"; // ✅ correct path
+import { supabase } from "../lib/supabaseClient";
 
 /* ---------------- utils ---------------- */
 const nowISO = () => new Date().toISOString();
