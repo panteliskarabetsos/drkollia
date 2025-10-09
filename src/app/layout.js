@@ -1,4 +1,3 @@
-// app/layout.js (NO "use client")
 import { Noto_Serif } from "next/font/google";
 import "./globals.css";
 import { SpeedInsights } from "@vercel/speed-insights/next";
