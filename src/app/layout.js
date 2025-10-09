@@ -1,9 +1,9 @@
+// app/layout.js (no auth/redirect logic here)
 import { Noto_Serif } from "next/font/google";
 import "./globals.css";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
-import ClientShell from "./ClientShell"; // client wrapper
-import Script from "next/script";
+import ClientShell from "./ClientShell";
 
 const notoSerif = Noto_Serif({
   subsets: ["latin"],
@@ -16,8 +16,6 @@ export const metadata = {
   title: "Γεωργία Κόλλια - Ενδοκρινολόγος - Διαβητολόγος",
   description:
     "Ενδοκρινολογία - Διαβήτης - Μεταβολισμός | Ορμονική Υγεία & Φροντίδα Διαβήτη",
-
-  // PWA
   manifest: "/manifest.json",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f7f4ee" },
@@ -30,7 +28,6 @@ export const metadata = {
     statusBarStyle: "black-translucent",
   },
   formatDetection: { telephone: false },
-
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
@@ -47,6 +44,8 @@ export const metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
+
+  viewportFit: "cover",
   themeColor: "#f7f4ee",
 };
 
@@ -60,31 +59,7 @@ export default function RootLayout({ children }) {
           antialiased selection:bg-[#fcefc0] selection:text-[#4c3f2c]
         `}
       >
-        {/* Offline rescue: if a JS chunk fails to load (e.g. stale cached HTML points
-           to a new bundle URL), redirect to a static offline page that needs no JS. */}
-        <Script
-          id="offline-rescue"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-(function(){
-  function goOffline(){
-    // Use your static fallback (served from /public)
-    location.replace('/admin-offline.html');
-  }
-  addEventListener('error', function(e){
-    var msg = String(e && e.message || '');
-    // Next/Workbox chunk load failures
-    if (msg.includes('ChunkLoadError') || msg.includes('Loading chunk')) goOffline();
-  }, true);
-  addEventListener('unhandledrejection', function(e){
-    var m = String((e && e.reason && e.reason.message) || e);
-    if (m.includes('ChunkLoadError') || m.includes('Loading chunk')) goOffline();
-  });
-})();`,
-          }}
-        />
-
+        {/* ClientShell should handle SW registration + any online/offline UI, not auth */}
         <ClientShell>{children}</ClientShell>
 
         <SpeedInsights />

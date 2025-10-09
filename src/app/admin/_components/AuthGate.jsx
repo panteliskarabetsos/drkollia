@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
-import offlineAuth from "@/lib/offlineAuth";
+// ⬅️ adjust this path to where your offlineAuth actually lives
+import offlineAuth from "@/app/lib/offlineAuth";
 
 export default function AuthGate({ children, splash = null }) {
   const router = useRouter();
@@ -12,17 +13,30 @@ export default function AuthGate({ children, splash = null }) {
   const [allowed, setAllowed] = useState(false);
   const redirected = useRef(false);
 
+  // track connectivity to re-run checks on flips
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
+  useEffect(() => {
+    const update = () => setIsOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
   useEffect(() => {
     let alive = true;
     (async () => {
-      const online = typeof navigator === "undefined" ? true : navigator.onLine;
-
       const { data } = await supabase.auth.getSession();
       const session = data?.session || null;
       const hasOffline = !!offlineAuth?.hasActiveSession?.(); // requires PIN unlock
 
-      if (!session && !hasOffline) {
-        if (online && !redirected.current) {
+      // Online + no session + no offline session -> redirect ONCE
+      if (isOnline && !session && !hasOffline) {
+        if (!redirected.current) {
           redirected.current = true;
           router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
         }
@@ -33,27 +47,28 @@ export default function AuthGate({ children, splash = null }) {
         return;
       }
 
+      // Allowed (either online+session or offline+active offline session)
       if (alive) {
-        setAllowed(true);
+        setAllowed(Boolean(session) || (!isOnline && hasOffline));
         setReady(true);
-        // remember last page for offline-shell convenience
-        if (online) {
+
+        // remember last admin path (helps offline shell choose a view)
+        if (isOnline) {
           try {
             localStorage.setItem("lastAdminPath", pathname);
           } catch {}
         }
       }
     })();
-
     return () => {
       alive = false;
     };
-  }, [router, pathname]);
+  }, [router, pathname, isOnline]);
 
   if (!ready) return splash;
 
-  // Offline + not allowed (no active offline session) → show hint instead of redirect
-  if (!allowed && typeof navigator !== "undefined" && !navigator.onLine) {
+  // Offline + not allowed (no active offline unlock) → show hint (no redirect)
+  if (!allowed && !isOnline) {
     return (
       <main className="min-h-screen grid place-items-center p-6 text-center">
         <div className="max-w-md space-y-2">

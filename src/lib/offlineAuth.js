@@ -3,7 +3,7 @@
 
 const USER_KEY = "offline_user";
 const RECORD_KEY = "offlineAuth.record"; // device-provision record (salt+blob etc)
-const SESSION_KEY = "offline_session"; // short-lived offline session
+const SESSION_KEY = "offline_session_v2"; // persistent offline session (with TTL)
 const MIN_PIN = 6;
 const MAX_TRIES = 5;
 
@@ -29,20 +29,24 @@ function setRecord(rec) {
   localStorage.setItem(RECORD_KEY, JSON.stringify(rec));
 }
 
-function startSession(userId, hours = 12) {
+/** Start a persistent offline session with a TTL (default 72h). */
+function startSession(userId, hours = 72) {
   const exp = Date.now() + hours * 60 * 60 * 1000;
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify({ userId, exp }));
   try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ userId, exp }));
+    // Back-compat flag for any legacy checks you may still have:
     sessionStorage.setItem("offline_mode", "1");
   } catch {}
 }
 function endSession() {
-  sessionStorage.removeItem(SESSION_KEY);
-  sessionStorage.removeItem("offline_mode");
+  try {
+    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem("offline_mode"); // back-compat cleanup
+  } catch {}
 }
 function hasActiveSession() {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return false;
     const s = JSON.parse(raw);
     return typeof s.exp === "number" && Date.now() < s.exp;
@@ -85,7 +89,7 @@ async function makeRecord(user, pin) {
     blob: toB64(blob),
     tries: 0,
     lockUntil: 0,
-    sessionHours: 12,
+    sessionHours: 72, // default TTL for new sessions
     maxTries: MAX_TRIES,
   };
 }
@@ -120,11 +124,11 @@ export const offlineAuth = {
   // ---------- capability & session ----------
   isEnabled() {
     return !!getRecord();
-  }, // device is provisioned for offline (PIN set)
+  }, // device is provisioned (PIN set)
   hasPin() {
     return !!getRecord();
-  }, // alias
-  hasActiveSession, // true when user has unlocked with PIN (not expired)
+  },
+  hasActiveSession, // persistent TTL session
 
   // ---------- provision / change / verify ----------
   async enable(userId, pin) {
@@ -148,7 +152,7 @@ export const offlineAuth = {
 
   async verifyPin(pin) {
     const rec = getRecord();
-    if (!rec) return false; // not provisioned → cannot unlock
+    if (!rec) return false; // not provisioned
     const now = Date.now();
     if (rec.lockUntil && now < rec.lockUntil) return false;
 
@@ -158,10 +162,10 @@ export const offlineAuth = {
       rec.tries = 0;
       rec.lockUntil = 0;
       setRecord(rec);
-      startSession(rec.userId, rec.sessionHours);
+      startSession(rec.userId, rec.sessionHours || 72);
       return true;
     } catch {
-      // simple exponential backoff after MAX_TRIES
+      // exponential backoff after MAX_TRIES
       rec.tries = (rec.tries || 0) + 1;
       if (rec.tries >= (rec.maxTries || MAX_TRIES)) {
         const over = rec.tries - (rec.maxTries || MAX_TRIES); // 0,1,2…
