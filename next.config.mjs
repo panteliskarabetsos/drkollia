@@ -10,6 +10,9 @@ const withPWAFn = withPWA({
 
   // When a navigation fails offline, return a cached 200-page
   fallbacks: { document: "/admin/offline-shell" },
+  workbox: {
+    cleanupOutdatedCaches: false, // ← keep old hashed chunks around
+  },
 
   // Try to precache useful pages
   precachePages: [
@@ -52,6 +55,15 @@ const withPWAFn = withPWA({
       urlPattern: ({ url }) => url.pathname.startsWith("/_next/static/"),
       handler: "StaleWhileRevalidate",
       options: { cacheName: "next-static" },
+    },
+    {
+      urlPattern: ({ url }) => url.pathname.startsWith("/_next/static/"),
+      handler: "CacheFirst",
+      options: {
+        cacheName: "next-static",
+        matchOptions: { ignoreSearch: true },
+        expiration: { maxEntries: 2000, maxAgeSeconds: 60 * 60 * 24 * 365 },
+      },
     },
     // images/fonts
     {
