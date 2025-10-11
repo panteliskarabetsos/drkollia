@@ -751,19 +751,26 @@ export default function AdminPage() {
         </section>
 
         {/* Floating help */}
-        <div className="fixed bottom-6 right-6">
-          <Tooltip>
+        {/* Floating help */}
+        <div
+          className="fixed right-4 md:right-6 z-50 pointer-events-auto"
+          // 12px gap above whatever the current tabbar-safe is (0 when absent)
+          style={{ bottom: "calc(var(--tabbar-safe, 0px) + 12px)" }}
+        >
+          <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
               <Button
                 disabled={!isOnline}
-                className="rounded-full shadow-lg h-12 w-12"
+                className="rounded-full shadow-lg h-12 w-12 focus-visible:ring-2 focus-visible:ring-[#8c7c68]"
                 onClick={() => router.push("/admin/help")}
                 aria-label="Χρειάζεστε βοήθεια;"
               >
-                <LifeBuoy size={32} className="shrink-0" />
+                <LifeBuoy className="w-8 h-8 shrink-0" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Χρειάζεστε βοήθεια;</TooltipContent>
+            <TooltipContent side="left" sideOffset={8}>
+              Χρειάζεστε βοήθεια;
+            </TooltipContent>
           </Tooltip>
         </div>
       </main>

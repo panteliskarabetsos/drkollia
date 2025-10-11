@@ -1,7 +1,7 @@
 // app/admin/layout.js
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import clsx from "clsx";
@@ -91,6 +91,8 @@ function InstallPWAButton() {
 
 export default function AdminLayout({ children }) {
   const router = useRouter();
+  const [showBottomBar, setShowBottomBar] = useState(true);
+
   const pathname = usePathname();
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
   const [me, setMe] = useState(null);
@@ -99,6 +101,9 @@ export default function AdminLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [online, setOnline] = useState(true);
+  const panelRef = useRef(null);
+  const startX = useRef(0);
+  const deltaX = useRef(0);
 
   useEffect(() => {
     let authSub; // keep a ref to unsubscribe on cleanup
@@ -176,6 +181,84 @@ export default function AdminLayout({ children }) {
     // Show banner whenever we go offline, hide when back online
     setShowOfflineBanner(!online);
   }, [online]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const content = document.getElementById("site-content"); // add this id to your <main>
+    if (mobileOpen) {
+      root.classList.add("overflow-hidden", "touch-none");
+      if (content) content.setAttribute("inert", "");
+    } else {
+      root.classList.remove("overflow-hidden", "touch-none");
+      if (content) content.removeAttribute("inert");
+    }
+    return () => {
+      root.classList.remove("overflow-hidden", "touch-none");
+      if (content) content.removeAttribute("inert");
+    };
+  }, [mobileOpen]);
+
+  // Close menu on navigation
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  // Hide bottom bar when keyboard is open (VisualViewport heuristic)
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return;
+    const onResize = () => {
+      const vv = window.visualViewport;
+      const keyboardLikelyOpen = vv && vv.height < window.innerHeight - 120;
+      setShowBottomBar(!keyboardLikelyOpen);
+    };
+    onResize();
+    window.visualViewport.addEventListener("resize", onResize);
+    return () =>
+      window.visualViewport &&
+      window.visualViewport.removeEventListener("resize", onResize);
+  }, []);
+
+  // Focus trap + Esc to close when panel opens
+  useEffect(() => {
+    if (!mobileOpen || !panelRef.current) return;
+
+    const selectors =
+      'a,button,input,textarea,select,[tabindex]:not([tabindex="-1"])';
+    const nodes = panelRef.current.querySelectorAll(selectors);
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    if (first && typeof first.focus === "function") first.focus();
+
+    const onKey = (e) => {
+      if (e.key === "Escape") setMobileOpen(false);
+      if (e.key !== "Tab" || nodes.length === 0) return;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last && last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first && first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mobileOpen]);
+
+  // Swipe-to-close handlers
+  const onTouchStart = (e) => {
+    if (!e.touches || e.touches.length === 0) return;
+    startX.current = e.touches[0].clientX;
+    deltaX.current = 0;
+  };
+  const onTouchMove = (e) => {
+    if (!e.touches || e.touches.length === 0) return;
+    deltaX.current = e.touches[0].clientX - startX.current;
+  };
+  const onTouchEnd = () => {
+    if (deltaX.current > 60) setMobileOpen(false); // swipe right to close
+    startX.current = 0;
+    deltaX.current = 0;
+  };
 
   useEffect(() => {
     const onOnline = async () => {
@@ -283,23 +366,23 @@ export default function AdminLayout({ children }) {
         <Toaster position="top-right" richColors expand offset={80} />
         {/* Admin Header */}
 
-        <header className="fixed top-0 inset-x-0 z-50">
-          {/* Accent line (hide on xs to reduce visual noise) */}
+        <header className="fixed top-0 inset-x-0 z-50 [--h:56px] md:[--h:64px]">
+          {/* Accent line */}
           <div className="hidden sm:block h-[2px] w-full bg-gradient-to-r from-[#d9d3c7] via-[#bfb7a9] to-[#d9d3c7]" />
 
           {/* Top bar */}
-          <div className="bg-white/80 supports-[backdrop-filter]:backdrop-blur-md border-b border-[#e5e1d8] shadow-[0_1px_0_0_#eee]">
+          <div className="bg-white/85 supports-[backdrop-filter]:backdrop-blur-md border-b border-[#e5e1d8] shadow-[0_1px_0_0_#eee]">
+            {/* Offline banner (unchanged) */}
             {showOfflineBanner && (
               <div className="bg-amber-50/95 text-amber-900 border-y border-amber-200">
                 <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2 sm:py-2.5 flex items-start sm:items-center gap-2">
                   <WifiOff className="w-4 h-4 shrink-0 mt-0.5 sm:mt-0" />
                   <p className="text-xs sm:text-sm leading-snug">
-                    Είστε εκτός σύνδεσης. Ορισμένες υπηρεσίες δεν ειναι
-                    διαθέσιμες. Τα τελευταία αποθηκευμένα δεδομένα είναι
+                    Είστε εκτός σύνδεσης. Ορισμένες λειτουργίες ενδέχεται να μην
+                    λειτουργούν. Τα τελευταία αποθηκευμένα δεδομένα είναι
                     διαθέσιμα.
                   </p>
                   <button
-                    type="button"
                     onClick={() => setShowOfflineBanner(false)}
                     className="ml-auto rounded-md p-1 hover:bg-amber-100 transition"
                     aria-label="Κλείσιμο ειδοποίησης"
@@ -309,7 +392,16 @@ export default function AdminLayout({ children }) {
                 </div>
               </div>
             )}
-            {/* Skip link (a11y) */}
+            {!online && !showOfflineBanner && (
+              <div className="md:hidden px-3 py-1.5 text-[11px] text-amber-900 bg-amber-50 border-t border-amber-200">
+                <div className="max-w-6xl mx-auto flex items-center gap-2">
+                  <WifiOff className="w-4 h-4" />
+                  Εκτός σύνδεσης — ορισμένες λειτουργίες ίσως δεν λειτουργούν.
+                </div>
+              </div>
+            )}
+
+            {/* Skip link */}
             <a
               href="#main"
               className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[100] focus:rounded-lg focus:bg-[#f6f4ef] focus:px-3 focus:py-2"
@@ -317,20 +409,20 @@ export default function AdminLayout({ children }) {
               Μετάβαση στο περιεχόμενο
             </a>
 
+            {/* App bar row — fixed height on mobile */}
             <div
-              className="max-w-6xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-2"
-              style={{ paddingTop: "max(env(safe-area-inset-top), 0.5rem)" }}
+              className="max-w-6xl mx-auto px-3 sm:px-4 h-[var(--h)] flex items-center justify-between gap-2"
+              style={{ paddingTop: "max(env(safe-area-inset-top), 0px)" }}
             >
-              {/* Brand: show label from sm+ */}
+              {/* Brand (no scale on xs to avoid jitter) */}
               <Link
                 href="/admin"
-                className="group inline-flex items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-[#f6f4ef] hover:scale-[1.02]"
-                title="Πίνακας Διαχείρισης"
-                aria-label="Πίνακας Διαχείρισης"
+                className="group inline-flex items-center gap-2 rounded-md px-2 py-1 md:hover:bg-[#f6f4ef] transition"
                 aria-current={isActive("/admin") ? "page" : undefined}
+                title="Πίνακας Διαχείρισης"
               >
-                <LayoutDashboard className="w-6 h-6 text-[#8c7c68] transition-transform group-hover:-translate-y-0.5" />
-                <span className="hidden sm:inline font-semibold text-lg tracking-tight text-[#2f2e2b]">
+                <LayoutDashboard className="w-5 h-5 sm:w-6 sm:h-6 text-[#8c7c68] transition-transform md:group-hover:-translate-y-0.5" />
+                <span className="hidden sm:inline font-semibold text-base sm:text-lg tracking-tight text-[#2f2e2b]">
                   Πίνακας Διαχείρισης
                 </span>
               </Link>
@@ -345,7 +437,7 @@ export default function AdminLayout({ children }) {
                       href={href}
                       aria-current={active ? "page" : undefined}
                       className={clsx(
-                        "relative inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm transition",
+                        "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm transition",
                         active
                           ? "bg-[#f6f4ef] border border-[#e5e1d8] text-[#2f2e2b]"
                           : "border border-transparent text-[#3a3a38] hover:text-[#2f2e2b] hover:bg-[#f6f4ef] hover:border-[#e5e1d8] hover:shadow-sm"
@@ -365,7 +457,7 @@ export default function AdminLayout({ children }) {
 
               {/* Right controls */}
               <div className="flex items-center gap-1.5 sm:gap-2">
-                {/* Online/offline indicator (hide on xs) */}
+                {/* Online chip hidden on xs */}
                 <div
                   className={clsx(
                     "hidden sm:flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs",
@@ -383,18 +475,17 @@ export default function AdminLayout({ children }) {
                   {online ? "Online" : "Offline"}
                 </div>
 
-                {/* Install PWA (show from sm+) */}
+                {/* PWA + user only from sm+ */}
                 <div className="hidden sm:block">
                   <InstallPWAButton />
                 </div>
 
-                {/* User chip (desktop) */}
                 <div className="relative hidden sm:block">
                   <button
                     onClick={() => setMenuOpen((v) => !v)}
                     onBlur={() => setTimeout(() => setMenuOpen(false), 150)}
                     aria-expanded={menuOpen}
-                    className="inline-flex items-center gap-2 rounded-full border border-[#e5e1d8] bg-white/90 px-3 py-1.5 shadow-sm hover:bg-[#f6f4ef] hover:shadow-md hover:scale-[1.02] transition"
+                    className="inline-flex items-center gap-2 rounded-full border border-[#e5e1d8] bg-white/90 px-3 py-1.5 shadow-sm hover:bg-[#f6f4ef] transition"
                     title={profile?.name || me?.email || "Λογαριασμός"}
                   >
                     <div className="w-7 h-7 rounded-full grid place-items-center bg-[#efece5] text-[#2f2e2b] text-xs font-semibold border border-[#e5e1d8]">
@@ -407,24 +498,11 @@ export default function AdminLayout({ children }) {
                   </button>
 
                   {menuOpen && (
-                    <div className="absolute right-0 mt-2 w-56 rounded-xl border border-[#e5e1d8] bg-white/95 backdrop-blur shadow-lg overflow-hidden animate-fadeIn">
-                      <div className="px-3 py-2 border-b border-[#eeeae2]">
-                        <div className="flex items-center gap-2">
-                          <CircleUserRound className="w-4 h-4 text-[#8c7c68]" />
-                          <span className="text-sm font-medium text-[#2f2e2b]">
-                            {profile?.name || "Λογαριασμός"}
-                          </span>
-                        </div>
-                        {me?.email && (
-                          <p className="mt-1 text-xs text-[#6b675f] truncate">
-                            {me.email}
-                          </p>
-                        )}
-                      </div>
+                    <div className="absolute right-0 mt-2 w-56 rounded-xl border border-[#e5e1d8] bg-white/95 backdrop-blur shadow-lg overflow-hidden">
                       <Link
                         href="/admin/settings"
                         disabled={!online}
-                        className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#f6f4ef] hover:pl-4 transition-all"
+                        className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#f6f4ef] transition"
                         onClick={() => setMenuOpen(false)}
                       >
                         <Settings className="w-4 h-4 text-[#8c7c68]" />
@@ -433,7 +511,7 @@ export default function AdminLayout({ children }) {
                       <button
                         onClick={handleLogout}
                         disabled={!online}
-                        className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#f6f4ef] hover:pl-4 transition-all"
+                        className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#f6f4ef] transition"
                       >
                         <LogOut className="w-4 h-4 text-red-600" />
                         <span className="text-[#3a3a38]">Αποσύνδεση</span>
@@ -442,13 +520,17 @@ export default function AdminLayout({ children }) {
                   )}
                 </div>
 
-                {/* Mobile hamburger */}
+                {/* Mobile hamburger — slightly smaller icon, no heavy border */}
                 <button
-                  className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg border border-[#e5e1d8] bg-white/90 shadow-sm hover:bg-[#f6f4ef] transition motion-safe:duration-200"
-                  aria-label={mobileOpen ? "Κλείσιμο μενού" : "Άνοιγμα μενού"}
+                  className="md:hidden grid place-items-center w-10 h-10 rounded-lg border border-[#e5e1d8] bg-white/90 hover:bg-[#f6f4ef] transition"
+                  aria-label={
+                    mobileOpen
+                      ? "Κλείσιμο κύριου μενού"
+                      : "Άνοιγμα κύριου μενού"
+                  }
                   aria-expanded={mobileOpen}
                   aria-controls="mobile-menu"
-                  onClick={() => setMobileOpen((o) => !o)}
+                  onClick={() => setMobileOpen(!mobileOpen)}
                 >
                   {mobileOpen ? (
                     <X className="w-5 h-5" />
@@ -468,17 +550,25 @@ export default function AdminLayout({ children }) {
               mobileOpen ? "opacity-100" : "opacity-0 pointer-events-none"
             )}
           >
-            {/* Overlay (tap to close) */}
+            {/* Overlay */}
             <div
-              className="absolute inset-0 bg-black/30"
+              className={clsx(
+                "absolute inset-0 bg-black/30",
+                "transition-opacity motion-safe:duration-200 motion-reduce:duration-0"
+              )}
               aria-hidden="true"
               onClick={() => setMobileOpen(false)}
             />
             {/* Panel */}
             <div
+              ref={panelRef}
+              onTouchStart={onTouchStart}
+              onTouchMove={onTouchMove}
+              onTouchEnd={onTouchEnd}
               className={clsx(
                 "absolute right-0 top-0 h-full w-[88%] max-w-[420px] bg-white border-l border-[#eeeae2] shadow-2xl",
-                "transition-transform duration-300 ease-out",
+                "overflow-y-auto overscroll-contain",
+                "transition-transform motion-safe:duration-300 motion-reduce:duration-0 ease-out",
                 mobileOpen ? "translate-x-0" : "translate-x-full"
               )}
               style={{
@@ -598,39 +688,56 @@ export default function AdminLayout({ children }) {
           </div>
         </header>
         {/* OPTIONAL: Bottom tab bar for faster nav on phones */}
+        {/* Bottom tab bar (mobile) */}
+        {/* Bottom tab bar (mobile) */}
         <nav
-          className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/90 supports-[backdrop-filter]:backdrop-blur-md border-t border-[#e5e1d8]"
-          style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.25rem)" }}
+          className="md:hidden fixed bottom-0 inset-x-0 z-40"
+          style={{ "--safe": "env(safe-area-inset-bottom)" }}
         >
-          <ul className="grid grid-cols-4">
-            {primaryNav.map(({ href, label, Icon }) => {
-              const active = isActive(href);
-              return (
-                <li key={"tab-" + href}>
-                  <Link
-                    href={href}
-                    aria-current={active ? "page" : undefined}
-                    className={clsx(
-                      "flex flex-col items-center justify-center h-12 gap-1 text-[11px]",
-                      active ? "text-[#2f2e2b]" : "text-[#5b5a57]"
-                    )}
-                  >
-                    <Icon
+          {/* The bar itself: only 48px tall, perfectly center contents */}
+          <div className="bg-white/90 supports-[backdrop-filter]:backdrop-blur-md border-t border-[#e5e1d8] rounded-t-2xl shadow-[0_-6px_20px_rgba(0,0,0,0.06)]">
+            <ul className="grid grid-cols-4 h-12">
+              {primaryNav.map(({ href, label, Icon }) => {
+                const active = isActive(href);
+                return (
+                  <li key={"tab-" + href}>
+                    <Link
+                      href={href}
+                      aria-current={active ? "page" : undefined}
                       className={clsx(
-                        "w-5 h-5",
-                        active ? "text-[#8c7c68]" : "text-[#9a8f7d]"
+                        // Fill the 48px row and center exactly
+                        "flex flex-col items-center justify-center h-full gap-0.5 leading-none",
+                        active ? "text-[#2f2e2b]" : "text-[#5b5a57]"
                       )}
-                    />
-                    <span className="truncate max-w-[80px]">{label}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+                    >
+                      <Icon
+                        className={clsx(
+                          "w-5 h-5",
+                          active ? "text-[#8c7c68]" : "text-[#9a8f7d]"
+                        )}
+                      />
+                      <span className="truncate max-w-[80px] text-[11px]">
+                        {label}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          {/* Safe-area spacer lives OUTSIDE the bar so centering isn’t affected */}
+          <div style={{ height: "var(--safe)" }} />
         </nav>
-        {/* Spacer so content isn't hidden behind bottom bar on mobile */}
+
         <div className="md:hidden h-12" />
-        <main id="admin-content" className="max-w-6xl mx-auto px-4 pt-9 pb-6">
+        <main
+          id="admin-content"
+          className="max-w-6xl mx-auto px-4 pb-4 "
+          style={{
+            paddingTop: `calc(var(--h) + env(safe-area-inset-top))`,
+          }}
+        >
           {children}
         </main>
       </div>
