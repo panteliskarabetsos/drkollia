@@ -687,16 +687,23 @@ export default function AdminLayout({ children }) {
             </div>
           </div>
         </header>
-        {/* OPTIONAL: Bottom tab bar for faster nav on phones */}
+
         {/* Bottom tab bar (mobile) */}
-        {/* Bottom tab bar (mobile) */}
+        {/* Bottom tab bar (mobile, taller) */}
         <nav
           className="md:hidden fixed bottom-0 inset-x-0 z-40"
-          style={{ "--safe": "env(safe-area-inset-bottom)" }}
+          style={{
+            // row = 56px (bump to 64px if you want even taller)
+            "--tabbar-row": "56px",
+            "--safe": "env(safe-area-inset-bottom)",
+          }}
         >
-          {/* The bar itself: only 48px tall, perfectly center contents */}
-          <div className="bg-white/90 supports-[backdrop-filter]:backdrop-blur-md border-t border-[#e5e1d8] rounded-t-2xl shadow-[0_-6px_20px_rgba(0,0,0,0.06)]">
-            <ul className="grid grid-cols-4 h-12">
+          {/* The bar itself: only the row height */}
+          <div className="bg-white/95 supports-[backdrop-filter]:backdrop-blur-md border-t border-[#e5e1d8] rounded-t-2xl shadow-[0_-6px_20px_rgba(0,0,0,0.06)]">
+            <ul
+              className="grid grid-cols-4"
+              style={{ height: "var(--tabbar-row)" }}
+            >
               {primaryNav.map(({ href, label, Icon }) => {
                 const active = isActive(href);
                 return (
@@ -705,20 +712,19 @@ export default function AdminLayout({ children }) {
                       href={href}
                       aria-current={active ? "page" : undefined}
                       className={clsx(
-                        // Fill the 48px row and center exactly
-                        "flex flex-col items-center justify-center h-full gap-0.5 leading-none",
+                        // fills the row and centers content
+                        "flex flex-col items-center justify-center h-full gap-1 leading-none",
+                        "text-[12px]",
                         active ? "text-[#2f2e2b]" : "text-[#5b5a57]"
                       )}
                     >
                       <Icon
                         className={clsx(
-                          "w-5 h-5",
+                          "w-6 h-6",
                           active ? "text-[#8c7c68]" : "text-[#9a8f7d]"
                         )}
                       />
-                      <span className="truncate max-w-[80px] text-[11px]">
-                        {label}
-                      </span>
+                      <span className="truncate max-w-[90px]">{label}</span>
                     </Link>
                   </li>
                 );
@@ -726,8 +732,8 @@ export default function AdminLayout({ children }) {
             </ul>
           </div>
 
-          {/* Safe-area spacer lives OUTSIDE the bar so centering isn’t affected */}
-          <div style={{ height: "var(--safe)" }} />
+          {/* Safe-area spacer lives outside so centering isn't affected */}
+          <div aria-hidden="true" style={{ height: "var(--safe)" }} />
         </nav>
 
         <div className="md:hidden h-12" />
