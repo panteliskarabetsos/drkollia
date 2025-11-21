@@ -27,6 +27,7 @@ import {
   CalendarX,
   AlertTriangle,
   AlertCircle,
+  Mail,
 } from "lucide-react";
 import { el } from "date-fns/locale";
 import offlineAuth from "@/lib/offlineAuth";
@@ -87,6 +88,7 @@ export default function NewAppointmentPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const isMedicalVisitor = formData.reason === "Ιατρικός Επισκέπτης";
   const [visitorName, setVisitorName] = useState("");
+  const [sendConfirmationEmail, setSendConfirmationEmail] = useState(true);
 
   const greekLocale = {
     ...el,
@@ -610,7 +612,7 @@ export default function NewAppointmentPage() {
           : "✅ Το ραντεβού αποθηκεύτηκε τοπικά. Θα συγχρονιστεί όταν είστε online."
       );
 
-      if (navigator.onLine && email) {
+      if (navigator.onLine && email && sendConfirmationEmail) {
         try {
           await fetch("/api/send-confirmation", {
             method: "POST",
@@ -798,6 +800,11 @@ export default function NewAppointmentPage() {
 
   const baseInputClass =
     "w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400";
+  const canSendConfirmationEmail =
+    !isMedicalVisitor &&
+    (newPatientMode
+      ? !!newPatientData.email?.trim()
+      : !!selectedPatient?.email?.trim());
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-emerald-50 via-zinc-50 to-emerald-50 px-4 py-10 sm:px-6 lg:px-10">
@@ -1582,6 +1589,65 @@ export default function NewAppointmentPage() {
                     }
                     className={`${baseInputClass} resize-none`}
                   />
+                  {/* Toggle: αποστολή email επιβεβαίωσης */}
+                  {/* Toggle: αποστολή email επιβεβαίωσης */}
+                  {/* Toggle: αποστολή email επιβεβαίωσης */}
+                  {!isMedicalVisitor && (
+                    <div className="mt-4">
+                      <button
+                        type="button"
+                        disabled={!canSendConfirmationEmail}
+                        onClick={() => {
+                          if (!canSendConfirmationEmail) return;
+                          setSendConfirmationEmail((prev) => !prev);
+                        }}
+                        className={[
+                          "flex w-full items-center justify-between gap-4 rounded-3xl border px-4 py-3 text-left shadow-sm transition-all",
+                          !canSendConfirmationEmail
+                            ? "cursor-not-allowed border-emerald-50 bg-emerald-50/70 opacity-70"
+                            : sendConfirmationEmail
+                            ? "border-emerald-200 bg-emerald-50"
+                            : "border-zinc-200 bg-white hover:border-emerald-200 hover:bg-emerald-50/60",
+                        ].join(" ")}
+                      >
+                        {/* Left: text */}
+                        <div className="mr-3 text-xs">
+                          <p className="font-medium text-emerald-900">
+                            Αποστολή email επιβεβαίωσης
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-emerald-900/75">
+                            {!canSendConfirmationEmail
+                              ? "Δεν υπάρχει δηλωμένο email ασθενούς – δεν μπορεί να σταλεί επιβεβαίωση."
+                              : sendConfirmationEmail
+                              ? "Θα σταλεί email επιβεβαίωσης στον ασθενή μετά την καταχώρηση."
+                              : "Δεν θα σταλεί email επιβεβαίωσης μετά την καταχώρηση."}
+                          </p>
+                        </div>
+
+                        {/* Right: switch */}
+                        <span
+                          aria-hidden="true"
+                          className={[
+                            "relative inline-flex h-6 w-11 items-center rounded-full border transition-all",
+                            !canSendConfirmationEmail
+                              ? "border-emerald-100 bg-emerald-50/70"
+                              : sendConfirmationEmail
+                              ? "border-emerald-500 bg-emerald-500"
+                              : "border-zinc-300 bg-white",
+                          ].join(" ")}
+                        >
+                          <span
+                            className={[
+                              "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-all",
+                              sendConfirmationEmail
+                                ? "translate-x-5"
+                                : "translate-x-1",
+                            ].join(" ")}
+                          />
+                        </span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {formData.reason === "Ιατρικός Επισκέπτης" &&
