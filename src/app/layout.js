@@ -51,11 +51,11 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="el" className="h-full" suppressHydrationWarning>
+    <html lang="el" className="h-full w-full" suppressHydrationWarning>
       <body
         className={`
           ${notoSerif.variable}
-          font-serif h-full flex flex-col text-[#433f39] bg-[#f7f4ee]
+          font-serif h-full w-full flex flex-col text-[#433f39] bg-[#f7f4ee]
           antialiased selection:bg-[#fcefc0] selection:text-[#4c3f2c]
         `}
       >

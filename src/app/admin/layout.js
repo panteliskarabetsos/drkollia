@@ -270,7 +270,7 @@ export default function AdminLayout({ children }) {
       <div
         className={clsx(
           inter.variable,
-          " font-sans bg-[#fdfaf6] text-[#3b3a36] antialiased selection:bg-[#fcefc0] min-h-screen"
+          "font-sans bg-[#fdfaf6] text-[#3b3a36] antialiased selection:bg-[#fcefc0] min-h-screen w-screen overflow-x-hidden"
         )}
       >
         <a
@@ -628,9 +628,11 @@ export default function AdminLayout({ children }) {
             })}
           </ul>
         </nav>
-        {/* Spacer so content isn't hidden behind bottom bar on mobile */}
+        {/* Spacer for mobile bottom bar */}
         <div className="md:hidden h-12" />
-        <main id="admin-content" className="max-w-6xl mx-auto px-4 pt-9 pb-6">
+
+        {/* MAIN CONTENT – full-width, with internal padding only */}
+        <main id="admin-content" className="w-full pt-20 pb-6">
           {children}
         </main>
       </div>

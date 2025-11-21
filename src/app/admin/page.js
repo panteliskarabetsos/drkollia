@@ -172,17 +172,6 @@ export default function AdminPage() {
     });
   }, [isOnline]);
 
-  const handleRefresh = useCallback(async () => {
-    if (!isOnline) return;
-    try {
-      setRefreshing(true);
-      await syncCompleted();
-      await Promise.all([loadStats(), loadDayEdges(), loadNextAppointment()]);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [isOnline, loadStats]);
-
   const syncCompleted = useCallback(async () => {
     if (!isOnline) return;
     try {
@@ -327,6 +316,17 @@ export default function AdminPage() {
     setDayEdges({ first, last });
   }, [isOnline]);
 
+  const handleRefresh = useCallback(async () => {
+    if (!isOnline) return;
+    try {
+      setRefreshing(true);
+      await syncCompleted();
+      await Promise.all([loadStats(), loadDayEdges(), loadNextAppointment()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [isOnline, loadStats, loadDayEdges, loadNextAppointment, syncCompleted]);
+
   // ---------- Effects ----------
   useEffect(() => {
     (async () => {
@@ -359,7 +359,6 @@ export default function AdminPage() {
         syncCompleted();
       }
     })();
-    // keep all deps that affect the loaders
   }, [
     router,
     isOnline,
@@ -458,7 +457,7 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-stone-50 grid place-items-center">
+      <main className="min-h-screen bg-[#f5f0e8] grid place-items-center">
         <div className="w-full max-w-2xl mx-auto p-6">
           <div className="mb-6">
             <Skeleton className="h-8 w-64" />
@@ -479,273 +478,375 @@ export default function AdminPage() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <main className="min-h-screen bg-gradient-to-b from-stone-50/70 via-white to-white text-stone-800">
+      <main className="min-h-screen bg-gradient-to-b from-[#f5f0e8] via-white to-white text-stone-800">
         {/* Header / hero */}
-        <section className="relative">
-          <div className="pointer-events-none absolute inset-0 [mask-image:radial-gradient(60%_60%_at_50%_0%,#000_20%,transparent_70%)] bg-[radial-gradient(1200px_500px_at_10%_-10%,#f1efe8_20%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#ece9e0_20%,transparent)]" />
-          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+        <section className="relative border-b border-stone-100">
+          <div className="pointer-events-none absolute inset-0 [mask-image:radial-gradient(60%_60%_at_50%_0%,#000_15%,transparent_70%)] bg-[radial-gradient(1200px_500px_at_10%_-10%,#f1efe8_20%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#ece9e0_20%,transparent)]" />
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-8 pb-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-wide text-stone-500">
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
                   {todayStr}
                 </p>
-                <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+                <h1 className="mt-1 text-3xl sm:text-4xl font-serif font-semibold tracking-tight text-stone-900">
                   Πίνακας Διαχείρισης
                 </h1>
-                <p className="mt-1 text-stone-600">
-                  Καλώς ήρθατε{profile?.name ? `, ${profile.name}` : ""}.
+                <p className="mt-1 text-sm text-stone-600">
+                  Καλώς ήρθατε
+                  {profile?.name ? (
+                    <>
+                      , <span className="font-medium">{profile.name}</span>.
+                    </>
+                  ) : (
+                    "."
+                  )}
                 </p>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant={isOnline ? "outline" : "destructive"}
+                    className="flex items-center gap-1 rounded-full px-3 py-1 text-[11px]"
+                  >
+                    {isOnline ? (
+                      <span className="inline-flex items-center gap-1">
+                        <ShieldCheck className="h-3 w-3" />
+                        <span>Συνδεδεμένο</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1">
+                        <WifiOff className="h-3 w-3" />
+                        <span>Εκτός σύνδεσης</span>
+                      </span>
+                    )}
+                  </Badge>
+
+                  {isOnline && stats && (
+                    <span className="text-[11px] text-stone-500">
+                      Σήμερα{" "}
+                      <span className="font-semibold">
+                        {stats.today} ραντεβού
+                      </span>
+                      , ολοκληρωμένα{" "}
+                      <span className="font-semibold">
+                        {stats.completedToday}
+                      </span>
+                      .
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+
+              <div className="flex flex-col items-end gap-2">
+                <div className="hidden sm:flex items-center gap-2 text-[11px] text-stone-500">
+                  <span className="flex items-center gap-1">
+                    <Command className="h-3 w-3" />
+                    <span>Συντομεύσεις:</span>
+                    <Kbd>?</Kbd>
+                    <span>/</span>
+                    <Kbd>N</Kbd>
+                    <span>/</span>
+                    <Kbd>P</Kbd>
+                  </span>
+                </div>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="default"
                       onClick={handleRefresh}
                       disabled={refreshing || !isOnline}
-                      className="gap-2"
+                      className="gap-2 rounded-full shadow-sm"
                     >
                       {refreshing ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <RefreshCcw className="h-4 w-4" />
                       )}
-                      Ανανέωση
+                      <span className="text-sm">Ανανέωση</span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {isOnline ? "Συγχρονισμός" : "Μη διαθέσιμο εκτός σύνδεσης"}
+                    {isOnline
+                      ? "Συγχρονισμός δεδομένων"
+                      : "Μη διαθέσιμο εκτός σύνδεσης"}
                   </TooltipContent>
                 </Tooltip>
               </div>
             </div>
           </div>
-          <Separator />
         </section>
 
-        {/* Content grid */}
+        {/* Content */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Quick nav cards */}
-            {navItems.map((item, idx) => {
-              const Icon = item.icon;
-              const disabled = item.disabled;
-              return (
-                <Card
-                  key={item.title}
-                  role={disabled ? "button" : "link"}
-                  tabIndex={0}
-                  onClick={() => {
-                    if (disabled) return;
-                    setLoadingButton(idx);
-                    router.push(item.href);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !disabled) router.push(item.href);
-                  }}
-                  aria-disabled={disabled}
-                  className={[
-                    "transition hover:shadow-md group relative",
-                    disabled
-                      ? "opacity-60 cursor-not-allowed"
-                      : "cursor-pointer",
-                  ].join(" ")}
-                >
-                  <CardHeader className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <div className="rounded-lg border bg-white p-2 shadow-sm">
-                        <Icon className="h-4 w-4 text-stone-700" />
-                      </div>
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        {item.title}
-                        {disabled && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-900">
-                            <WifiOff className="h-3 w-3" />
-                            Offline
-                          </span>
-                        )}
-                      </CardTitle>
-                    </div>
-                    <CardDescription className="leading-relaxed">
-                      {item.description}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardFooter>
-                    <Button
-                      disabled={
-                        disabled ||
-                        (loadingButton !== null && loadingButton !== idx)
-                      }
-                      variant="outline"
-                      className="ml-auto gap-2"
-                    >
-                      {loadingButton === idx && !disabled ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />{" "}
-                          Φόρτωση...
-                        </>
-                      ) : (
-                        <>
-                          Μετάβαση <ArrowRight className="h-4 w-4" />
-                        </>
-                      )}
-                    </Button>
-                  </CardFooter>
-                </Card>
-              );
-            })}
+          {/* Mini KPIs row */}
+          {isOnline && stats && (
+            <div className="mb-6 grid gap-3 sm:grid-cols-3">
+              <MiniStat
+                label="Ραντεβού σήμερα"
+                value={stats.today}
+                hint="Σύνολο προγραμματισμένων ραντεβού"
+              />
+              <MiniStat
+                label="Ολοκληρωμένα"
+                value={stats.completedToday}
+                hint="Ραντεβού που έχουν ολοκληρωθεί"
+              />
+              <MiniStat
+                label="Σύνολο ασθενών"
+                value={stats.patients}
+                hint="Εγγεγραμμένοι στο αρχείο ασθενών"
+              />
+            </div>
+          )}
 
-            {/* Stats card */}
-            <Card className="relative overflow-hidden">
-              <div className="pointer-events-none absolute -top-20 -left-24 h-64 w-64 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-stone-100 via-transparent to-transparent" />
-              <CardHeader className="flex-row items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="rounded-full border bg-white p-1.5 shadow-sm">
-                    <BarChart3 className="h-4 w-4 text-stone-700" />
-                  </div>
-                  <CardTitle>Σύνοψη</CardTitle>
-                </div>
-
-                {/* Reports button disabled when offline */}
-                {isOnline ? (
-                  <Button
-                    asChild
-                    size="sm"
-                    variant="outline"
-                    className="rounded-full"
-                  >
-                    <Link href="/admin/reports">Αναφορές</Link>
-                  </Button>
-                ) : (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-full"
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,2.1fr)_minmax(0,1.4fr)]">
+            {/* Left column: navigation */}
+            <div className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                {navItems.map((item, idx) => {
+                  const Icon = item.icon;
+                  const disabled = item.disabled;
+                  return (
+                    <Card
+                      key={item.title}
+                      role={disabled ? "button" : "link"}
+                      tabIndex={0}
+                      onClick={() => {
+                        if (disabled) return;
+                        setLoadingButton(idx);
+                        router.push(item.href);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !disabled)
+                          router.push(item.href);
+                      }}
+                      aria-disabled={disabled}
+                      className={[
+                        "transition hover:shadow-md group relative overflow-hidden",
                         disabled
-                      >
-                        Αναφορές
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Μη διαθέσιμο εκτός σύνδεσης</TooltipContent>
-                  </Tooltip>
-                )}
-              </CardHeader>
+                          ? "opacity-60 cursor-not-allowed"
+                          : "cursor-pointer",
+                      ].join(" ")}
+                    >
+                      <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition bg-gradient-to-br from-stone-50 to-stone-100" />
+                      <CardHeader className="space-y-1 relative">
+                        <div className="flex items-center gap-2">
+                          <div className="rounded-xl border bg-white p-2 shadow-sm">
+                            <Icon className="h-4 w-4 text-stone-700" />
+                          </div>
+                          <CardTitle className="text-base flex items-center gap-2">
+                            {item.title}
+                            {disabled && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-900">
+                                <WifiOff className="h-3 w-3" />
+                                Offline
+                              </span>
+                            )}
+                          </CardTitle>
+                        </div>
+                        <CardDescription className="leading-relaxed text-xs text-stone-600">
+                          {item.description}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardFooter className="relative pt-0">
+                        <Button
+                          disabled={
+                            disabled ||
+                            (loadingButton !== null && loadingButton !== idx)
+                          }
+                          variant="outline"
+                          className="ml-auto gap-2 rounded-full text-xs"
+                        >
+                          {loadingButton === idx && !disabled ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />{" "}
+                              Φόρτωση...
+                            </>
+                          ) : (
+                            <>
+                              Μετάβαση <ArrowRight className="h-4 w-4" />
+                            </>
+                          )}
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
 
-              <CardContent>
-                {isOnline ? (
-                  stats ? (
-                    <div className="space-y-4">
+            {/* Right column: stats + next appointment */}
+            <div className="space-y-6">
+              {/* Stats card */}
+              <Card className="relative overflow-hidden">
+                <div className="pointer-events-none absolute -top-20 -left-24 h-64 w-64 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-stone-100 via-transparent to-transparent" />
+                <CardHeader className="flex-row items-center justify-between relative">
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-full border bg-white p-1.5 shadow-sm">
+                      <BarChart3 className="h-4 w-4 text-stone-700" />
+                    </div>
+                    <CardTitle className="text-base">Σύνοψη Ημέρας</CardTitle>
+                  </div>
+
+                  {isOnline ? (
+                    <Button
+                      asChild
+                      size="sm"
+                      variant="outline"
+                      className="rounded-full text-xs"
+                    >
+                      <Link href="/admin/reports">Αναφορές</Link>
+                    </Button>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-full text-xs"
+                          disabled
+                        >
+                          Αναφορές
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Μη διαθέσιμο εκτός σύνδεσης
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </CardHeader>
+
+                <CardContent className="relative">
+                  {isOnline ? (
+                    stats ? (
+                      <div className="space-y-4">
+                        <div>
+                          <div className="flex items-center justify-between text-xs text-stone-600">
+                            <span>Ραντεβού σήμερα</span>
+                            <span className="font-semibold text-stone-900 tabular-nums">
+                              {stats.today}
+                            </span>
+                          </div>
+                          <Progress value={progressPct} className="mt-2" />
+                          <div className="mt-1 text-[11px] text-stone-600">
+                            <span className="font-medium">
+                              {stats.completedToday}
+                            </span>{" "}
+                            από{" "}
+                            <span className="font-medium">{stats.today}</span>{" "}
+                            έχουν ολοκληρωθεί.
+                          </div>
+                        </div>
+
+                        <Separator />
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <EdgeCard
+                            label="Πρώτο ραντεβού"
+                            data={dayEdges.first}
+                          />
+                          <EdgeCard
+                            label="Τελευταίο ραντεβού"
+                            data={dayEdges.last}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="rounded-xl border p-3">
+                          <Skeleton className="h-4 w-28 mb-2" />
+                          <Skeleton className="h-3 w-full" />
+                          <Skeleton className="h-3 w-2/3 mt-2" />
+                        </div>
+                        <div className="rounded-xl border p-3">
+                          <Skeleton className="h-4 w-28 mb-2" />
+                          <Skeleton className="h-10 w-24" />
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <div className="text-sm text-stone-600">
+                      Τα στατιστικά δεν είναι διαθέσιμα εκτός σύνδεσης.
+                    </div>
+                  )}
+                </CardContent>
+
+                <CardFooter className="relative justify-between text-[11px] text-stone-500">
+                  <span>
+                    Τα δεδομένα ενημερώνονται αυτόματα με την ανανέωση.
+                  </span>
+                  {isOnline ? (
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1 text-[11px] px-2 h-7"
+                    >
+                      <Link href="/admin/reports">
+                        Προβολή αναφορών <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    </Button>
+                  ) : null}
+                </CardFooter>
+              </Card>
+
+              {/* Next appointment */}
+              <Card className="relative overflow-hidden">
+                <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-stone-100 via-transparent to-transparent" />
+                <CardHeader className="flex-row items-center justify-between relative">
+                  <div className="flex items-center gap-2">
+                    <Hourglass className="h-5 w-5 text-stone-700" />
+                    <CardTitle className="text-base">
+                      Επόμενο ραντεβού
+                    </CardTitle>
+                  </div>
+                  {nextAppt && (
+                    <Badge
+                      variant="secondary"
+                      className="rounded-full text-xs flex items-center gap-1"
+                    >
+                      Σήμερα{" "}
+                      {new Date(nextAppt.appointment_time).toLocaleTimeString(
+                        "el-GR",
+                        {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }
+                      )}
+                    </Badge>
+                  )}
+                </CardHeader>
+                <CardContent className="relative">
+                  {isOnline ? (
+                    nextApptErr ? (
+                      <p className="text-sm text-red-600">{nextApptErr}</p>
+                    ) : nextAppt ? (
+                      <NextAppt appt={nextAppt} />
+                    ) : (
                       <div>
-                        <div className="flex items-center justify-between text-sm text-stone-600">
-                          <span>Ραντεβού σήμερα</span>
-                          <span className="font-semibold text-stone-800 tabular-nums">
-                            {stats.today}
-                          </span>
-                        </div>
-                        <Progress value={progressPct} className="mt-2" />
-                        <div className="mt-1 text-xs text-stone-600">
-                          <span className="font-medium">
-                            {stats.completedToday}
-                          </span>{" "}
-                          από <span className="font-medium">{stats.today}</span>{" "}
-                          ολοκληρώθηκαν
+                        <p className="text-sm text-stone-600">
+                          Δεν υπάρχει προγραμματισμένο επόμενο ραντεβού για
+                          σήμερα.
+                        </p>
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          <Skeleton className="h-3" />
+                          <Skeleton className="h-3" />
+                          <Skeleton className="h-3" />
                         </div>
                       </div>
-
-                      <Separator />
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <EdgeCard label="Πρώτο" data={dayEdges.first} />
-                        <EdgeCard label="Τελευταίο" data={dayEdges.last} />
-                      </div>
-                    </div>
+                    )
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="rounded-xl border p-3">
-                        <Skeleton className="h-4 w-28 mb-2" />
-                        <Skeleton className="h-3 w-full" />
-                        <Skeleton className="h-3 w-2/3 mt-2" />
-                      </div>
-                      <div className="rounded-xl border p-3">
-                        <Skeleton className="h-4 w-28 mb-2" />
-                        <Skeleton className="h-10 w-24" />
-                      </div>
+                    <div className="text-sm text-stone-600">
+                      Η προβολή επόμενου ραντεβού δεν είναι διαθέσιμη εκτός
+                      σύνδεσης.
                     </div>
-                  )
-                ) : (
-                  <div className="text-sm text-stone-600">
-                    Τα στατιστικά δεν ειναι διαθέσιμα εκτός σύνδεσης.
-                  </div>
-                )}
-              </CardContent>
-
-              <CardFooter>
-                {isOnline ? (
-                  <Button asChild variant="outline" className="gap-2">
-                    <Link href="/admin/reports">
-                      Προβολή Αναφορών <ArrowRight className="h-4 w-4" />
-                    </Link>
-                  </Button>
-                ) : (
-                  <Button variant="outline" className="gap-2" disabled>
-                    Προβολή Αναφορών <ArrowRight className="h-4 w-4" />
-                  </Button>
-                )}
-              </CardFooter>
-            </Card>
-
-            {/* Next appointment */}
-            <Card className="relative overflow-hidden">
-              <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-stone-100 via-transparent to-transparent" />
-              <CardHeader className="flex-row items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Hourglass className="h-5 w-5 text-stone-700" />
-                  <CardTitle>Επόμενο ραντεβού</CardTitle>
-                </div>
-                {nextAppt && (
-                  <Badge variant="secondary" className="rounded-full text-xs">
-                    {new Date(nextAppt.appointment_time).toLocaleTimeString(
-                      "el-GR",
-                      {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }
-                    )}
-                  </Badge>
-                )}
-              </CardHeader>
-              <CardContent>
-                {isOnline ? (
-                  nextApptErr ? (
-                    <p className="text-sm text-red-600">{nextApptErr}</p>
-                  ) : nextAppt ? (
-                    <NextAppt appt={nextAppt} />
-                  ) : (
-                    <div>
-                      <p className="text-sm text-stone-600">
-                        Δεν υπάρχει επόμενο ραντεβού για σήμερα.
-                      </p>
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        <Skeleton className="h-3" />
-                        <Skeleton className="h-3" />
-                        <Skeleton className="h-3" />
-                      </div>
-                    </div>
-                  )
-                ) : (
-                  <div className="text-sm text-stone-600">
-                    Η προβολή επόμενου ραντεβού δεν είναι διαθέσιμη εκτός
-                    σύνδεσης.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </section>
 
-        {/* Bottom bar */}
+        {/* Bottom bar: shortcuts */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-10 flex items-center justify-end">
           <ShortcutsPopover />
         </section>
@@ -760,7 +861,7 @@ export default function AdminPage() {
                 onClick={() => router.push("/admin/help")}
                 aria-label="Χρειάζεστε βοήθεια;"
               >
-                <LifeBuoy size={32} className="shrink-0" />
+                <LifeBuoy size={24} className="shrink-0" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Χρειάζεστε βοήθεια;</TooltipContent>
@@ -768,6 +869,22 @@ export default function AdminPage() {
         </div>
       </main>
     </TooltipProvider>
+  );
+}
+
+function MiniStat({ label, value, hint }) {
+  return (
+    <div className="rounded-2xl border border-stone-100 bg-white/80 px-4 py-3 shadow-sm flex items-center justify-between gap-3">
+      <div>
+        <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">
+          {label}
+        </p>
+        <p className="mt-1 text-xs text-stone-500">{hint}</p>
+      </div>
+      <div className="text-2xl font-semibold tabular-nums text-stone-900">
+        {value}
+      </div>
+    </div>
   );
 }
 
@@ -810,7 +927,7 @@ function NextAppt({ appt }) {
                 ? "secondary"
                 : "outline"
             }
-            className="capitalize"
+            className="capitalize text-xs"
           >
             {appt.status}
           </Badge>
@@ -822,13 +939,13 @@ function NextAppt({ appt }) {
 
 function EdgeCard({ label, data }) {
   return (
-    <div className="rounded-xl border p-3">
+    <div className="rounded-xl border border-stone-100 bg-white/80 p-3">
       <div className="flex items-center gap-2 text-[11px] text-stone-600">
         <CalendarRange className="h-4 w-4" /> {label}
       </div>
       {data ? (
         <div className="mt-1">
-          <div className="text-sm font-semibold tabular-nums">
+          <div className="text-sm font-semibold tabular-nums text-stone-900">
             {new Date(data.appointment_time).toLocaleTimeString("el-GR", {
               hour: "2-digit",
               minute: "2-digit",
@@ -839,7 +956,9 @@ function EdgeCard({ label, data }) {
           </div>
         </div>
       ) : (
-        <div className="mt-1 text-xs text-stone-500 italic">Δεν υπάρχουν</div>
+        <div className="mt-1 text-xs text-stone-500 italic">
+          Δεν υπάρχουν ραντεβού.
+        </div>
       )}
     </div>
   );
@@ -859,7 +978,7 @@ function ShortcutsPopover() {
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          className="gap-2 rounded-full"
+          className="gap-2 rounded-full text-xs"
           aria-label="Πληκτροσυντομεύσεις"
         >
           <Command className="h-4 w-4" />

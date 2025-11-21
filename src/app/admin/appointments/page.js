@@ -580,8 +580,8 @@ export default function AdminAppointmentsPage() {
     const online = typeof navigator === "undefined" ? true : navigator.onLine;
     if (!online) {
       return (
-        <main className="min-h-screen grid place-items-center p-6">
-          <div className="max-w-md text-center space-y-3">
+        <main className="min-h-screen bg-gradient-to-br from-[#f7f1e8] via-[#fcfaf7] to-[#ecf1f6] text-[#3b3a36] px-4 py-8 md:py-10">
+          <div className="relative mx-auto max-w-6xl rounded-3xl border border-[#e3ddd1] bg-white/90 p-6 md:p-8 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur-xl">
             <h1 className="text-xl font-semibold">Είστε εκτός σύνδεσης</h1>
             <p className="text-stone-600">
               Η πρώτη χρήση εκτός σύνδεσης απαιτεί αρχική σύνδεση. Όταν
@@ -841,12 +841,11 @@ export default function AdminAppointmentsPage() {
 
         <button
           onClick={() => router.push("/admin")}
-          className="absolute top-4 left-4 text-gray-600 hover:text-gray-800 hover:bg-gray-100 p-2 rounded-full transition-colors duration-200"
+          className="absolute left-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#ddd3c3] bg-white/80 text-[#4b4337] shadow-sm transition-colors duration-200 hover:bg-[#f3ebe0] hover:text-black"
           title="Επιστροφή στο Dashboard"
         >
-          <ArrowLeft size={20} />
+          <ArrowLeft size={18} />
         </button>
-
         <button
           onClick={() => router.push("/admin/appointments/new")}
           className="absolute top-4 right-4 bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-md transition"

@@ -16,7 +16,9 @@ export default function ClientShell({ children }) {
       <Toaster position="top-right" richColors expand offset={80} />
 
       {/* Admin pages render their own header via /admin/layout.js */}
-      <main className="flex-grow pt-8">{children}</main>
+      <main className={`flex-grow w-full ${isAdmin ? "" : "pt-8"}`}>
+        {children}
+      </main>
 
       {!isAdmin && <Footer />}
     </>
