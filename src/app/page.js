@@ -45,18 +45,14 @@ const SPECIALTIES = [
   },
 ];
 
-/**
- * Απλό client-side cache για να μη βαράει συνέχεια τη βάση.
- * Cache TTL: 5 λεπτά.
- */
-let cachedAcceptOnline = null; // boolean | null
+// Cache 5'
+let cachedAcceptOnline = null;
 let cachedAcceptOnlineUpdatedAt = 0;
 const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 async function fetchAcceptsOnlineFromDB() {
   const now = Date.now();
 
-  // Αν έχουμε φρέσκο cache, το χρησιμοποιούμε
   if (
     cachedAcceptOnline !== null &&
     now - cachedAcceptOnlineUpdatedAt < SETTINGS_CACHE_TTL_MS
@@ -64,7 +60,6 @@ async function fetchAcceptsOnlineFromDB() {
     return cachedAcceptOnline;
   }
 
-  // Διαβάζουμε από Supabase (δημόσια ρύθμιση)
   const { data, error } = await supabase
     .from("clinic_settings")
     .select("accept_new_appointments")
@@ -73,12 +68,10 @@ async function fetchAcceptsOnlineFromDB() {
 
   if (error) {
     console.error("Failed to load clinic_settings:", error);
-    // Σε σφάλμα: για λόγους ασφαλείας ΔΕΝ ισχυριζόμαστε ότι δεχόμαστε online.
     cachedAcceptOnline = false;
   } else if (data) {
     cachedAcceptOnline = !!data.accept_new_appointments;
   } else {
-    // Αν για κάποιο λόγο δεν υπάρχει row, default σε false
     cachedAcceptOnline = false;
   }
 
@@ -87,7 +80,6 @@ async function fetchAcceptsOnlineFromDB() {
 }
 
 export default function Home() {
-  // null = δεν ξέρουμε ακόμη (loading), true/false = τιμή από DB
   const [acceptsOnline, setAcceptsOnline] = useState(null);
 
   useEffect(() => {
@@ -117,7 +109,7 @@ export default function Home() {
       className={`min-h-screen bg-[#fdfaf6] text-[#3b3a36] ${notoSerif.className}`}
     >
       {/* ======================= HERO ======================= */}
-      <section className="relative flex flex-col items-center justify-center min-h-[80vh] md:h-[90vh] px-6 overflow-hidden text-center">
+      <section className="relative flex flex-col items-center justify-center min-h-[75vh] md:h-[90vh] px-4 pt-20 pb-16 sm:px-6 text-center overflow-hidden">
         <video
           autoPlay
           loop
@@ -129,15 +121,14 @@ export default function Home() {
           Your browser does not support the video tag.
         </video>
 
-        {/* πιο δυνατή θόλωση + soft overlay */}
-        <div className="absolute inset-0 bg-[#fdfaf6]/80 backdrop-blur-[14px] backdrop-brightness-110 z-0" />
+        <div className="absolute inset-0 bg-[#fdfaf6]/80 backdrop-blur-[12px] backdrop-brightness-110 z-0" />
 
-        <div className="relative z-10 max-w-2xl mx-auto space-y-6">
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-semibold leading-tight tracking-tight text-[#2f2e2b]">
+        <div className="relative z-10 max-w-xl sm:max-w-2xl mx-auto space-y-5 sm:space-y-6">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-semibold leading-tight tracking-tight text-[#2f2e2b]">
             Ενδοκρινολογία &amp; Ορμονική Ευεξία
           </h1>
 
-          <p className="text-sm md:text-base text-[#5b5853]">
+          <p className="text-sm sm:text-[15px] md:text-base text-[#5b5853]">
             Ήρεμη, σύγχρονη φροντίδα για τον θυρεοειδή, τον μεταβολισμό και τις
             ορμόνες σας.
           </p>
@@ -145,13 +136,13 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
               href="/appointments"
-              className="inline-flex items-center justify-center rounded-full bg-[#3b3a36] text-white px-8 py-3 text-sm md:text-base shadow-sm hover:bg-[#272623] transition"
+              className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-[#3b3a36] text-white px-8 py-3 text-sm md:text-base shadow-sm hover:bg-[#272623] transition"
             >
               Κλείστε Ραντεβού
             </Link>
             <Link
               href="#hours"
-              className="inline-flex items-center justify-center rounded-full border border-[#3b3a36]/40 text-[#3b3a36] px-8 py-3 text-sm md:text-base hover:bg-[#3b3a36] hover:text-white bg-white/70 transition"
+              className="w-full sm:w-auto inline-flex items-center justify-center rounded-full border border-[#3b3a36]/40 text-[#3b3a36] px-8 py-3 text-sm md:text-base hover:bg-[#3b3a36] hover:text-white bg-white/70 transition"
             >
               Ώρες Λειτουργίας
             </Link>
@@ -169,7 +160,6 @@ export default function Home() {
               </span>
             </div>
 
-            {/* Indicator για ηλεκτρονικά ραντεβού */}
             {acceptsOnline === null ? (
               <span className="inline-flex items-center gap-1 text-[#8b857b]">
                 <ShieldCheck className="w-3.5 h-3.5" />
@@ -178,7 +168,7 @@ export default function Home() {
             ) : (
               <span
                 className={[
-                  "inline-flex items-center gap-1",
+                  "inline-flex items-center gap-1 text-center",
                   acceptsOnline ? "text-emerald-700/80" : "text-amber-700/80",
                 ].join(" ")}
               >
@@ -191,7 +181,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Scroll indicator */}
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center text-[#8c7c68]">
           <span className="text-[11px] tracking-[0.18em] uppercase mb-1">
             Scroll
@@ -202,18 +191,17 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Hairline separator */}
       <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#e8e1d8] to-transparent" />
 
       {/* ======================= ΕΞΕΙΔΙΚΕΥΣΕΙΣ ======================= */}
-      <section className="py-16 px-6 bg-[#f9f4ee]">
+      <section className="py-14 sm:py-16 px-4 sm:px-6 bg-[#f9f4ee]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-2xl mx-auto">
             <p className="inline-flex items-center gap-2 rounded-full bg-[#f3ede4] border border-[#e8e1d8] px-3 py-1 text-[11px] tracking-[0.16em] uppercase text-[#7a7469] mb-4">
               <ActivitySquare className="w-3.5 h-3.5" />
               Κύριες Εξειδικεύσεις
             </p>
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-[#2f2e2c] mb-3">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-[#2f2e2c] mb-3">
               Ιατρική φροντίδα γύρω από τις ορμόνες
             </h2>
             <p className="text-sm md:text-base text-[#5b5853]">
@@ -222,16 +210,16 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+          <div className="mt-7 sm:mt-8 grid gap-4 sm:gap-5 md:grid-cols-3">
             {SPECIALTIES.map((item) => (
               <div
                 key={item.title}
-                className="rounded-2xl border border-[#e8e1d8] bg-white/90 p-4 shadow-sm hover:shadow-md hover:-translate-y-[2px] transition"
+                className="rounded-2xl border border-[#e8e1d8] bg-white/90 p-4 sm:p-5 shadow-sm hover:shadow-md hover:-translate-y-[2px] transition"
               >
                 <div className="inline-flex items-center justify-center rounded-2xl bg-[#f3ede4] text-[#8c7c68] p-2 mb-3">
                   {item.icon}
                 </div>
-                <h3 className="text-[15px] font-semibold text-[#2f2e2c] mb-2">
+                <h3 className="text-[15px] sm:text-base font-semibold text-[#2f2e2c] mb-2">
                   {item.title}
                 </h3>
                 <p className="text-sm text-[#5b5853] leading-relaxed">
@@ -243,31 +231,28 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Hairline separator */}
       <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#e8e1d8] to-transparent" />
 
       {/* ======================= Η Ιατρός ======================= */}
-      <section className="py-24 px-6 bg-[#faf7f3]">
-        <div className="relative max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
-          {/* ambient orbs */}
-          <div className="pointer-events-none absolute -top-16 -left-24 h-56 w-56 rounded-full bg-[radial-gradient(circle_at_center,_#efe6d9_0%,transparent_60%)] opacity-70" />
+      <section className="py-16 sm:py-24 px-4 sm:px-6 bg-[#faf7f3] overflow-hidden">
+        <div className="relative max-w-6xl mx-auto grid md:grid-cols-2 gap-10 md:gap-16 items-center">
+          <div className="pointer-events-none absolute -top-16 -left-24 h-56 w-56 rounded-full bg-[radial-gradient(circle_at_center,_#efe6d9_0%,transparent_60%)] opacity-60" />
 
-          <div className="space-y-6 text-center md:text-left">
+          <div className="space-y-5 sm:space-y-6 text-center md:text-left relative">
             <p className="inline-flex items-center gap-2 rounded-full bg-[#f3ede4] border border-[#e8e1d8] px-3 py-1 text-[11px] tracking-[0.16em] uppercase text-[#7a7469]">
               <Stethoscope className="w-3.5 h-3.5" />Η Ιατρός
             </p>
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight">
               Η Δρ. Γεωργία Κόλλια
             </h2>
-            <p className="text-[1.05rem] text-[#4a4944] leading-relaxed">
+            <p className="text-sm sm:text-[0.98rem] md:text-[1.05rem] text-[#4a4944] leading-relaxed">
               Η Δρ. Κόλλια ειδικεύεται στην ενδοκρινολογία με έμφαση στον
               θυρεοειδή, τον μεταβολισμό και τις ορμονικές διαταραχές. Προσφέρει
               εξατομικευμένη παρακολούθηση, συνδυάζοντας εμπειρία και σύγχρονη
               επιστημονική γνώση.
             </p>
 
-            {/* quick highlights */}
-            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-[#5b5853]">
+            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-sm text-[#5b5853]">
               <li className="inline-flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-[#8c7c68]" />{" "}
                 Εξατομικευμένα πλάνα θεραπείας
@@ -294,7 +279,7 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="max-w-md mx-auto rounded-3xl overflow-hidden shadow-2xl ring-1 ring-[#e8e1d8]">
+          <div className="max-w-xs sm:max-w-md mx-auto rounded-3xl overflow-hidden shadow-2xl ring-1 ring-[#e8e1d8]">
             <Image
               src="/doctor.jpg"
               alt="Dr. Georgia Kollia"
@@ -308,15 +293,13 @@ export default function Home() {
       </section>
 
       {/* ======================= Το Ιατρείο ======================= */}
-      <section className="py-24 px-6 bg-[#f2eee8]">
-        <div className="relative max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
-          {/* ambient accents */}
-          <div className="pointer-events-none absolute -top-16 -right-24 h-56 w-56 rounded-full bg-[radial-gradient(ellipse_at_center,_#efe6d9_0%,transparent_60%)] opacity-70" />
-          <div className="pointer-events-none absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-[radial-gradient(ellipse_at_center,_#f5ede2_0%,transparent_60%)] opacity-70" />
+      <section className="py-16 sm:py-24 px-4 sm:px-6 bg-[#f2eee8] overflow-hidden">
+        <div className="relative max-w-6xl mx-auto grid md:grid-cols-2 gap-10 md:gap-16 items-center">
+          <div className="pointer-events-none absolute -top-16 -right-24 h-56 w-56 rounded-full bg-[radial-gradient(ellipse_at_center,_#efe6d9_0%,transparent_60%)] opacity-60" />
+          <div className="pointer-events-none absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-[radial-gradient(ellipse_at_center,_#f5ede2_0%,transparent_60%)] opacity-60" />
 
-          {/* image first on mobile, second on desktop */}
           <div className="order-1 md:order-none space-y-3">
-            <div className="max-w-lg mx-auto relative rounded-3xl overflow-hidden shadow-2xl ring-1 ring-[#e8e1d8]">
+            <div className="max-w-xs sm:max-w-lg mx-auto relative rounded-3xl overflow-hidden shadow-2xl ring-1 ring-[#e8e1d8]">
               <Image
                 src="/iatreio.jpg"
                 alt="Clinic Interior"
@@ -325,30 +308,27 @@ export default function Home() {
                 className="object-cover w-full h-full will-change-transform hover:scale-[1.02] transition-transform duration-700"
                 priority={false}
               />
-              {/* overlay badge */}
-              <div className="absolute left-4 bottom-4 inline-flex items-center gap-2 rounded-full bg-white/90 backdrop-blur px-3 py-1 shadow-sm border border-[#e8e1d8] text-sm text-[#3b3a36]">
+              <div className="absolute left-3 bottom-3 sm:left-4 sm:bottom-4 inline-flex items-center gap-2 rounded-full bg-white/90 backdrop-blur px-3 py-1 shadow-sm border border-[#e8e1d8] text-xs sm:text-sm text-[#3b3a36]">
                 <MapPin className="w-4 h-4 text-[#8c7c68]" />
                 Ηλιούπολη
               </div>
             </div>
           </div>
 
-          {/* text + details */}
-          <div className="space-y-6 text-center md:text-left">
+          <div className="space-y-5 sm:space-y-6 text-center md:text-left relative">
             <p className="inline-flex items-center gap-2 rounded-full bg-[#f3ede4] border border-[#e8e1d8] px-3 py-1 text-[11px] tracking-[0.16em] uppercase text-[#7a7469]">
               <HeartPulse className="w-3.5 h-3.5" />
               Το Ιατρείο
             </p>
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight">
               Ένας χώρος γαλήνης &amp; εμπιστοσύνης
             </h2>
-            <p className="text-[1.05rem] text-[#4a4944] leading-relaxed">
+            <p className="text-sm sm:text-[0.98rem] md:text-[1.05rem] text-[#4a4944] leading-relaxed">
               Ένας κομψός, φιλόξενος χώρος που προάγει τη γαλήνη και την
               εμπιστοσύνη. Σχεδιασμένος ώστε να αισθάνεστε άνεση και ασφάλεια σε
               κάθε επίσκεψη.
             </p>
 
-            {/* key highlights */}
             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-[#5b5853]">
               <li className="inline-flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-[#8c7c68]" /> Πιστή τήρηση
@@ -361,7 +341,6 @@ export default function Home() {
               </li>
             </ul>
 
-            {/* info chips */}
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 pt-1">
               <span className="inline-flex items-center gap-2 rounded-full border border-[#e8e1d8] bg-white/80 px-3 py-1.5 text-xs text-[#3b3a36]">
                 <Clock className="w-4 h-4 text-[#8c7c68]" /> Κατόπιν ραντεβού
@@ -380,17 +359,16 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Hairline separator */}
       <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#e8e1d8] to-transparent" />
 
       {/* ======================= Ώρες Λειτουργίας ======================= */}
-      <section className="py-20 px-6 bg-[#faf7f3]" id="hours">
+      <section className="py-16 px-4 sm:px-6 bg-[#faf7f3]" id="hours">
         <div className="max-w-5xl mx-auto">
           <div className="text-center">
             <div className="mx-auto mb-4 inline-flex rounded-full border border-[#e8e1d8] bg-[#f3eee6] p-2">
               <Clock className="w-6 h-6 text-[#a78b64]" />
             </div>
-            <h2 className="text-3xl md:text-4xl font-serif font-semibold tracking-tight text-[#2f2e2c]">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-serif font-semibold tracking-tight text-[#2f2e2c]">
               Ώρες Λειτουργίας Ιατρείου
             </h2>
             <p className="mt-2 text-sm text-[#6a6257]">
@@ -398,7 +376,6 @@ export default function Home() {
             </p>
           </div>
 
-          {/* hours grid */}
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {HOURS.map(({ day, hours }) => {
               const isClosed = hours.includes("Κλειστά");
@@ -406,7 +383,7 @@ export default function Home() {
                 <div
                   key={day}
                   className={[
-                    "flex items-center justify-between rounded-xl px-4 py-3 shadow-sm border",
+                    "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 rounded-xl px-4 py-3 shadow-sm border",
                     isClosed
                       ? "border-[#eee8df] bg-[#f7f2ea]"
                       : "border-[#ece7df] bg-white",
@@ -429,7 +406,7 @@ export default function Home() {
           </div>
 
           <p className="mt-4 text-center text-xs text-[#6a6257] italic">
-            * Για άμεση διαθεσιμότητα και επείγοντα περιστατικά, καλέστε στο{" "}
+            * Για άμεση διαθεσιμότητα, καλέστε στο{" "}
             <a href="tel:+302109934316" className="underline">
               210 9934316
             </a>
@@ -441,33 +418,31 @@ export default function Home() {
       {/* ======================= CTA ======================= */}
       <section
         id="contact"
-        className="relative py-28 px-6 bg-[#3b3a36] text-white text-center overflow-hidden"
+        className="relative py-20 sm:py-24 px-4 sm:px-6 bg-[#3b3a36] text-white text-center overflow-hidden"
       >
-        {/* texture */}
         <div className="absolute inset-0 opacity-10">
           <Image src="/cta.jpg" alt="cta image" fill className="object-cover" />
         </div>
-        {/* soft vignette */}
         <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,transparent_0%,rgba(0,0,0,0.3)_70%,rgba(0,0,0,0.45)_100%)]" />
 
-        <div className="relative z-10 max-w-2xl mx-auto space-y-6">
-          <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
+        <div className="relative z-10 max-w-2xl mx-auto space-y-5 sm:space-y-6">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
             Κλείστε Ραντεβού
           </h2>
-          <p className="text-lg text-white/90">
+          <p className="text-base sm:text-lg text-white/90">
             Κάντε το πρώτο βήμα προς την ορμονική ισορροπία και την καλύτερη
             ποιότητα ζωής. Η ομάδα μας είναι εδώ για να σας βοηθήσει.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
               href="/appointments"
-              className="inline-flex items-center justify-center rounded-full bg-white/95 text-[#3b3a36] px-6 py-3 shadow-sm hover:bg-white transition"
+              className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-white/95 text-[#3b3a36] px-6 py-3 shadow-sm hover:bg-white transition"
             >
               Κλείστε Online
             </Link>
             <a
               href="tel:+302109934316"
-              className="inline-flex items-center justify-center rounded-full border border-white/80 px-6 py-3 hover:bg-white hover:text-[#3b3a36] transition"
+              className="w-full sm:w-auto inline-flex items-center justify-center rounded-full border border-white/80 px-6 py-3 hover:bg-white hover:text-[#3b3a36] transition"
             >
               Κλήση στο 210 9934316
             </a>
