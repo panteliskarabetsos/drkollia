@@ -1365,7 +1365,7 @@ export default function AdminAppointmentsPage() {
 
       {notesModalOpen && selectedPatient && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-10"
+          className="fixed inset-0 z-50 flex items-center justify-center px-3 sm:px-4 py-6 sm:py-10"
           role="dialog"
           aria-modal="true"
           aria-labelledby="patient-card-title"
@@ -1377,34 +1377,93 @@ export default function AdminAppointmentsPage() {
             className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
           />
 
-          {/* Patient Card */}
-          <div className="relative w-full max-w-5xl rounded-2xl border border-[#e5e1d8] bg-gradient-to-b from-white/95 to-[#fdfcf9]/90 shadow-2xl backdrop-blur-xl overflow-hidden">
-            {/* Header */}
-            <div className="sticky top-0 flex items-center justify-between border-b border-[#eee7db] bg-white/80 px-6 sm:px-8 py-4 backdrop-blur">
-              <h2
-                id="patient-card-title"
-                className="flex items-center gap-2 text-lg sm:text-xl font-semibold tracking-tight text-[#2f2e2b]"
-              >
-                <UserCircle className="h-6 w-6 text-[#8c7c68]" />
-                Καρτέλα Ασθενούς
-              </h2>
-              <button
-                onClick={() => setNotesModalOpen(false)}
-                className="rounded-lg px-2 py-1 text-sm text-[#6b675f] hover:bg-[#f3f0ea] focus:outline-none focus:ring-2 focus:ring-[#d7cfc2]/70"
-              >
-                ✕
-              </button>
+          {/* Patient Sheet */}
+          <div className="relative w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden rounded-3xl border border-[#e3dfd4] bg-gradient-to-b from-white/95 via-[#fcfaf6]/95 to-[#f6f1e9]/95 shadow-2xl backdrop-blur-xl">
+            {/* Accent bar */}
+            <div className="h-1.5 w-full bg-gradient-to-r from-[#8c7c68] via-[#c6b49b] to-[#9a8974]" />
+
+            {/* HEADER */}
+            <div className="border-b border-[#eee7db] bg-white/90 px-4 sm:px-6 md:px-8 py-3.5 sm:py-4 backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                  {/* Avatar */}
+                  <div className="flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl bg-[#f3ede4] text-[#8c7c68] shadow-sm">
+                    <span className="text-lg font-semibold">
+                      {(selectedPatient.first_name?.[0] || "").toUpperCase()}
+                    </span>
+                  </div>
+                  {/* Title */}
+                  <div className="min-w-0">
+                    <h2
+                      id="patient-card-title"
+                      className="truncate text-base sm:text-lg md:text-xl font-semibold tracking-tight text-[#2f2e2b]"
+                    >
+                      {selectedPatient.first_name} {selectedPatient.last_name}
+                    </h2>
+                    <p className="mt-0.5 text-[11px] sm:text-xs text-[#898379]">
+                      Καρτέλα Ασθενούς · σύνοψη στοιχείων & κλινικού ιστορικού
+                    </p>
+                  </div>
+                </div>
+
+                {/* Close button */}
+                <button
+                  onClick={() => setNotesModalOpen(false)}
+                  className="rounded-full px-2.5 py-1.5 text-xs sm:text-sm text-[#6b675f] hover:bg-[#f3f0ea] focus:outline-none focus:ring-2 focus:ring-[#d7cfc2]/70"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Summary badges */}
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] sm:text-xs text-[#7f786f]">
+                {selectedPatient.birth_date && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[#e6ded0] bg-[#fbf7f1] px-2.5 py-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#8c7c68]" />
+                    Ηλικία:{" "}
+                    <span className="font-medium">
+                      {calculateAge(selectedPatient.birth_date) || "—"} ετών
+                    </span>
+                  </span>
+                )}
+                {selectedPatient.gender && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[#e6ded0] bg-white/90 px-2.5 py-1">
+                    Φύλο:{" "}
+                    <span className="font-medium">
+                      {selectedPatient.gender}
+                    </span>
+                  </span>
+                )}
+                {selectedPatient.occupation && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[#e6ded0] bg-white/90 px-2.5 py-1">
+                    Επάγγελμα:{" "}
+                    <span className="font-medium">
+                      {selectedPatient.occupation}
+                    </span>
+                  </span>
+                )}
+                {selectedPatient.first_visit_date && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[#e6ded0] bg-white/90 px-2.5 py-1">
+                    Πρώτη επίσκεψη:{" "}
+                    <span className="font-medium">
+                      {formatDate(selectedPatient.first_visit_date)}
+                    </span>
+                  </span>
+                )}
+              </div>
             </div>
 
-            {/* Body */}
-            <div className="max-h-[75vh] overflow-auto px-6 sm:px-8 py-6 space-y-8">
-              {/* Contact Info */}
-              <section>
-                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#5f5b54]">
-                  <span className="w-1.5 h-1.5 bg-[#8c7c68] rounded-full" />
-                  Στοιχεία Ασθενούς
-                </h3>
-                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
+            {/* BODY – scrollable */}
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 py-6 space-y-7 sm:space-y-8">
+              {/* SECTION: Contact */}
+              <section className="rounded-2xl border border-[#eee7db] bg-white/90 px-3.5 sm:px-4 py-3.5 sm:py-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#5f5b54]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#8c7c68]" />
+                    Στοιχεία Ασθενούς
+                  </h3>
+                </div>
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 text-xs sm:text-sm">
                   {[
                     [
                       "Ονοματεπώνυμο",
@@ -1418,12 +1477,11 @@ export default function AdminAppointmentsPage() {
                     ["Φύλο", selectedPatient.gender],
                     ["Επάγγελμα", selectedPatient.occupation],
                   ].map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="rounded-xl border border-[#eee7db] bg-white px-3 py-2 shadow-sm"
-                    >
-                      <dt className="text-xs text-[#8c887f]">{label}</dt>
-                      <dd className="font-medium text-[#2f2e2b]">
+                    <div key={label} className="space-y-0.5">
+                      <dt className="text-[11px] uppercase tracking-[0.12em] text-[#a09687]">
+                        {label}
+                      </dt>
+                      <dd className="rounded-xl border border-[#f0e8dd] bg-[#fdfbf7] px-3 py-1.5 text-[13px] sm:text-sm font-medium text-[#2f2e2b] break-words">
                         {value || "—"}
                       </dd>
                     </div>
@@ -1431,30 +1489,25 @@ export default function AdminAppointmentsPage() {
                 </dl>
               </section>
 
-              {/* History */}
-              <section>
-                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#5f5b54]">
-                  <span className="w-1.5 h-1.5 bg-[#8c7c68] rounded-full" />
-                  Ιστορικό & Συνήθειες
+              {/* SECTION: History */}
+              <section className="rounded-2xl border border-[#eee7db] bg-white/90 px-3.5 sm:px-4 py-3.5 sm:py-4 shadow-sm">
+                <h3 className="mb-3 flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#5f5b54]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#8c7c68]" />
+                  Ιστορικό &amp; Συνήθειες
                 </h3>
-                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 text-xs sm:text-sm">
                   {[
-                    [
-                      "Πρώτη Επίσκεψη",
-                      formatDate(selectedPatient.first_visit_date),
-                    ],
                     ["Οικ. Κατάσταση", selectedPatient.marital_status],
                     ["Τέκνα", selectedPatient.children],
                     ["Κάπνισμα", selectedPatient.smoking],
                     ["Αλκοόλ", selectedPatient.alcohol],
                     ["Φάρμακα", selectedPatient.medications],
                   ].map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="rounded-xl border border-[#eee7db] bg-white px-3 py-2 shadow-sm"
-                    >
-                      <dt className="text-xs text-[#8c887f]">{label}</dt>
-                      <dd className="font-medium text-[#2f2e2b]">
+                    <div key={label} className="space-y-0.5">
+                      <dt className="text-[11px] uppercase tracking-[0.12em] text-[#a09687]">
+                        {label}
+                      </dt>
+                      <dd className="rounded-xl border border-[#f0e8dd] bg-[#fdfbf7] px-3 py-1.5 text-[13px] sm:text-sm font-medium text-[#2f2e2b] break-words">
                         {value || "—"}
                       </dd>
                     </div>
@@ -1462,13 +1515,13 @@ export default function AdminAppointmentsPage() {
                 </dl>
               </section>
 
-              {/* Clinical */}
-              <section>
-                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#5f5b54]">
-                  <span className="w-1.5 h-1.5 bg-[#8c7c68] rounded-full" />
+              {/* SECTION: Clinical */}
+              <section className="rounded-2xl border border-[#eee7db] bg-white/90 px-3.5 sm:px-4 py-3.5 sm:py-4 shadow-sm">
+                <h3 className="mb-3 flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#5f5b54]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#8c7c68]" />
                   Κλινικές Πληροφορίες
                 </h3>
-                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-xs sm:text-sm">
                   {[
                     [
                       "Γυναικολογικό Ιστορικό",
@@ -1485,12 +1538,11 @@ export default function AdminAppointmentsPage() {
                       selectedPatient.preclinical_screening,
                     ],
                   ].map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="rounded-xl border border-[#eee7db] bg-white px-3 py-2 shadow-sm"
-                    >
-                      <dt className="text-xs text-[#8c887f]">{label}</dt>
-                      <dd className="font-medium text-[#2f2e2b]">
+                    <div key={label} className="space-y-0.5">
+                      <dt className="text-[11px] uppercase tracking-[0.12em] text-[#a09687]">
+                        {label}
+                      </dt>
+                      <dd className="rounded-xl border border-[#f0e8dd] bg-[#fdfbf7] px-3 py-2 text-[13px] sm:text-sm font-medium text-[#2f2e2b] whitespace-pre-wrap leading-relaxed">
                         {value || "—"}
                       </dd>
                     </div>
@@ -1498,18 +1550,18 @@ export default function AdminAppointmentsPage() {
                 </dl>
               </section>
 
-              {/* Notes */}
-              <section>
-                <h3 className="mb-2 text-sm font-semibold text-[#5f5b54]">
+              {/* SECTION: Notes */}
+              <section className="space-y-2">
+                <h3 className="text-xs sm:text-sm font-semibold text-[#5f5b54]">
                   Σημειώσεις
                 </h3>
-                <div className="rounded-xl border border-[#eee7db] bg-[#fcfaf6] px-4 py-3 shadow-sm text-sm text-[#3b3a36]">
+                <div className="rounded-2xl border border-[#eee7db] bg-[#fcfaf6] px-3.5 sm:px-4 py-3.5 shadow-sm text-xs sm:text-sm text-[#3b3a36] whitespace-pre-wrap leading-relaxed">
                   {selectedPatient.notes?.trim() || "Δεν υπάρχουν σημειώσεις."}
                 </div>
               </section>
 
               {/* Updated At */}
-              <p className="text-right text-xs text-[#8c887f]">
+              <p className="text-right text-[11px] sm:text-xs text-[#8c887f]">
                 Τελευταία ενημέρωση:{" "}
                 {selectedPatient.updated_at
                   ? new Date(selectedPatient.updated_at).toLocaleString("el-GR")
@@ -1517,11 +1569,11 @@ export default function AdminAppointmentsPage() {
               </p>
             </div>
 
-            {/* Footer */}
-            <div className="sticky bottom-0 flex flex-col sm:flex-row justify-end gap-3 border-t border-[#eee7db] bg-white/80 px-6 sm:px-8 py-4 backdrop-blur">
+            {/* FOOTER */}
+            <div className="border-t border-[#eee7db] bg-white/90 px-4 sm:px-6 md:px-8 py-3 sm:py-4 backdrop-blur flex flex-col sm:flex-row justify-end gap-2.5 sm:gap-3">
               <button
                 onClick={() => setNotesModalOpen(false)}
-                className="w-full sm:w-auto rounded-xl border border-[#e5e1d8] bg-white px-4 py-2 text-sm text-[#3b3a36] shadow-sm hover:bg-[#f6f3ee]"
+                className="w-full sm:w-auto rounded-xl border border-[#e5e1d8] bg-white px-4 py-2 text-sm text-[#3b3a36] shadow-sm hover:bg-[#f6f3ee] transition"
               >
                 Κλείσιμο
               </button>
@@ -1530,9 +1582,18 @@ export default function AdminAppointmentsPage() {
                   setNotesModalOpen(false);
                   router.push(`/admin/patients/${selectedPatient.id}`);
                 }}
-                className="w-full sm:w-auto rounded-xl bg-[#8c7c68] px-4 py-2 text-sm text-white shadow-sm transition hover:bg-[#6f6253]"
+                className="w-full sm:w-auto rounded-xl bg-[#8c7c68] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#6f6253]"
               >
-                Επεξεργασία
+                Επεξεργασία καρτέλας
+              </button>
+              <button
+                onClick={() => {
+                  setNotesModalOpen(false);
+                  router.push(`/admin/patients/history/${selectedPatient.id}`);
+                }}
+                className="w-full sm:w-auto rounded-xl border border-[#8c7c68]/80 bg-white px-4 py-2 text-sm font-medium text-[#5a5247] shadow-sm transition hover:bg-[#f6f1ea]"
+              >
+                Ιστορικό επισκέψεων
               </button>
             </div>
           </div>
