@@ -242,6 +242,29 @@ export default function AdminLayout({ children }) {
     []
   );
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator)) return;
+
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => {
+        registrations.forEach((reg) => {
+          const url =
+            reg.active?.scriptURL ||
+            reg.installing?.scriptURL ||
+            reg.waiting?.scriptURL;
+
+          if (url && url.includes("/admin/sw.js")) {
+            reg.unregister();
+          }
+        });
+      })
+      .catch((err) => {
+        console.debug("SW cleanup error", err);
+      });
+  }, []);
+
   const isActive = (href) => pathname?.startsWith(href);
   const primaryNav = nav.slice(0, 4);
 
