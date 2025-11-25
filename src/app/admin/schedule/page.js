@@ -64,7 +64,8 @@ export default function SchedulePage() {
   // dialogs / errors
   const [formError, setFormError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState({ type: null, id: null });
-  //online check
+
+  // online check
   const [online, setOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine
   );
@@ -79,6 +80,7 @@ export default function SchedulePage() {
       window.removeEventListener("offline", update);
     };
   }, []);
+
   // ----- init -----
   useEffect(() => {
     router.prefetch("/admin");
@@ -152,11 +154,13 @@ export default function SchedulePage() {
     const [h, m] = (hhmm || "00:00").split(":").map(Number);
     return h * 60 + m;
   };
+
   const toHHMM = (mins) => {
     const h = String(Math.floor(mins / 60)).padStart(2, "0");
     const m = String(mins % 60).padStart(2, "0");
     return `${h}:${m}`;
   };
+
   const timeSlots = useMemo(
     () =>
       Array.from({ length: 96 }, (_, i) => {
@@ -177,6 +181,7 @@ export default function SchedulePage() {
         toMin(s.end_time.slice(0, 5)),
       ]);
   };
+
   const getExceptionRangesForDate = (date, exs) => {
     const dateStr = format(date, "yyyy-MM-dd");
     const sameDay = exs.filter(
@@ -197,6 +202,7 @@ export default function SchedulePage() {
         ];
       });
   };
+
   const subtractRanges = (workingRanges, exceptionRanges) => {
     if (!exceptionRanges.length) return workingRanges.slice();
     let result = workingRanges.slice();
@@ -228,6 +234,7 @@ export default function SchedulePage() {
     }
     return starts;
   };
+
   const getAvailableExceptionEndTimes = (selectedStartHHMM) => {
     if (!selectedDate || !weeklySchedule.length) return [];
     const working = getWorkingRangesForDate(selectedDate, weeklySchedule);
@@ -420,78 +427,120 @@ export default function SchedulePage() {
   }, [exceptions, selectedDate]);
 
   return (
-    <main className="py-2 relative min-h-screen bg-gradient-to-b from-stone-50 via-white to-white">
-      {/* header */}
-      <div className="sticky top-0 z-10 backdrop-blur bg-white/70 border-b">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+    <main className="relative min-h-screen bg-gradient-to-br from-[#f9f9f9] via-[#f4f1ec] to-[#e8e5de]">
+      {/* Top sticky header */}
+      <div className="sticky top-0 z-20 border-b border-[#e5e1d8] bg-white/80 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <Button
             variant="outline"
             onClick={() => router.push("/admin")}
-            className="gap-2"
+            className="gap-2 rounded-xl border-[#d5cdc0] bg-white/80 hover:bg-[#f6f3ee]"
           >
             <ArrowLeft className="h-4 w-4" />
-            Επιστροφή
+            Πίσω
           </Button>
-          <h1 className="text-lg sm:text-xl font-semibold tracking-tight">
-            Πρόγραμμα Ιατρείου
-          </h1>
-          <div className="w-[116px]" /> {/* spacer */}
+          <div className="text-center">
+            <h1 className="text-sm font-semibold tracking-tight text-[#2f2e2b] sm:text-base">
+              Πρόγραμμα Ιατρείου
+            </h1>
+            <p className="text-[11px] text-[#8c887f]">
+              Ρύθμιση ωραρίου & εξαιρέσεων για online ραντεβού
+            </p>
+          </div>
+          <div className="w-[96px]" />
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* toggle */}
-        <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
-          <span className="text-sm font-medium text-stone-700">
-            Ηλεκτρονικά ραντεβού
-          </span>
-          <label
-            title={
-              !online
-                ? "Εκτός σύνδεσης — δεν μπορείτε να αλλάξετε τη ρύθμιση"
-                : undefined
-            }
-            className={`inline-flex items-center gap-2 select-none ${
-              online ? "cursor-pointer" : "cursor-not-allowed opacity-60"
-            }`}
-          >
-            <input
-              type="checkbox"
-              className="sr-only peer"
-              checked={acceptNewAppointments}
-              onChange={(e) => toggleClinicAppointments(e.target.checked)}
-              disabled={!online || settingsLoading}
-            />
-            <div className="relative w-12 h-6 rounded-full bg-stone-300 transition peer-checked:bg-emerald-600 peer-checked:[&>span]:translate-x-6">
-              <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform" />
+      <div className="mx-auto max-w-7xl px-4 py-6 space-y-6">
+        {/* Summary / toggle card */}
+        <section className="rounded-3xl border border-[#e5e1d8] bg-gradient-to-r from-white/95 to-[#fdfaf6] px-5 py-4 shadow-sm sm:px-6 sm:py-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#8c887f]">
+                Διαθεσιμότητα online ραντεβού
+              </p>
+              <p className="mt-1 text-sm text-[#3b3a36]">
+                Ενεργοποιήστε ή απενεργοποιήστε τη δυνατότητα νέων online
+                ραντεβού και ορίστε το βασικό πρόγραμμα λειτουργίας.
+              </p>
+              {!online && (
+                <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] text-amber-800">
+                  <WifiOff className="h-3.5 w-3.5" />
+                  Εκτός σύνδεσης — οι αλλαγές δεν αποθηκεύονται.
+                </div>
+              )}
             </div>
-            <span className="ml-2 text-sm text-stone-700">
-              {acceptNewAppointments
-                ? "Δεχόμαστε νέα ραντεβού"
-                : "Δεν δεχόμαστε νέα ραντεβού"}
-            </span>
-          </label>
-          {!online && (
-            <p className="w-full text-center text-xs text-amber-700">
-              Εκτός σύνδεσης — η ρύθμιση είναι προσωρινά απενεργοποιημένη.
-            </p>
-          )}
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="flex flex-col items-start gap-2 sm:items-end">
+              <span className="text-xs font-medium text-[#5f5b54]">
+                Ηλεκτρονικά ραντεβού
+              </span>
+
+              <label
+                title={
+                  !online
+                    ? "Εκτός σύνδεσης — δεν μπορείτε να αλλάξετε τη ρύθμιση"
+                    : undefined
+                }
+                className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm shadow-sm ${
+                  online
+                    ? "cursor-pointer border-emerald-100 bg-emerald-50/70"
+                    : "cursor-not-allowed border-stone-200 bg-stone-100/70 opacity-70"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={acceptNewAppointments}
+                  onChange={(e) => toggleClinicAppointments(e.target.checked)}
+                  disabled={!online || settingsLoading}
+                />
+
+                {/* switch track */}
+                <div
+                  className={
+                    "relative h-6 w-12 rounded-full transition-colors " +
+                    (acceptNewAppointments
+                      ? "bg-emerald-600"
+                      : "bg-stone-300") +
+                    (!online || settingsLoading ? " opacity-50" : "")
+                  }
+                >
+                  {/* switch thumb */}
+                  <span
+                    className={
+                      "absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform " +
+                      (acceptNewAppointments ? "translate-x-6" : "")
+                    }
+                  />
+                </div>
+
+                <span className="ml-1 text-xs text-[#3b3a36]">
+                  {acceptNewAppointments
+                    ? "Δεχόμαστε νέα ραντεβού"
+                    : "Δεν δεχόμαστε νέα ραντεβού"}
+                </span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        {/* Main grid */}
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
           {/* Weekly schedule */}
-          <section className="rounded-3xl border bg-white shadow-sm">
-            <div className="px-6 pt-6 pb-2">
-              <h2 className="text-base font-semibold text-stone-800">
+          <section className="rounded-3xl border border-[#e5e1d8] bg-white/95 shadow-sm">
+            <div className="px-5 pt-5 pb-2 sm:px-6">
+              <h2 className="text-base font-semibold text-[#2f2e2b]">
                 Βασικό Εβδομαδιαίο Πρόγραμμα
               </h2>
-              <p className="text-xs text-stone-500 mt-1">
-                Ορίστε τα ωράρια ανά ημέρα. Τα διαστήματα εμφανίζονται ως chips.
+              <p className="mt-1 text-xs text-[#8c887f]">
+                Ορίστε τα βασικά ωράρια ανά ημέρα. Τα διαστήματα εμφανίζονται ως
+                μικρά «chips».
               </p>
             </div>
-            <div className="px-6 pb-6 space-y-3">
+            <div className="space-y-3 px-5 pb-6 sm:px-6">
               {weekdays.map((day, idx) => {
-                // FIX: Sunday should be 7 (not 0)
+                // Sunday should be 7 (not 0)
                 const actualIdx = idx === 6 ? 7 : idx + 1;
                 const daySchedules = weeklySchedule
                   .filter((s) => s.weekday === actualIdx)
@@ -500,18 +549,23 @@ export default function SchedulePage() {
                 return (
                   <div
                     key={actualIdx}
-                    className="rounded-xl border bg-stone-50/70 px-4 py-3"
+                    className="rounded-2xl border border-[#ebe3d8] bg-[#fbf8f3] px-4 py-3"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-stone-800">{day}</span>
+                      <span className="text-sm font-semibold text-[#3b3a36]">
+                        {day}
+                      </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setEditDay(actualIdx)}
-                        className="gap-2 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                        onClick={() => {
+                          setEditDay(actualIdx);
+                          setFormError("");
+                        }}
+                        className="gap-2 rounded-xl text-xs text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
                         disabled={!online}
                       >
-                        <Plus className="h-4 w-4" /> Προσθήκη Ώρας
+                        <Plus className="h-4 w-4" /> Προσθήκη διαστήματος
                       </Button>
                     </div>
 
@@ -520,7 +574,7 @@ export default function SchedulePage() {
                         {daySchedules.map((s) => (
                           <span
                             key={s.id}
-                            className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1 text-sm shadow-sm"
+                            className="inline-flex items-center gap-2 rounded-full border border-[#e2d9cd] bg-white px-3 py-1 text-xs shadow-sm"
                           >
                             <Clock className="h-3.5 w-3.5 text-stone-500" />
                             {s.start_time.slice(0, 5)} –{" "}
@@ -540,17 +594,20 @@ export default function SchedulePage() {
                         ))}
                       </div>
                     ) : (
-                      <p className="mt-1 text-sm text-stone-500">
-                        Δεν έχει οριστεί
+                      <p className="mt-1 text-xs text-[#8c887f]">
+                        Δεν έχει οριστεί ωράριο για τη συγκεκριμένη ημέρα.
                       </p>
                     )}
 
                     {/* inline add form for selected day */}
                     {editDay === actualIdx && (
-                      <div className="mt-4 rounded-xl border bg-white p-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="mt-4 rounded-2xl border border-[#e5ddd1] bg-white px-3 py-3 sm:px-4">
+                        <p className="mb-2 text-xs font-semibold text-[#5f5b54]">
+                          Νέο χρονικό διάστημα
+                        </p>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div>
-                            <label className="block text-xs font-medium text-stone-600 mb-1">
+                            <label className="mb-1 block text-[11px] font-medium text-[#7a746a]">
                               Από
                             </label>
                             <select
@@ -572,7 +629,7 @@ export default function SchedulePage() {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-stone-600 mb-1">
+                            <label className="mb-1 block text-[11px] font-medium text-[#7a746a]">
                               Έως
                             </label>
                             <select
@@ -606,7 +663,7 @@ export default function SchedulePage() {
 
                         <div className="mt-3 flex items-center gap-2">
                           <Button
-                            className="bg-emerald-600 hover:bg-emerald-700"
+                            className="rounded-xl bg-emerald-600 px-4 py-2 text-sm hover:bg-emerald-700"
                             onClick={updateSchedule}
                             disabled={!online}
                           >
@@ -614,6 +671,7 @@ export default function SchedulePage() {
                           </Button>
                           <Button
                             variant="outline"
+                            className="rounded-xl px-4 py-2 text-sm"
                             onClick={() => {
                               setEditDay(null);
                               setEditTimes({ start: "", end: "" });
@@ -632,18 +690,18 @@ export default function SchedulePage() {
           </section>
 
           {/* Exceptions */}
-          <section className="rounded-3xl border bg-white shadow-sm">
-            <div className="px-6 pt-6">
-              <h2 className="text-base font-semibold text-stone-800 text-center">
+          <section className="rounded-3xl border border-[#e5e1d8] bg-white/95 shadow-sm">
+            <div className="px-5 pt-5 sm:px-6">
+              <h2 className="text-base font-semibold text-[#2f2e2b] text-center sm:text-left">
                 Εξαιρέσεις Ημερολογίου
               </h2>
-              <p className="mt-1 text-xs text-stone-500 text-center">
-                Επιλέξτε ημερομηνία και ορίστε χρονικές εξαιρέσεις ή εξαίρεση
-                ολόκληρης ημέρας.
+              <p className="mt-1 text-xs text-[#8c887f] text-center sm:text-left">
+                Επιλέξτε ημερομηνία και ορίστε μπλοκαρισμένα διαστήματα ή
+                ολόκληρη ημέρα.
               </p>
             </div>
 
-            <div className="px-6 pb-6">
+            <div className="px-5 pb-6 sm:px-6">
               <div className="mt-4 grid place-items-center">
                 {hasMounted && (
                   <Calendar
@@ -651,18 +709,24 @@ export default function SchedulePage() {
                     selected={selectedDate}
                     onSelect={setSelectedDate}
                     locale={el}
-                    // block past days
                     disabled={(date) =>
                       date < new Date(new Date().setHours(0, 0, 0, 0))
                     }
-                    className="rounded-xl border bg-white"
+                    className="rounded-2xl border border-[#e5e1d8] bg-white shadow-sm"
                   />
                 )}
               </div>
 
-              <div className="mt-6 space-y-5">
+              <div className="mt-5 rounded-2xl border border-[#eee5da] bg-[#fdfaf6] px-4 py-3 text-xs text-[#5f5b54]">
+                <span className="font-semibold">Επιλεγμένη ημερομηνία:</span>{" "}
+                {selectedDate
+                  ? format(selectedDate, "EEEE dd/MM/yyyy", { locale: el })
+                  : "—"}
+              </div>
+
+              <div className="mt-5 space-y-5">
                 <div>
-                  <label className="text-sm font-medium block mb-1 text-stone-700">
+                  <label className="mb-1 block text-sm font-medium text-[#3b3a36]">
                     Σημείωση
                   </label>
                   <input
@@ -688,22 +752,21 @@ export default function SchedulePage() {
                       setExceptionTime((prev) => ({
                         ...prev,
                         fullDay: e.target.checked,
-                        // reset hours when toggling
                         start: "",
                         end: "",
                       }))
                     }
                     className="h-4 w-4"
                   />
-                  <label htmlFor="fullDay" className="text-sm text-stone-700">
+                  <label htmlFor="fullDay" className="text-sm text-[#3b3a36]">
                     Μπλοκάρισμα όλης της ημέρας
                   </label>
                 </div>
 
                 {!exceptionTime.fullDay && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="block text-sm font-medium text-stone-700 mb-1">
+                      <label className="mb-1 block text-sm font-medium text-[#3b3a36]">
                         Από
                       </label>
                       <select
@@ -727,7 +790,7 @@ export default function SchedulePage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-stone-700 mb-1">
+                      <label className="mb-1 block text-sm font-medium text-[#3b3a36]">
                         Έως
                       </label>
                       <select
@@ -770,7 +833,7 @@ export default function SchedulePage() {
 
                 <div className="flex items-center gap-2">
                   <Button
-                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                    className="w-full rounded-xl bg-emerald-600 text-sm hover:bg-emerald-700"
                     onClick={addException}
                     disabled={
                       !online ||
@@ -783,6 +846,7 @@ export default function SchedulePage() {
                   </Button>
                   <Button
                     variant="outline"
+                    className="rounded-xl text-sm"
                     onClick={() =>
                       setExceptionTime({
                         start: "",
@@ -797,11 +861,11 @@ export default function SchedulePage() {
                 </div>
 
                 <div className="pt-2">
-                  <h3 className="text-sm font-semibold text-stone-700 mb-2">
+                  <h3 className="mb-2 text-sm font-semibold text-[#3b3a36]">
                     Εξαιρέσεις ημέρας
                   </h3>
                   {dayExceptions.length === 0 ? (
-                    <p className="text-sm text-stone-500">
+                    <p className="text-sm text-[#8c887f]">
                       Δεν υπάρχουν εξαιρέσεις για τη μέρα.
                     </p>
                   ) : (
@@ -809,10 +873,10 @@ export default function SchedulePage() {
                       {dayExceptions.map((ex) => (
                         <li
                           key={ex.id}
-                          className="flex items-center justify-between rounded-xl border bg-stone-50/70 px-4 py-3 text-sm"
+                          className="flex items-center justify-between rounded-2xl border border-[#ebe3d8] bg-[#fbf8f3] px-4 py-3 text-sm"
                         >
                           <div>
-                            <div className="font-medium text-stone-800">
+                            <div className="font-medium text-[#2f2e2b]">
                               {format(
                                 new Date(ex.exception_date),
                                 "dd/MM/yyyy"
@@ -828,7 +892,7 @@ export default function SchedulePage() {
                                 : " (όλη η ημέρα)"}
                             </div>
                             {ex.reason && (
-                              <div className="text-xs text-stone-600 mt-0.5">
+                              <div className="mt-0.5 text-xs text-[#6b675f]">
                                 {ex.reason}
                               </div>
                             )}
@@ -859,7 +923,7 @@ export default function SchedulePage() {
         open={!!confirmDelete.id}
         onOpenChange={(o) => !o && setConfirmDelete({ type: null, id: null })}
       >
-        <DialogContent>
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>Επιβεβαίωση Διαγραφής</DialogTitle>
             <DialogDescription>
@@ -874,11 +938,12 @@ export default function SchedulePage() {
             <Button
               variant="outline"
               onClick={() => setConfirmDelete({ type: null, id: null })}
+              className="rounded-xl"
             >
               Άκυρο
             </Button>
             <Button
-              className="bg-red-600 hover:bg-red-700"
+              className="rounded-xl bg-red-600 hover:bg-red-700"
               onClick={async () => {
                 if (confirmDelete.type === "schedule")
                   await deleteTimeSlot(confirmDelete.id);

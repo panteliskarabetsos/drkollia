@@ -6,7 +6,6 @@ import { supabase } from "../lib/supabaseClient";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
-import { normalizeGreekName } from "../../app/utils/strings";
 import {
   Popover,
   PopoverContent,
@@ -14,21 +13,45 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import {
-  UserPlus,
-  Users,
   ArrowLeft,
   CalendarX,
   AlertTriangle,
+  ShieldCheck,
+  Lock,
 } from "lucide-react";
-import { addMinutes, isBefore } from "date-fns";
 import { startOfMonth, endOfMonth } from "date-fns";
 import { el } from "date-fns/locale";
 
+// 🔹 Ενδεικτικές πληροφορίες / τιμές ανά λόγο επίσκεψης
+const VISIT_TYPES = {
+  Εξέταση: {
+    title: "Πλήρης ενδοκρινολογική εξέταση",
+    description:
+      "Περιλαμβάνει λήψη αναλυτικού ιστορικού, κλινική εξέταση και αξιολόγηση προηγούμενων εξετάσεων.",
+    priceLabel: "από 60€",
+    durationLabel: "Διάρκεια περίπου 30'",
+  },
+  "Αξιολόγηση Αποτελεσμάτων": {
+    title: "Αξιολόγηση εργαστηριακών εξετάσεων",
+    description:
+      "Συζήτηση αποτελεσμάτων, προσαρμογή αγωγής και απαντήσεις σε απορίες σχετικά με την πορεία σας.",
+    priceLabel: "Χωρίς χρέωση αν εχει προηγηθεί εξέταση στο ιατρείο",
+    durationLabel: "Διάρκεια περίπου 15–20'",
+  },
+  "Ιατρικός Επισκέπτης": {
+    title: "Συνάντηση ιατρικού επισκέπτη",
+    description:
+      "Ραντεβού αποκλειστικά για ιατρικούς επισκέπτες και συνεργάτες. Δεν αφορά εξέταση ασθενών.",
+    priceLabel: "Χωρίς χρέωση ",
+    durationLabel: "Σύντομη ενημερωτική συνάντηση",
+  },
+};
+
 function normalizeGreekText(text) {
   return text
-    .normalize("NFD") // αποσυνθέτει τα τονισμένα γράμματα (π.χ. ή → ι + ́)
-    .replace(/[\u0300-\u036f]/g, "") // αφαιρεί τους τόνους
-    .toLowerCase(); // πεζά
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
 export default function NewAppointmentPage() {
@@ -47,10 +70,12 @@ export default function NewAppointmentPage() {
     email: "",
     amka: "",
   });
+
   const [hasFullDayException, setHasFullDayException] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [nextAvailableDate, setNextAvailableDate] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [formData, setFormData] = useState({
     appointment_date: null,
     appointment_time: null,
@@ -58,32 +83,36 @@ export default function NewAppointmentPage() {
     customDuration: "",
     reason: "",
     notes: "",
+    acceptTerms: false,
   });
+
   const [bookedSlots, setBookedSlots] = useState([]);
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [allScheduleSlots, setAllScheduleSlots] = useState([]);
+  const [visitorCount, setVisitorCount] = useState(null);
+  const [showVisitorMessage, setShowVisitorMessage] = useState(false);
+
+  const [acceptNewAppointments, setAcceptNewAppointments] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  const greekLocale = {
+    ...el,
+    options: {
+      ...el.options,
+      weekStartsOn: 1,
+    },
+  };
+
   const filteredPatients = patients.filter((p) => {
     const term = normalizeGreekText(searchTerm);
     const fullName = normalizeGreekText(`${p.first_name} ${p.last_name}`);
     const amka = p.amka || "";
     const phone = p.phone || "";
-
     return (
       fullName.includes(term) || amka.includes(term) || phone.includes(term)
     );
   });
-  const [availableSlots, setAvailableSlots] = useState([]);
-  const [allScheduleSlots, setAllScheduleSlots] = useState([]);
-  const [visitorCount, setVisitorCount] = useState(null);
-  const [showVisitorMessage, setShowVisitorMessage] = useState(false);
-  const greekLocale = {
-    ...el,
-    options: {
-      ...el.options,
-      weekStartsOn: 1, // Ξεκινά η εβδομάδα από Δευτέρα
-    },
-  };
-
-  const [acceptNewAppointments, setAcceptNewAppointments] = useState(true);
-  const [settingsLoading, setSettingsLoading] = useState(false);
 
   const fetchClinicSettings = async () => {
     setSettingsLoading(true);
@@ -95,59 +124,11 @@ export default function NewAppointmentPage() {
     if (!error && data) setAcceptNewAppointments(data.accept_new_appointments);
     setSettingsLoading(false);
   };
-  // ---- slot helpers (15' grid) ----
-  const addMinutes = (d, m) => new Date(d.getTime() + m * 60000);
-
-  function buildDayGrid(
-    workingPeriods,
-    exceptionRanges,
-    booked15Set,
-    date,
-    now
-  ) {
-    // normalize exceptions to concrete ranges for quick checks
-    const exRanges = (exceptionRanges || []).map((e) => {
-      if (!e.start && !e.end) {
-        const s = new Date(date);
-        s.setHours(0, 0, 0, 0);
-        const t = new Date(date);
-        t.setHours(23, 59, 59, 999);
-        return { start: s, end: t };
-      }
-      return { start: new Date(e.start), end: new Date(e.end) };
-    });
-    const isInException = (t) =>
-      exRanges.some((r) => t >= r.start && t < r.end);
-
-    const ticks = [];
-    for (const { start, end } of workingPeriods) {
-      const cursor = new Date(start);
-      const mod = cursor.getMinutes() % 15;
-      if (mod !== 0) cursor.setMinutes(cursor.getMinutes() + (15 - mod), 0, 0);
-
-      while (cursor < end) {
-        const timeStr = cursor.toTimeString().slice(0, 5); // "HH:MM"
-        const past = now && cursor < now;
-        const unavailable =
-          booked15Set.has(timeStr) || isInException(cursor) || past;
-
-        ticks.push({
-          t: new Date(cursor),
-          timeStr,
-          available: !unavailable,
-        });
-
-        cursor.setMinutes(cursor.getMinutes() + 15);
-      }
-    }
-    return ticks;
-  }
 
   useEffect(() => {
     const load = async () => {
       if (!formData.appointment_date) return;
 
-      // derive duration number
       const duration = parseInt(
         formData.duration_minutes === "custom"
           ? formData.customDuration
@@ -278,15 +259,14 @@ export default function NewAppointmentPage() {
   }, [formData.appointment_date]);
 
   const handleCancel = () => {
-    // Καθαρίζει τη φόρμα
     setFormData({
       appointment_date: null,
       appointment_time: null,
-      duration_minutes: "30",
+      duration_minutes: 30,
       customDuration: "",
       reason: "",
-      customReason: "",
       notes: "",
+      acceptTerms: false,
     });
     setNewPatientData({
       first_name: "",
@@ -297,22 +277,15 @@ export default function NewAppointmentPage() {
     });
     setSelectedPatient(null);
     setNewPatientMode(false);
-
-    // Επιστροφή στην προηγούμενη σελίδα
     router.push("/");
   };
 
-  const [submitError, setSubmitError] = useState("");
-  // Βάλε τα βοηθητικά ΠΑΝΩ ΑΠΟ το component (ή έξω από το handleSubmit)
+  const greekRegex = /^[\u0370-\u03FF\u1F00-\u1FFF\s-]+$/;
 
-  const greekRegex = /^[\u0370-\u03FF\u1F00-\u1FFF\s-]+$/; // ελληνικά, κενά, παύλες
   function birthDateFromAmka(amka) {
-    // Προϋπόθεση: το amka έχει ήδη ελεγχθεί ότι είναι 11 ψηφία και valid DDMMYY
     const dd = parseInt(amka.slice(0, 2), 10);
     const mm = parseInt(amka.slice(2, 4), 10);
     const yy = parseInt(amka.slice(4, 6), 10);
-
-    // Κανόνας αιώνα: 00–τρέχον YY => 2000+, αλλιώς 1900+
     const currYY = new Date().getFullYear() % 100;
     const fullYear = yy <= currYY ? 2000 + yy : 1900 + yy;
 
@@ -322,25 +295,22 @@ export default function NewAppointmentPage() {
       d.getMonth() !== mm - 1 ||
       d.getDate() !== dd
     ) {
-      return null; // safety net
+      return null;
     }
-    // Επιστρέφουμε YYYY-MM-DD (καθαρή ημερομηνία)
     const isoDate = `${fullYear}-${String(mm).padStart(2, "0")}-${String(
       dd
     ).padStart(2, "0")}`;
-    return isoDate; // "YYYY-MM-DD"
+    return isoDate;
   }
 
   function titleCaseGreek(str) {
     if (!str) return "";
-    // Καθαρισμοί: πολλά κενά -> 1, παύλες χωρίς κενά στα άκρα
     const cleaned = str
       .trim()
       .replace(/\s+/g, " ")
       .replace(/\s*-\s*/g, "-")
       .toLowerCase();
 
-    // Κάνε κεφαλαίο το πρώτο γράμμα κάθε "λέξης" που χωρίζεται από κενό ή παύλα
     return cleaned
       .split(" ")
       .map((part) =>
@@ -359,12 +329,10 @@ export default function NewAppointmentPage() {
   }
 
   function isValidAmka(amka) {
-    if (!/^\d{11}$/.test(amka)) return false; // ακριβώς 11 ψηφία
+    if (!/^\d{11}$/.test(amka)) return false;
     const day = parseInt(amka.slice(0, 2), 10);
     const month = parseInt(amka.slice(2, 4), 10);
     const yy = parseInt(amka.slice(4, 6), 10);
-
-    // Απλός κανόνας αιώνα: 00–29 => 2000–2029, αλλιώς 1900–1999
     const currYY = new Date().getFullYear() % 100;
     const fullYear = yy <= currYY ? 2000 + yy : 1900 + yy;
 
@@ -381,15 +349,15 @@ export default function NewAppointmentPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitError("");
 
-    const greekRegex = /^[\u0370-\u03FF\u1F00-\u1FFF\s]+$/; // μόνο ελληνικά
+    const greekRegex = /^[\u0370-\u03FF\u1F00-\u1FFF\s]+$/;
     const amkaTrim = (newPatientData.amka || "").trim();
     const emailTrim = (newPatientData.email || "").trim();
     const phoneTrim = (newPatientData.phone || "").trim();
     const firstNameRaw = (newPatientData.first_name || "").trim();
     const lastNameRaw = (newPatientData.last_name || "").trim();
 
-    // Έλεγχος ρύθμισης «δέχομαι ραντεβού»
     const { data: settingsCheck, error: settingsErr } = await supabase
       .from("clinic_settings")
       .select("accept_new_appointments")
@@ -409,10 +377,8 @@ export default function NewAppointmentPage() {
 
     setIsSubmitting(true);
 
-    // --- Validation ---
     const errors = {};
 
-    // ΟΝΟΜΑ / ΕΠΩΝΥΜΟ
     if (!firstNameRaw || firstNameRaw.length < 3) {
       errors.first_name = "Το όνομα πρέπει να έχει τουλάχιστον 3 χαρακτήρες.";
     } else if (!greekRegex.test(firstNameRaw)) {
@@ -427,23 +393,20 @@ export default function NewAppointmentPage() {
         "Το επώνυμο πρέπει να περιέχει μόνο ελληνικούς χαρακτήρες.";
     }
 
-    // ΤΗΛΕΦΩΝΟ
     if (!/^\d{10}$/.test(phoneTrim)) {
       errors.phone = "Ο αριθμός τηλεφώνου πρέπει να είναι 10 ψηφία.";
     }
 
-    // EMAIL
     if (!emailTrim || !/^[\w-.]+@([\w-]+\.)+[\w-]{2,}$/i.test(emailTrim)) {
       errors.email = "Παρακαλώ εισάγετε ένα έγκυρο email.";
     }
 
-    // ΑΜΚΑ (αν δόθηκε)
     let birthISO = null;
     if (amkaTrim) {
       if (!/^\d{11}$/.test(amkaTrim)) {
         errors.amka = "Το ΑΜΚΑ πρέπει να αποτελείται από 11 ψηφία.";
       } else {
-        birthISO = birthDateFromAmka(amkaTrim); // "YYYY-MM-DD" ή null
+        birthISO = birthDateFromAmka(amkaTrim);
         if (!birthISO) {
           errors.amka = "Το ΑΜΚΑ δεν είναι έγκυρο.";
         }
@@ -457,7 +420,6 @@ export default function NewAppointmentPage() {
     }
 
     try {
-      // ΔΙΑΡΚΕΙΑ
       const duration =
         formData.duration_minutes === "custom"
           ? parseInt(formData.customDuration || "", 10)
@@ -467,7 +429,6 @@ export default function NewAppointmentPage() {
         return alert("Η διάρκεια του ραντεβού δεν είναι έγκυρη.");
       }
 
-      // ΗΜΕΡΟΜΗΝΙΑ / ΩΡΑ
       if (!formData.appointment_date || !formData.appointment_time) {
         setIsSubmitting(false);
         return alert("Πρέπει να επιλέξετε ημερομηνία και ώρα.");
@@ -476,18 +437,16 @@ export default function NewAppointmentPage() {
       const combinedDate = new Date(formData.appointment_date);
       combinedDate.setHours(hour, minute, 0, 0);
 
-      // Κανονικοποίηση ονομάτων
       const firstName = normalizeGreekName(firstNameRaw);
       const lastName = normalizeGreekName(lastNameRaw);
 
-      // Ιατρικοί επισκέπτες (<= 2/μήνα)
       if (formData.reason === "Ιατρικός Επισκέπτης") {
-        const startOfMonth = new Date(
+        const startOfMonthDate = new Date(
           combinedDate.getFullYear(),
           combinedDate.getMonth(),
           1
         );
-        const endOfMonth = new Date(
+        const endOfMonthDate = new Date(
           combinedDate.getFullYear(),
           combinedDate.getMonth() + 1,
           0,
@@ -499,8 +458,8 @@ export default function NewAppointmentPage() {
           .from("appointments")
           .select("*", { count: "exact", head: true })
           .eq("reason", "Ιατρικός Επισκέπτης")
-          .gte("appointment_time", startOfMonth.toISOString())
-          .lte("appointment_time", endOfMonth.toISOString());
+          .gte("appointment_time", startOfMonthDate.toISOString())
+          .lte("appointment_time", endOfMonthDate.toISOString());
         if (visitorError) {
           setIsSubmitting(false);
           return alert("Σφάλμα κατά τον έλεγχο επισκέψεων.");
@@ -513,9 +472,7 @@ export default function NewAppointmentPage() {
         }
       }
 
-      // Εύρεση ή δημιουργία ασθενούς
       let patientId = null;
-
       const filters = [];
       if (phoneTrim) filters.push(`phone.eq.${phoneTrim}`);
       if (amkaTrim) filters.push(`amka.eq.${amkaTrim}`);
@@ -543,7 +500,7 @@ export default function NewAppointmentPage() {
               phone: phoneTrim,
               email: emailTrim || null,
               amka: amkaTrim || null,
-              birth_date: birthISO || null, // μόνο αν υπήρχε έγκυρο ΑΜΚΑ
+              birth_date: birthISO || null,
               gender: "other",
             },
           ])
@@ -556,7 +513,6 @@ export default function NewAppointmentPage() {
         patientId = data.id;
       }
 
-      // Έλεγχος διπλού ραντεβού ίδιας μέρας
       const startOfDay = new Date(combinedDate);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(combinedDate);
@@ -580,7 +536,6 @@ export default function NewAppointmentPage() {
         return;
       }
 
-      // Καταχώρηση ραντεβού
       const { error } = await supabase.from("appointments").insert([
         {
           patient_id: patientId,
@@ -599,7 +554,6 @@ export default function NewAppointmentPage() {
         return alert(`Σφάλμα κατά την καταχώρηση ραντεβού:\n${error.message}`);
       }
 
-      // Προαιρετικό email επιβεβαίωσης
       try {
         if (emailTrim) {
           await fetch("/api/send-confirmation", {
@@ -757,7 +711,7 @@ export default function NewAppointmentPage() {
       }
     }
 
-    setNextAvailableDate(null); // Δεν βρέθηκε διαθέσιμη ημερομηνία
+    setNextAvailableDate(null);
   };
 
   const isFormValid =
@@ -767,6 +721,11 @@ export default function NewAppointmentPage() {
       ? !!formData.reason
       : !!formData.customReason?.trim());
 
+  const activeVisitMeta =
+    formData.reason && VISIT_TYPES[formData.reason]
+      ? VISIT_TYPES[formData.reason]
+      : null;
+
   return (
     <main className="relative min-h-screen bg-[#f5f0e8] px-4 py-20 md:px-8 overflow-hidden">
       {/* 🔹 Background video */}
@@ -775,7 +734,7 @@ export default function NewAppointmentPage() {
         loop
         muted
         playsInline
-        className="absolute inset-0 h-full w-full object-cover opacity-70"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-70"
       >
         <source src="/background.mp4" type="video/mp4" />
         Your browser does not support the video tag.
@@ -791,28 +750,46 @@ export default function NewAppointmentPage() {
       >
         <div className="rounded-3xl border border-[#e4dfd4] bg-white/90 p-6 shadow-2xl backdrop-blur-xl md:p-8 lg:p-10">
           {/* Header */}
-          <header className="flex items-start justify-between gap-3 border-b border-[#eee7db] pb-4">
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-transparent bg-white/80 text-gray-600 shadow-sm transition hover:border-gray-200 hover:bg-gray-100"
-              aria-label="Επιστροφή"
-            >
-              <ArrowLeft size={18} />
-            </button>
-            <div className="flex-1 text-center md:text-left">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-[#9b968c]">
-                Online Ραντεβού
-              </p>
-              <h1 className="mt-1 text-2xl md:text-3xl font-serif font-semibold tracking-tight text-[#3b3a36]">
-                Κλείστε Ραντεβού
-              </h1>
-              <p className="mt-1 text-xs md:text-sm text-[#8b8579]">
-                Συμπληρώστε τα στοιχεία σας και επιλέξτε την ώρα που σας
-                εξυπηρετεί.
-              </p>
+          <header className="flex flex-col gap-4 border-b border-[#eee7db] pb-4 md:flex-row md:items-start md:justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-transparent bg-white/80 text-gray-600 shadow-sm transition hover:border-gray-200 hover:bg-gray-100"
+                aria-label="Επιστροφή"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-[#9b968c]">
+                  Online Ραντεβού
+                </p>
+                <h1 className="mt-1 text-2xl md:text-3xl font-serif font-semibold tracking-tight text-[#3b3a36]">
+                  Κλείστε το ραντεβού σας
+                </h1>
+                <p className="mt-1 text-xs md:text-sm text-[#8b8579]">
+                  Συμπληρώστε τα στοιχεία σας και επιλέξτε την ημέρα και ώρα που
+                  σας εξυπηρετεί. Η πληρωμή γίνεται αποκλειστικά στο ιατρείο,
+                  την ημέρα της επίσκεψης.
+                </p>
+              </div>
             </div>
-            <div className="hidden md:block w-9" /> {/* spacer */}
+
+            {/* Small step indicator */}
+            {/* <div className="mt-1 flex items-center justify-start gap-2 text-[11px] text-[#7a7468] md:justify-end">
+              <div className="inline-flex items-center gap-2 rounded-full bg-[#f5efe4] px-3 py-1 shadow-sm">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#2f2e2b] text-[11px] font-semibold text-white">
+                  1
+                </span>
+                <span>Στοιχεία επικοινωνίας</span>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-[#f7f1e7] px-3 py-1 shadow-sm">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#d2c7b6] text-[11px] font-semibold text-white">
+                  2
+                </span>
+                <span>Επιλογή ραντεβού</span>
+              </div>
+            </div> */}
           </header>
 
           {/* Global “no new appointments” message */}
@@ -838,7 +815,7 @@ export default function NewAppointmentPage() {
           )}
 
           {/* Main grid: left = στοιχεία, right = ραντεβού */}
-          <div className="mt-6 grid gap-6 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.9fr)]">
+          <div className="mt-6 grid gap-6 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.95fr)]">
             {/* 🔹 Left: Στοιχεία Επικοινωνίας */}
             <section
               className="rounded-2xl border border-[#e5e1d8] bg-white/85 p-4 shadow-sm md:p-6"
@@ -854,7 +831,8 @@ export default function NewAppointmentPage() {
                     Στοιχεία Επικοινωνίας
                   </h3>
                   <p className="mt-1 text-[11px] text-[#9b968c]">
-                    Χρησιμοποιούνται για επιβεβαίωση & ενημέρωση ραντεβού.
+                    Χρησιμοποιούνται για επιβεβαίωση, υπενθύμιση και τυχόν
+                    αλλαγές στο ραντεβού.
                   </p>
                 </div>
               </div>
@@ -1196,7 +1174,7 @@ export default function NewAppointmentPage() {
 
               {/* Card: Ώρα & διαθεσιμότητα */}
               {formData.appointment_date && (
-                <div className="rounded-2xl border border-[#e5e1d8] bg:white/85 bg-white/85 p-4 shadow-sm md:p-5">
+                <div className="rounded-2xl border border-[#e5e1d8] bg-white/85 p-4 shadow-sm md:p-5">
                   <div className="flex items-center justify-between">
                     <div>
                       <label className="block text-xs font-medium text-gray-600">
@@ -1304,11 +1282,6 @@ export default function NewAppointmentPage() {
                           const end = new Date(start);
                           end.setMinutes(end.getMinutes() + duration);
 
-                          const endTimeStr = `${String(end.getHours()).padStart(
-                            2,
-                            "0"
-                          )}:${String(end.getMinutes()).padStart(2, "0")}`;
-
                           const isSelected =
                             formData.appointment_time === time && available;
 
@@ -1358,30 +1331,64 @@ export default function NewAppointmentPage() {
                     setFormData({ ...formData, notes: e.target.value })
                   }
                   className="mt-1 w-full resize-none rounded-xl border border-[#e5e1d8] bg-white/80 px-3 py-2.5 text-sm outline-none shadow-sm transition focus:ring-4 focus:ring-[#d7cfc2]/60"
-                  placeholder="Οποιαδήποτε επιπλέον πληροφορία θεωρείτε χρήσιμη..."
+                  placeholder="Σημειώσεις για το ραντεβού σας..."
                 />
               </div>
 
-              {/* Σύνοψη επιλογής */}
+              {/* Σύνοψη επιλογής + ενδεικτικό κόστος */}
               {formData.appointment_date && formData.appointment_time && (
-                <div className="rounded-2xl border border-dashed border-[#e2ddcf] bg-[#f8f3eb] px-4 py-3 text-[11px] text-[#4a453c] shadow-sm">
-                  <p className="font-medium text-[12px]">Περίληψη ραντεβού</p>
-                  <p className="mt-1">
-                    Ημερομηνία:{" "}
-                    <strong>
-                      {format(formData.appointment_date, "dd/MM/yyyy")}
-                    </strong>
-                    , ώρα <strong>{formData.appointment_time}</strong>
-                    {formData.reason && (
-                      <>
-                        , λόγος: <strong>{formData.reason}</strong>
-                      </>
-                    )}
-                    .
-                  </p>
-                  <p className="mt-1 text-[11px] text-[#7d766a]">
-                    Η επιβεβαίωση θα σταλεί στο email που δηλώσατε.
-                  </p>
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-dashed border-[#e2ddcf] bg-[#f8f3eb] px-4 py-3 text-[11px] text-[#4a453c] shadow-sm">
+                    <p className="font-medium text-[12px]">Περίληψη ραντεβού</p>
+                    <p className="mt-1">
+                      Ημερομηνία:{" "}
+                      <strong>
+                        {format(formData.appointment_date, "dd/MM/yyyy")}
+                      </strong>
+                      , ώρα <strong>{formData.appointment_time}</strong>
+                      {formData.reason && (
+                        <>
+                          , λόγος: <strong>{formData.reason}</strong>
+                        </>
+                      )}
+                      .
+                    </p>
+                    <p className="mt-1 text-[11px] text-[#7d766a]">
+                      Η επιβεβαίωση θα σταλεί στο email που δηλώσατε.
+                    </p>
+                  </div>
+
+                  {activeVisitMeta && (
+                    <div className="rounded-2xl border border-[#dccfb9] bg-gradient-to-r from-[#fdf7ed] to-[#f7efe2] px-4 py-3 text-[11px] text-[#4a453c] shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <ShieldCheck className="mt-0.5 h-7 w-7 flex-shrink-0 text-[#c7b89c]" />
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b7467]">
+                            Ενδεικτικό κόστος επίσκεψης
+                          </p>
+                          <p className="mt-1 text-sm font-medium">
+                            {activeVisitMeta.priceLabel}
+                            {activeVisitMeta.durationLabel && (
+                              <span className="ml-2 text-xs text-[#7d766a]">
+                                • {activeVisitMeta.durationLabel}
+                              </span>
+                            )}
+                          </p>
+                          {activeVisitMeta.description && (
+                            <p className="mt-1 text-[11px] text-[#7d766a]">
+                              {activeVisitMeta.description}
+                            </p>
+                          )}
+                          <p className="mt-2 text-[10px] text-[#8a8274]">
+                            Οι τιμές είναι ενδεικτικές και μπορεί να
+                            διαφοροποιηθούν ανάλογα με την κλινική εικόνα και
+                            την πολυπλοκότητα του περιστατικού. Η πληρωμή
+                            γίνεται στο ιατρείο, χωρίς online χρέωση.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </section>
@@ -1405,25 +1412,31 @@ export default function NewAppointmentPage() {
                     acceptTerms: e.target.checked,
                   })
                 }
-                className="mt-[1px] h-4 w-4 rounded border-gray-300 text-[#2f2e2b] focus:ring-0"
+                className="mt-[2px] h-4 w-4 rounded border-gray-300 text-[#2f2e2b] focus:ring-0"
                 aria-required="true"
               />
-              <span>
-                Αποδέχομαι τους{" "}
-                <a
-                  href="/terms"
-                  className="underline underline-offset-2 hover:text-gray-800"
-                >
-                  Όρους Χρήσης
-                </a>{" "}
-                και την{" "}
-                <a
-                  href="/privacy-policy"
-                  className="underline underline-offset-2 hover:text-gray-800"
-                >
-                  Πολιτική Απορρήτου
-                </a>
-                .
+              <span className="flex flex-col gap-1">
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#4c4740]">
+                  <Lock className="h-3.5 w-3.5 text-[#91897b]" />
+                  Ασφαλής καταχώρηση ραντεβού
+                </span>
+                <span>
+                  Αποδέχομαι τους{" "}
+                  <a
+                    href="/terms"
+                    className="underline underline-offset-2 hover:text-gray-800"
+                  >
+                    Όρους Χρήσης
+                  </a>{" "}
+                  και την{" "}
+                  <a
+                    href="/privacy-policy"
+                    className="underline underline-offset-2 hover:text-gray-800"
+                  >
+                    Πολιτική Απορρήτου
+                  </a>
+                  .
+                </span>
               </span>
             </label>
 
@@ -1479,42 +1492,4 @@ export default function NewAppointmentPage() {
       </form>
     </main>
   );
-}
-
-function generateAvailableSlots(startHour, endHour, duration, booked) {
-  const slots = [];
-  for (let h = startHour; h < endHour; h++) {
-    for (let m = 0; m < 60; m += 15) {
-      const start = new Date();
-      start.setHours(h, m, 0, 0);
-
-      const end = new Date(start);
-      end.setMinutes(end.getMinutes() + duration);
-
-      if (
-        end.getHours() > endHour ||
-        (end.getHours() === endHour && end.getMinutes() > 0)
-      )
-        continue;
-
-      let overlaps = false;
-      for (let t = 0; t < duration; t += 15) {
-        const check = new Date(start);
-        check.setMinutes(check.getMinutes() + t);
-        const hh = String(check.getHours()).padStart(2, "0");
-        const mm = String(check.getMinutes()).padStart(2, "0");
-        if (booked.includes(`${hh}:${mm}`)) {
-          overlaps = true;
-          break;
-        }
-      }
-
-      if (!overlaps) {
-        const hh = String(h).padStart(2, "0");
-        const mm = String(m).padStart(2, "0");
-        slots.push(`${hh}:${mm}`);
-      }
-    }
-  }
-  return slots;
 }
