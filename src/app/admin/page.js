@@ -65,6 +65,11 @@ export default function AdminPage() {
   const [nextAppt, setNextAppt] = useState(null);
   const [nextApptErr, setNextApptErr] = useState(null);
   const [dayEdges, setDayEdges] = useState({ first: null, last: null });
+  const [clinicSettings, setClinicSettings] = useState(null);
+  const [toggleClinicLoading, setToggleClinicLoading] = useState(false);
+
+  const [upcomingToday, setUpcomingToday] = useState([]);
+  const [upcomingErr, setUpcomingErr] = useState(null);
 
   // 🔌 online/offline state
   const [isOnline, setIsOnline] = useState(
@@ -143,6 +148,7 @@ export default function AdminPage() {
       { count: completedFlipped },
       { count: approvedPastNow },
       { count: patientsCount },
+      { count: pendingToday },
     ] = await Promise.all([
       supabase
         .from("appointments")
@@ -162,6 +168,12 @@ export default function AdminPage() {
         .lt("appointment_time", nowISO)
         .eq("status", "approved"),
       supabase.from("patients").select("*", { count: "exact", head: true }),
+      supabase
+        .from("appointments")
+        .select("*", { count: "exact", head: true })
+        .gte("appointment_time", startISO)
+        .lte("appointment_time", endISO)
+        .eq("status", "pending"),
     ]);
 
     const completedToday = (completedFlipped || 0) + (approvedPastNow || 0);
@@ -169,7 +181,32 @@ export default function AdminPage() {
       today: todayCount ?? 0,
       completedToday,
       patients: patientsCount ?? 0,
+      pendingToday: pendingToday ?? 0,
     });
+  }, [isOnline]);
+
+  const loadClinicSettings = useCallback(async () => {
+    if (!isOnline) {
+      setClinicSettings(null);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("clinic_settings")
+        .select("id, accept_new_appointments, updated_at")
+        .eq("id", 1)
+        .single();
+
+      if (error) {
+        console.error("loadClinicSettings error", error);
+        return;
+      }
+
+      setClinicSettings(data);
+    } catch (e) {
+      console.error("loadClinicSettings error", e);
+    }
   }, [isOnline]);
 
   const syncCompleted = useCallback(async () => {
@@ -316,16 +353,121 @@ export default function AdminPage() {
     setDayEdges({ first, last });
   }, [isOnline]);
 
+  const loadUpcomingToday = useCallback(async () => {
+    if (!isOnline) {
+      setUpcomingToday([]);
+      setUpcomingErr(null);
+      return;
+    }
+
+    setUpcomingErr(null);
+    try {
+      const now = new Date();
+      const nowISO = now.toISOString();
+      const endOfDayISO = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
+      ).toISOString();
+
+      const { data, error } = await supabase
+        .from("appointments")
+        .select("id, appointment_time, status, reason, patient_id")
+        .gte("appointment_time", nowISO)
+        .lte("appointment_time", endOfDayISO)
+        .not("status", "in", "(cancelled,completed)")
+        .order("appointment_time", { ascending: true })
+        .limit(4);
+
+      if (error) throw error;
+
+      const appts = data ?? [];
+      if (!appts.length) {
+        setUpcomingToday([]);
+        return;
+      }
+
+      const ids = Array.from(
+        new Set(appts.map((a) => a.patient_id).filter(Boolean))
+      );
+
+      const namesById = {};
+      if (ids.length) {
+        const { data: pts } = await supabase
+          .from("patients")
+          .select("id, first_name, last_name")
+          .in("id", ids);
+
+        for (const p of pts ?? []) {
+          namesById[p.id] =
+            `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || null;
+        }
+      }
+
+      const withNames = appts.map((a) => ({
+        ...a,
+        patient_name: namesById[a.patient_id] ?? null,
+      }));
+
+      setUpcomingToday(withNames);
+    } catch (e) {
+      console.error("loadUpcomingToday error", e);
+      setUpcomingErr("Αδυναμία φόρτωσης λίστας ραντεβού");
+      setUpcomingToday([]);
+    }
+  }, [isOnline]);
+
   const handleRefresh = useCallback(async () => {
     if (!isOnline) return;
     try {
       setRefreshing(true);
       await syncCompleted();
-      await Promise.all([loadStats(), loadDayEdges(), loadNextAppointment()]);
+      await Promise.all([
+        loadStats(),
+        loadDayEdges(),
+        loadNextAppointment(),
+        loadClinicSettings(),
+        loadUpcomingToday(),
+      ]);
     } finally {
       setRefreshing(false);
     }
-  }, [isOnline, loadStats, loadDayEdges, loadNextAppointment, syncCompleted]);
+  }, [
+    isOnline,
+    loadStats,
+    loadDayEdges,
+    loadNextAppointment,
+    loadClinicSettings,
+    loadUpcomingToday,
+    syncCompleted,
+  ]);
+
+  const handleToggleClinicAcceptance = useCallback(async () => {
+    if (!isOnline || !clinicSettings) return;
+
+    try {
+      setToggleClinicLoading(true);
+      const { data, error } = await supabase
+        .from("clinic_settings")
+        .update({
+          accept_new_appointments: !clinicSettings.accept_new_appointments,
+        })
+        .eq("id", clinicSettings.id)
+        .select("id, accept_new_appointments, updated_at")
+        .single();
+
+      if (error) throw error;
+      setClinicSettings(data);
+    } catch (e) {
+      console.error("handleToggleClinicAcceptance error", e);
+    } finally {
+      setToggleClinicLoading(false);
+    }
+  }, [isOnline, clinicSettings]);
 
   // ---------- Effects ----------
   useEffect(() => {
@@ -355,6 +497,8 @@ export default function AdminPage() {
           loadProfile(session.user.id),
           loadDayEdges(),
           loadNextAppointment(),
+          loadClinicSettings(),
+          loadUpcomingToday(),
         ]);
         syncCompleted();
       }
@@ -366,6 +510,8 @@ export default function AdminPage() {
     loadProfile,
     loadDayEdges,
     loadNextAppointment,
+    loadClinicSettings,
+    loadUpcomingToday,
     syncCompleted,
   ]);
 
@@ -735,6 +881,12 @@ export default function AdminPage() {
                             <span className="font-medium">{stats.today}</span>{" "}
                             έχουν ολοκληρωθεί.
                           </div>
+                          <div className="mt-1 text-[11px] text-stone-600">
+                            Εκκρεμή ραντεβού σήμερα:{" "}
+                            <span className="font-medium">
+                              {stats.pendingToday ?? 0}
+                            </span>
+                          </div>
                         </div>
 
                         <Separator />
@@ -748,6 +900,61 @@ export default function AdminPage() {
                             label="Τελευταίο ραντεβού"
                             data={dayEdges.last}
                           />
+                        </div>
+
+                        <Separator />
+
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[11px] text-stone-600">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="h-3 w-3" />
+                            <span>Νέα ραντεβού:</span>
+                            <Badge
+                              variant={
+                                clinicSettings?.accept_new_appointments
+                                  ? "outline"
+                                  : "destructive"
+                              }
+                              className="rounded-full px-2 py-0.5"
+                            >
+                              {clinicSettings
+                                ? clinicSettings.accept_new_appointments
+                                  ? "Επιτρέπονται"
+                                  : "Προσωρινά κλειστά"
+                                : "—"}
+                            </Badge>
+                          </div>
+
+                          <Tooltip>
+                            {/* <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 rounded-full text-[11px]"
+                                disabled={
+                                  !isOnline ||
+                                  !clinicSettings ||
+                                  toggleClinicLoading
+                                }
+                                onClick={handleToggleClinicAcceptance}
+                              >
+                                {toggleClinicLoading ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                    Ενημέρωση...
+                                  </>
+                                ) : clinicSettings?.accept_new_appointments ? (
+                                  "Παύση νέων ραντεβού"
+                                ) : (
+                                  "Επανενεργοποίηση"
+                                )}
+                              </Button>
+                            </TooltipTrigger> */}
+                            <TooltipContent>
+                              {isOnline
+                                ? "Ελέγχει αν το ιατρείο δέχεται νέες online κρατήσεις"
+                                : "Μη διαθέσιμο εκτός σύνδεσης"}
+                            </TooltipContent>
+                          </Tooltip>
                         </div>
                       </div>
                     ) : (
@@ -820,7 +1027,14 @@ export default function AdminPage() {
                     nextApptErr ? (
                       <p className="text-sm text-red-600">{nextApptErr}</p>
                     ) : nextAppt ? (
-                      <NextAppt appt={nextAppt} />
+                      <div className="space-y-4">
+                        <NextAppt appt={nextAppt} />
+                        <UpcomingTodayList
+                          nextApptId={nextAppt.id}
+                          upcoming={upcomingToday}
+                          error={upcomingErr}
+                        />
+                      </div>
                     ) : (
                       <div>
                         <p className="text-sm text-stone-600">
@@ -884,6 +1098,45 @@ function MiniStat({ label, value, hint }) {
       <div className="text-2xl font-semibold tabular-nums text-stone-900">
         {value}
       </div>
+    </div>
+  );
+}
+
+function UpcomingTodayList({ nextApptId, upcoming, error }) {
+  if (error) {
+    return <p className="text-xs text-red-600">{error}</p>;
+  }
+
+  if (!upcoming || !upcoming.length) {
+    return null;
+  }
+
+  const others = upcoming.filter((a) => a.id !== nextApptId);
+  if (!others.length) return null;
+
+  return (
+    <div className="border-t border-stone-100 pt-3">
+      <p className="mb-2 text-xs text-stone-500">Επόμενα ραντεβού σήμερα</p>
+      <ul className="space-y-1.5">
+        {others.map((a) => (
+          <li key={a.id} className="flex items-center justify-between text-xs">
+            <span className="flex items-center gap-2 min-w-0">
+              <span className="tabular-nums">
+                {new Date(a.appointment_time).toLocaleTimeString("el-GR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+              <span className="truncate max-w-[140px]">
+                {a.patient_name ?? "—"}
+              </span>
+            </span>
+            <Badge variant="outline" className="capitalize text-[10px]">
+              {a.status}
+            </Badge>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
