@@ -106,7 +106,7 @@ export default function Home() {
 
   return (
     <main
-      className={`min-h-screen bg-[#fdfaf6] text-[#3b3a36] ${notoSerif.className}`}
+      className={`py-8 min-h-screen bg-[#fdfaf6] text-[#3b3a36] ${notoSerif.className}`}
     >
       {/* ======================= HERO ======================= */}
       <section className="relative flex flex-col items-center justify-center min-h-[75vh] md:h-[90vh] px-4 pt-20 pb-16 sm:px-6 text-center overflow-hidden">
