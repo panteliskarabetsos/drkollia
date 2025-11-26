@@ -145,128 +145,176 @@ export default function NewAppointmentPage() {
         setLoadingSlots(false);
         return;
       }
+
       if (!formData.appointment_date) return;
+
       setLoadingSlots(true);
+
       const date = formData.appointment_date;
       const weekday = date.getDay();
 
-      const { data: scheduleData } = await supabase
+      // 1. Ωράριο ιατρείου για τη συγκεκριμένη μέρα
+      const { data: scheduleData, error: scheduleError } = await supabase
         .from("clinic_schedule")
         .select("start_time, end_time")
         .eq("weekday", weekday);
-      console.log("clinic_schedule:", scheduleData);
 
-      if (!scheduleData || scheduleData.length === 0) {
+      if (scheduleError || !scheduleData || scheduleData.length === 0) {
         setAvailableSlots([]);
         setAllScheduleSlots([]);
         setHasFullDayException(false);
         setLoadingSlots(false);
         return;
       }
-      setHasFullDayException(hasFullDayException);
 
       const workingPeriods = scheduleData.map((s) => {
-        const [startHour, startMinute, startSecond] = s.start_time
-          .split(":")
-          .map(Number);
-        const [endHour, endMinute, endSecond] = s.end_time
-          .split(":")
-          .map(Number);
+        const [startHour, startMinute, startSecondWithTz] =
+          s.start_time.split(":");
+        const [endHour, endMinute, endSecondWithTz] = s.end_time.split(":");
 
         const start = new Date(date);
-        start.setHours(startHour, startMinute, startSecond || 0, 0);
+        start.setHours(
+          parseInt(startHour, 10),
+          parseInt(startMinute, 10),
+          0,
+          0
+        );
 
         const end = new Date(date);
-        end.setHours(endHour, endMinute, endSecond || 0, 0);
+        end.setHours(parseInt(endHour, 10), parseInt(endMinute, 10), 0, 0);
 
         return { start, end };
       });
 
-      const { data: exceptions } = await supabase
+      // 2. Εξαιρέσεις (κλειστό/μπλοκαρισμένα slots)
+      const { data: exceptions, error: exceptionsError } = await supabase
         .from("schedule_exceptions")
         .select("start_time, end_time")
         .eq("exception_date", format(date, "yyyy-MM-dd"));
 
-      const exceptionRanges =
-        exceptions?.map((e) => ({
-          start: e.start_time ? new Date(e.start_time) : null,
-          end: e.end_time ? new Date(e.end_time) : null,
-        })) || [];
+      if (exceptionsError) {
+        setAvailableSlots([]);
+        setAllScheduleSlots([]);
+        setHasFullDayException(false);
+        setLoadingSlots(false);
+        return;
+      }
 
       const fullDayException = exceptions?.some(
         (e) => !e.start_time && !e.end_time
       );
       setHasFullDayException(fullDayException);
 
+      if (fullDayException) {
+        setAvailableSlots([]);
+        setAllScheduleSlots([]);
+        setLoadingSlots(false);
+        return;
+      }
+
+      const exceptionIntervals =
+        (exceptions || [])
+          .filter((e) => e.start_time && e.end_time)
+          .map((e) => {
+            const start = new Date(e.start_time);
+            const end = new Date(e.end_time);
+            return { start, end };
+          }) || [];
+
+      // 3. Κλεισμένα ραντεβού της ημέρας
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
 
-      const { data: booked } = await supabase
+      const { data: booked, error: bookedError } = await supabase
         .from("appointments")
         .select("appointment_time, duration_minutes")
         .gte("appointment_time", startOfDay.toISOString())
         .lte("appointment_time", endOfDay.toISOString())
-        .eq("status", "approved");
+        .eq("status", "approved"); // block approved only (όπως πριν)
 
-      const bookedSlotsArr = [];
-      booked.forEach(({ appointment_time, duration_minutes }) => {
-        const start = new Date(appointment_time);
-        const slotsCount = Math.ceil(duration_minutes / 15);
-        for (let i = 0; i < slotsCount; i++) {
-          const slot = new Date(start);
-          slot.setMinutes(start.getMinutes() + i * 15);
-          bookedSlotsArr.push(slot.toTimeString().slice(0, 5));
-        }
-      });
+      if (bookedError) {
+        setAvailableSlots([]);
+        setAllScheduleSlots([]);
+        setLoadingSlots(false);
+        return;
+      }
 
-      const duration = parseInt(
+      const bookedIntervals =
+        (booked || []).map(({ appointment_time, duration_minutes }) => {
+          const start = new Date(appointment_time);
+          const end = new Date(start);
+          end.setMinutes(end.getMinutes() + (duration_minutes || 0));
+          return { start, end };
+        }) || [];
+
+      const overlapWithBooked = (candidateStart, candidateEnd) =>
+        bookedIntervals.some(
+          ({ start, end }) => candidateStart < end && candidateEnd > start
+        );
+
+      const overlapWithExceptions = (candidateStart, candidateEnd) =>
+        exceptionIntervals.some(
+          ({ start, end }) => candidateStart < end && candidateEnd > start
+        );
+
+      // 4. Διάρκεια ραντεβού (σε λεπτά)
+      const duration =
         formData.duration_minutes === "custom"
-          ? formData.customDuration
-          : formData.duration_minutes
-      );
+          ? parseInt(formData.customDuration || "", 10)
+          : parseInt(formData.duration_minutes, 10);
+
+      if (!Number.isFinite(duration) || duration <= 0) {
+        setAvailableSlots([]);
+        setAllScheduleSlots([]);
+        setLoadingSlots(false);
+        return;
+      }
 
       const slots = [];
       const allSlots = [];
 
+      const now = new Date();
+      const isToday = format(date, "yyyy-MM-dd") === format(now, "yyyy-MM-dd");
+
+      // 5. Δημιουργία time slots ανά 15'
       workingPeriods.forEach(({ start, end }) => {
         const cursor = new Date(start);
+
         while (cursor < end) {
           const endSlot = new Date(cursor);
           endSlot.setMinutes(endSlot.getMinutes() + duration);
+
+          // Αν ολόκληρο το ραντεβού ξεφεύγει εκτός ωραρίου, σταματάμε σ' αυτή την περίοδο
           if (endSlot.getTime() > end.getTime()) break;
 
           const timeStr = cursor.toTimeString().slice(0, 5);
 
-          const overlapsBooked = bookedSlotsArr.includes(timeStr);
-          const overlapsException = exceptionRanges.some((exc) => {
-            if (!exc.start || !exc.end) return true;
-            return cursor >= new Date(exc.start) && cursor < new Date(exc.end);
-          });
+          const isPastToday = isToday && cursor.getTime() <= now.getTime();
 
-          const now = new Date();
-          const isPastToday =
-            format(date, "yyyy-MM-dd") === format(now, "yyyy-MM-dd") &&
-            cursor.getTime() < now.getTime();
+          const hasOverlap =
+            overlapWithBooked(cursor, endSlot) ||
+            overlapWithExceptions(cursor, endSlot);
 
-          const available =
-            !overlapsBooked && !overlapsException && !isPastToday;
+          const available = !hasOverlap && !isPastToday;
 
-          if (available) slots.push(timeStr);
+          if (available) {
+            slots.push(timeStr);
+          }
 
           allSlots.push({
             time: timeStr,
             available,
           });
 
+          // Επόμενο υποψήφιο slot ανά 15'
           cursor.setMinutes(cursor.getMinutes() + 15);
         }
       });
 
       setAvailableSlots(slots);
       setAllScheduleSlots(allSlots);
-
       setLoadingSlots(false);
     };
 
@@ -275,7 +323,6 @@ export default function NewAppointmentPage() {
     formData.appointment_date,
     formData.duration_minutes,
     formData.customDuration,
-    hasFullDayException,
   ]);
 
   useEffect(() => {
@@ -681,84 +728,112 @@ export default function NewAppointmentPage() {
       setNextAvailableDate(null);
       return;
     }
+
+    // Ψάχνουμε μέχρι 30 μέρες μπροστά για την ΠΡΩΤΗ ώρα που χωράει
     for (let i = 1; i <= 30; i++) {
       const nextDate = new Date(startDate);
       nextDate.setDate(startDate.getDate() + i);
 
       const weekday = nextDate.getDay();
 
-      const { data: scheduleData } = await supabase
+      // 1. Ωράριο ιατρείου
+      const { data: scheduleData, error: scheduleError } = await supabase
         .from("clinic_schedule")
         .select("start_time, end_time")
         .eq("weekday", weekday);
 
-      if (!scheduleData || scheduleData.length === 0) continue;
+      if (scheduleError || !scheduleData || scheduleData.length === 0) {
+        continue;
+      }
 
       const workingPeriods = scheduleData.map((s) => {
-        const [startHour, startMinute] = s.start_time.split(":").map(Number);
-        const [endHour, endMinute] = s.end_time.split(":").map(Number);
+        const [startHour, startMinute] = s.start_time.split(":");
+        const [endHour, endMinute] = s.end_time.split(":");
 
         const start = new Date(nextDate);
-        start.setHours(startHour, startMinute, 0, 0);
+        start.setHours(
+          parseInt(startHour, 10),
+          parseInt(startMinute, 10),
+          0,
+          0
+        );
+
         const end = new Date(nextDate);
-        end.setHours(endHour, endMinute, 0, 0);
+        end.setHours(parseInt(endHour, 10), parseInt(endMinute, 10), 0, 0);
 
         return { start, end };
       });
 
-      const { data: exceptions } = await supabase
+      // 2. Εξαιρέσεις για τη μέρα
+      const { data: exceptions, error: exceptionsError } = await supabase
         .from("schedule_exceptions")
         .select("start_time, end_time")
         .eq("exception_date", format(nextDate, "yyyy-MM-dd"));
 
+      if (exceptionsError) continue;
+
       const fullDay = exceptions?.some((e) => !e.start_time && !e.end_time);
       if (fullDay) continue;
 
-      const exceptionRanges =
-        exceptions?.map((e) => ({
-          start: e.start_time ? new Date(e.start_time) : null,
-          end: e.end_time ? new Date(e.end_time) : null,
-        })) || [];
+      const exceptionIntervals =
+        (exceptions || [])
+          .filter((e) => e.start_time && e.end_time)
+          .map((e) => {
+            const start = new Date(e.start_time);
+            const end = new Date(e.end_time);
+            return { start, end };
+          }) || [];
 
+      // 3. Υφιστάμενα ραντεβού της μέρας
       const startOfDay = new Date(nextDate);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(nextDate);
       endOfDay.setHours(23, 59, 59, 999);
 
-      const { data: booked } = await supabase
+      const { data: booked, error: bookedError } = await supabase
         .from("appointments")
         .select("appointment_time, duration_minutes")
         .gte("appointment_time", startOfDay.toISOString())
-        .lte("appointment_time", endOfDay.toISOString());
+        .lte("appointment_time", endOfDay.toISOString())
+        .eq("status", "approved");
 
-      const bookedSlotsArr = [];
-      booked.forEach(({ appointment_time, duration_minutes }) => {
-        const start = new Date(appointment_time);
-        const slotsCount = Math.ceil(duration_minutes / 15);
-        for (let i = 0; i < slotsCount; i++) {
-          const slot = new Date(start);
-          slot.setMinutes(start.getMinutes() + i * 15);
-          bookedSlotsArr.push(slot.toTimeString().slice(0, 5));
-        }
-      });
+      if (bookedError) continue;
 
+      const bookedIntervals =
+        (booked || []).map(({ appointment_time, duration_minutes }) => {
+          const start = new Date(appointment_time);
+          const end = new Date(start);
+          end.setMinutes(end.getMinutes() + (duration_minutes || 0));
+          return { start, end };
+        }) || [];
+
+      const overlapWithBooked = (candidateStart, candidateEnd) =>
+        bookedIntervals.some(
+          ({ start, end }) => candidateStart < end && candidateEnd > start
+        );
+
+      const overlapWithExceptions = (candidateStart, candidateEnd) =>
+        exceptionIntervals.some(
+          ({ start, end }) => candidateStart < end && candidateEnd > start
+        );
+
+      // 4. Σάρωση slots ανά 15'
       for (const { start, end } of workingPeriods) {
         const cursor = new Date(start);
+
         while (cursor < end) {
           const endSlot = new Date(cursor);
           endSlot.setMinutes(endSlot.getMinutes() + duration);
-          if (endSlot > end) break;
 
-          const timeStr = cursor.toTimeString().slice(0, 5);
+          if (endSlot.getTime() > end.getTime()) break;
 
-          const overlapsBooked = bookedSlotsArr.includes(timeStr);
-          const overlapsException = exceptionRanges.some((exc) => {
-            if (!exc.start || !exc.end) return true;
-            return cursor >= new Date(exc.start) && cursor < new Date(exc.end);
-          });
+          const hasOverlap =
+            overlapWithBooked(cursor, endSlot) ||
+            overlapWithExceptions(cursor, endSlot);
 
-          if (!overlapsBooked && !overlapsException) {
-            setNextAvailableDate(nextDate);
+          if (!hasOverlap) {
+            // Βρήκαμε την ΠΡΩΤΗ (ημερομηνία+ώρα) που χωράει = τέλειο
+            setNextAvailableDate(new Date(cursor));
             return;
           }
 
@@ -1490,7 +1565,10 @@ export default function NewAppointmentPage() {
                                     {" "}
                                     Πρώτο διαθέσιμο:{" "}
                                     <strong>
-                                      {format(nextAvailableDate, "dd/MM/yyyy")}
+                                      {format(
+                                        nextAvailableDate,
+                                        "dd/MM/yyyy HH:mm"
+                                      )}
                                     </strong>
                                   </>
                                 ) : (

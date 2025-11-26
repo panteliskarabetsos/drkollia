@@ -23,11 +23,13 @@ import {
 } from "lucide-react";
 
 /* --------------------------------------------------------
-   HELP PAGE (Admin) — Redesigned with Incident Reporting
-   - Adds prominent CTA to /admin/report-incident (with photos)
-   - Quick Action tile + keyboard shortcut (I)
-   - Updates FAQ entry to point to the incident page
-   - Keeps print-friendly + sticky header + search
+   HELP PAGE (Admin)
+   - Sticky header with search + status + incident + print
+   - Category chips (filters)
+   - Smarter search (supports JSX answers via searchText)
+   - Live system stats
+   - Quick actions + keyboard shortcuts
+   - Print-friendly layout
 --------------------------------------------------------- */
 
 /* ------------------ FAQ CONTENT ------------------ */
@@ -88,6 +90,9 @@ const rawFaqs = [
         ημερομηνία, λόγο επίσκεψης και σημειώσεις.
       </span>
     ),
+    // used for search
+    searchText:
+      "Πώς μπορώ να δω το ιστορικό επισκέψεων ενός ασθενούς; ιστορικό επισκέψεων ασθενή ραντεβού σημειώσεις",
   },
   {
     category: "Ασθενείς",
@@ -101,6 +106,8 @@ const rawFaqs = [
         θεραπείες κ.λπ.). Ορατό μόνο σε διαχειριστές.
       </span>
     ),
+    searchText:
+      "Πώς κρατώ ιστορικό ανά ασθενή; ιστορικό επισκέψεων σημειώσεις διαγνώσεις θεραπείες",
   },
 
   // Πρόσβαση / Διαχείριση
@@ -179,6 +186,8 @@ const rawFaqs = [
         . Εκεί θα δείτε τρέχουσες ενημερώσεις και ιστορικό συμβάντων.
       </span>
     ),
+    searchText:
+      "Πού βλέπω την κατάσταση λειτουργίας status του συστήματος; status page διαθεσιμότητα συστήματος",
   },
   {
     category: "Κατάσταση Συστήματος",
@@ -193,10 +202,12 @@ const rawFaqs = [
           Αναφορά Προβλήματος (IT)
         </a>
         . Συμπληρώστε τίτλο/περιοχή/επίδραση, περιγραφή και{" "}
-        <b>επισυνάψτε εικόνες</b> (σύρετε‑απόθεση ή επιλογή αρχείων). Το μήνυμα
+        <b>επισυνάψτε εικόνες</b> (σύρετε-απόθεση ή επιλογή αρχείων). Το μήνυμα
         αποστέλλεται απευθείας στην IT με CC στον αποστολέα (αν επιλεγεί).
       </span>
     ),
+    searchText:
+      "Πώς αναφέρω πρόβλημα; αναφορά incident bug screenshot φωτογραφίες τεχνικός υποστήριξη IT",
   },
 ];
 
@@ -249,6 +260,7 @@ export default function HelpPage() {
   const [sessionExists, setSessionExists] = useState(false);
 
   const [q, setQ] = useState("");
+  const [activeCategory, setActiveCategory] = useState("all");
   const searchRef = useRef(null);
 
   const [stats, setStats] = useState({
@@ -259,7 +271,7 @@ export default function HelpPage() {
   const [loadingStats, setLoadingStats] = useState(true);
 
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "v1.0.0";
-  const needle = q.trim();
+  const needle = q.trim().toLowerCase();
 
   // ---- Auth guard
   useEffect(() => {
@@ -301,6 +313,9 @@ export default function HelpPage() {
           todayCount:
             typeof todayRes?.count === "number" ? todayRes.count : null,
         });
+      } catch (e) {
+        // keep stats as null if something goes wrong
+        console.error("Failed to load help stats", e);
       } finally {
         setLoadingStats(false);
       }
@@ -375,24 +390,41 @@ export default function HelpPage() {
     []
   );
 
+  // Prepare searchable FAQs (so search also works for JSX answers with searchText)
+  const searchableFaqs = useMemo(
+    () =>
+      rawFaqs.map((f) => {
+        const qStr =
+          typeof f.question === "string" ? f.question : f.searchText || "";
+        const aStr =
+          typeof f.answer === "string" ? f.answer : f.searchText || "";
+        const catStr = f.category || "";
+        return {
+          ...f,
+          _search: `${catStr} ${qStr} ${aStr} ${
+            f.searchText || ""
+          }`.toLowerCase(),
+        };
+      }),
+    []
+  );
+
   // ---- Filtered data
   const filteredByCategory = useMemo(() => {
-    const list = !needle
-      ? rawFaqs
-      : rawFaqs.filter((f) => {
-          const qStr = typeof f.question === "string" ? f.question : "";
-          const aStr = typeof f.answer === "string" ? f.answer : "";
-          return (
-            qStr.toLowerCase().includes(needle.toLowerCase()) ||
-            aStr.toLowerCase().includes(needle.toLowerCase())
-          );
-        });
+    const base = searchableFaqs.filter((f) => {
+      if (activeCategory !== "all" && f.category !== activeCategory) {
+        return false;
+      }
+      if (!needle) return true;
+      return f._search.includes(needle);
+    });
+
     const grouped = categories.map((cat) => ({
       category: cat,
-      faqs: list.filter((f) => f.category === cat),
+      faqs: base.filter((f) => f.category === cat),
     }));
     return grouped.filter((g) => g.faqs.length > 0);
-  }, [needle, categories]);
+  }, [needle, activeCategory, searchableFaqs, categories]);
 
   const resultsCount = filteredByCategory.reduce(
     (acc, g) => acc + g.faqs.length,
@@ -407,9 +439,14 @@ export default function HelpPage() {
     history.replaceState(null, "", url.toString());
   }, []);
 
+  const clearSearch = () => {
+    setQ("");
+    setActiveCategory("all");
+  };
+
   if (!sessionChecked) {
     return (
-      <main className="min-h-screen grid place-items-center">
+      <main className="min-h-screen grid place-items-center bg-[#fafafa]">
         Έλεγχος πρόσβασης...
       </main>
     );
@@ -440,12 +477,13 @@ export default function HelpPage() {
                 href="https://status.drkollia.com"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-full border border-[#e5e1d8] bg-white/80 px-3 py-1.5 text-xs text-gray-700 shadow-sm hover:bg:white transition"
+                className="inline-flex items-center gap-2 rounded-full border border-[#e5e1d8] bg-white/80 px-3 py-1.5 text-xs text-gray-700 shadow-sm hover:bg-white transition"
                 title="Κατάσταση Συστήματος"
               >
                 <span className="font-medium">Κατάσταση</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
+
               {/* Report Incident header button */}
               <button
                 onClick={() => router.push("/admin/report-incident")}
@@ -454,6 +492,17 @@ export default function HelpPage() {
               >
                 <Bug className="w-3.5 h-3.5" />
                 Αναφορά Προβλήματος
+              </button>
+
+              {/* Print button */}
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-[#e5e1d8] bg-white/80 px-3 py-1.5 text-xs text-gray-700 shadow-sm hover:bg-white transition"
+                title="Εκτύπωση σελίδας βοήθειας"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Εκτύπωση
               </button>
             </div>
 
@@ -464,12 +513,12 @@ export default function HelpPage() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Αναζήτηση στο βοήθημα… (/)"
-                className="w-full rounded-lg border border-gray-300 bg:white pl-9 pr-20 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-20 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
                 aria-label="Αναζήτηση στο FAQ"
               />
-              {q && (
+              {(q || activeCategory !== "all") && (
                 <button
-                  onClick={() => setQ("")}
+                  onClick={clearSearch}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-600 underline"
                 >
                   Εκκαθάριση
@@ -480,7 +529,7 @@ export default function HelpPage() {
         </div>
 
         {/* Title row */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mt-8 mb-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mt-8 mb-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
               Οδηγός Διαχειριστή
@@ -489,7 +538,65 @@ export default function HelpPage() {
               Χρήσιμες οδηγίες, συντομεύσεις και κατάσταση συστήματος.
             </p>
           </div>
-          <div className="text-xs text-gray-500">Έκδοση: {appVersion}</div>
+          <div className="text-xs text-gray-500 text-right">
+            <div>Έκδοση: {appVersion}</div>
+            <div>Τελευταία εκτύπωση μέσω Ctrl + P</div>
+          </div>
+        </div>
+
+        {/* Small tip box */}
+        <div className="no-print mb-5 rounded-xl border border-[#e7e3db] bg-white px-4 py-3 text-xs text-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-gray-500" />
+            <span>
+              Συντομεύσεις:{" "}
+              <kbd className="px-1.5 py-0.5 rounded border bg-[#fafafa]">?</kbd>{" "}
+              για άνοιγμα βοήθειας,{" "}
+              <kbd className="px-1.5 py-0.5 rounded border bg-[#fafafa]">/</kbd>{" "}
+              για αναζήτηση,{" "}
+              <kbd className="px-1.5 py-0.5 rounded border bg-[#fafafa]">N</kbd>{" "}
+              για νέο ραντεβού.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-gray-500">
+            <span className="hidden sm:inline">Εκτύπωση σελίδας:</span>
+            <kbd className="px-1.5 py-0.5 rounded border bg-[#fafafa] text-[11px]">
+              Ctrl
+            </kbd>
+            +
+            <kbd className="px-1.5 py-0.5 rounded border bg-[#fafafa] text-[11px]">
+              P
+            </kbd>
+          </div>
+        </div>
+
+        {/* Category chips */}
+        <div className="no-print mb-6 flex items-center gap-2 overflow-x-auto pb-1">
+          <button
+            type="button"
+            onClick={() => setActiveCategory("all")}
+            className={classNames(
+              "text-xs rounded-full border px-3 py-1.5 shadow-sm bg-white/80 text-gray-700 hover:bg-white transition whitespace-nowrap",
+              activeCategory === "all" &&
+                "bg-[#111827] text-white border-[#111827]"
+            )}
+          >
+            Όλα
+          </button>
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setActiveCategory(cat)}
+              className={classNames(
+                "text-xs rounded-full border px-3 py-1.5 bg-white/80 text-gray-700 hover:bg-white transition whitespace-nowrap",
+                activeCategory === cat &&
+                  "bg-[#111827] text-white border-[#111827]"
+              )}
+            >
+              {cat}
+            </button>
+          ))}
         </div>
 
         {/* Incident CTA */}
@@ -508,7 +615,10 @@ export default function HelpPage() {
                 <ul className="text-xs text-gray-500 list-disc ml-5 mt-2 space-y-1">
                   <li>Περιγράψτε το πρόβλημα που αντιμετωπίζετε.</li>
                   <li>Άμεση ενημέρωση τεχνικού.</li>
-                  <li>Υποστηρίζει έως 5 εικόνες, συνολικά μέχρι 10MB.</li>
+                  <li className="flex items-center gap-1">
+                    <ImageIcon className="w-3 h-3 text-gray-500" />
+                    Υποστηρίζει έως 5 εικόνες, συνολικά μέχρι 10MB.
+                  </li>
                 </ul>
               </div>
             </div>
@@ -612,7 +722,7 @@ export default function HelpPage() {
 
             {/* Search results info + controls */}
             <div className="no-print flex items-center justify-between mb-3">
-              {q ? (
+              {q || activeCategory !== "all" ? (
                 <p className="text-xs text-gray-500">
                   Βρέθηκαν {resultsCount} αποτελέσματα.
                 </p>
@@ -822,7 +932,8 @@ function QuickAction({ icon, title, onClick, hint }) {
 function Shortcut({ k, label }) {
   return (
     <li className="flex items-center gap-2">
-      <kbd className="px-2 py-1 rounded border bg-white">{k}</kbd> — {label}
+      <kbd className="px-2 py-1 rounded border bg-white text-xs">{k}</kbd> —{" "}
+      {label}
     </li>
   );
 }

@@ -17,10 +17,10 @@ import {
 } from "lucide-react";
 
 /**
- * Αναφορά Προβλήματος — με πιο συγκεκριμένες επιλογές
+ * Αναφορά Προβλήματος — πιο φιλική UI
  * - 2 επίπεδα: Περιοχή (Area) → Συγκεκριμένο Θέμα (Topic)
- * - Τα topics προσαρμόζονται ανά περιοχή
- * - Το "Άλλο" ζητά υπο-περιγραφή
+ * - Tips, validation, live προεπισκόπηση email
+ * - Draft σε localStorage, cooldown, offline awareness
  */
 
 // Περιοχές με συγκεκριμένα θέματα
@@ -46,7 +46,7 @@ const AREAS = {
       { id: "fetch-patients", label: "Δεν φορτώνεται η λίστα ασθενών" },
       { id: "search", label: "Δεν λειτουργεί η αναζήτηση ασθενή" },
       { id: "create-duplicate", label: "Δημιουργία διπλότυπου" },
-      { id: "add-patient", label: "προβλημα στην προσθήκη ασθενή" },
+      { id: "add-patient", label: "Πρόβλημα στην προσθήκη ασθενή" },
       { id: "update", label: "Δεν αποθηκεύονται αλλαγές στοιχείων" },
       { id: "history", label: "Ιστορικό/επισκέψεις δεν εμφανίζονται" },
       { id: "gdpr-delete", label: "Αίτημα διαγραφής δεδομένων (GDPR)" },
@@ -106,7 +106,7 @@ const IMPACT = [
   { id: "suggestion", label: "Πρόταση/Απορία/Αίτημα" },
 ];
 
-const DRAFT_KEY = "incident_email_draft_v3"; // v3: adds topic/otherTopic
+const DRAFT_KEY = "incident_email_draft_v3";
 const LAST_SENT_KEY = "incident_email_last_sent_at";
 const COOLDOWN_MS = 60 * 1000; // 1 min αντι-spam
 
@@ -141,6 +141,9 @@ function isValidPhoneGR(p) {
 function buildDescription(form, meta, areaLabel, topicLabel) {
   const lines = [];
   if (form.description?.trim()) lines.push(form.description.trim());
+  if (form.topic === "other" && form.otherTopic?.trim()) {
+    lines.push(`\nΠεριγραφή θέματος: ${form.otherTopic.trim()}`);
+  }
   if (form.phone?.trim())
     lines.push(`\nΤηλέφωνο επικοινωνίας: ${form.phone.trim()}`);
 
@@ -224,7 +227,7 @@ export default function IncidentSimpleEmailOnlyPage() {
   const defaultArea = AREA_IDS[0];
   const defaultTopic = AREAS[defaultArea].topics[0].id;
 
-  const [form, setForm] = useState({
+  const initialForm = {
     title: "",
     area: defaultArea,
     topic: defaultTopic,
@@ -234,7 +237,9 @@ export default function IncidentSimpleEmailOnlyPage() {
     phone: "",
     sendCopyToMe: true,
     impactStart: nowLocalISOString(),
-  });
+  };
+
+  const [form, setForm] = useState(initialForm);
 
   // ---- Attachments (images)
   const [files, setFiles] = useState([]); // File[]
@@ -277,7 +282,7 @@ export default function IncidentSimpleEmailOnlyPage() {
   function onChooseFiles(e) {
     const arr = Array.from(e.target.files || []);
     setFiles((prev) => validateNewFiles(prev, arr));
-    e.target.value = ""; // επιτρέπει ίδια επιλογή ξανά
+    e.target.value = "";
   }
 
   function onDrop(e) {
@@ -340,7 +345,16 @@ export default function IncidentSimpleEmailOnlyPage() {
     return () => clearTimeout(id);
   }, [form]);
 
-  // ---- When area changes, set first topic
+  function clearDraft() {
+    setForm(initialForm);
+    setFiles([]);
+    setAttachError("");
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {}
+  }
+
+  // ---- When area changes, ensure valid topic
   useEffect(() => {
     const currentTopics = AREAS[form.area]?.topics || [];
     if (!currentTopics.find((t) => t.id === form.topic)) {
@@ -364,7 +378,6 @@ export default function IncidentSimpleEmailOnlyPage() {
   const descTooShort = form.description.trim().length < 6;
   const phoneInvalid = !isValidPhoneGR(form.phone);
   const totalTooBig = totalBytes > MAX_TOTAL_BYTES;
-
   const isOtherTopic = form.topic === "other";
   const otherTopicTooShort = isOtherTopic && form.otherTopic.trim().length < 3;
 
@@ -441,7 +454,10 @@ export default function IncidentSimpleEmailOnlyPage() {
       fd.append("area", form.area);
       fd.append("impact", form.impact);
       fd.append("topic", form.topic);
-      fd.append("topic_label", topicLabel); // optional, for backend
+      fd.append("topic_label", topicLabel);
+      if (isOtherTopic && form.otherTopic.trim()) {
+        fd.append("topic_other_label", form.otherTopic.trim());
+      }
       fd.append("impact_start", new Date(form.impactStart).toISOString());
       fd.append(
         "description",
@@ -478,7 +494,7 @@ export default function IncidentSimpleEmailOnlyPage() {
 
   if (!sessionChecked) {
     return (
-      <main className="min-h-screen grid place-items-center">
+      <main className="min-h-screen grid place-items-center bg-[#fafafa]">
         Έλεγχος πρόσβασης…
       </main>
     );
@@ -490,12 +506,18 @@ export default function IncidentSimpleEmailOnlyPage() {
   const topicLabel =
     (AREAS[form.area]?.topics || []).find((t) => t.id === form.topic)?.label ??
     "";
+  const subjectPreview = `[${areaLabel} › ${topicLabel}] ${impactLabel} — ${
+    form.title || "(χωρίς τίτλο)"
+  }`;
 
   return (
-    <main className="py-8 min-h-screen bg-[#fafafa] text-[#2f2e2c]">
-      {/* Header */}
-      <div className="sticky top-14 z-20 border-b border-[#eceae6] bg-[#fafafa]/85 backdrop-blur">
-        <div className="mx-auto max-w-3xl px-4 py-3 flex items-center gap-3 justify-between">
+    <main className="min-h-screen bg-[#fafafa] text-[#2f2e2c] pb-16">
+      {/* Top gradient bar */}
+      <div className="sticky top-0 z-10 h-8 bg-gradient-to-b from-[#f4efe7] to-transparent pointer-events-none" />
+
+      {/* Sticky Header */}
+      <div className="sticky top-8 z-20 border-b border-[#eceae6] bg-[#fafafa]/90 backdrop-blur">
+        <div className="mx-auto max-w-4xl px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.back()}
@@ -504,14 +526,17 @@ export default function IncidentSimpleEmailOnlyPage() {
             >
               <ArrowLeft className="w-4 h-4" /> Πίσω
             </button>
-            <span className="hidden sm:inline text-xs text-gray-500">
-              {areaLabel} • {topicLabel} • {impactLabel}
-            </span>
+            <div className="hidden sm:flex flex-col text-xs text-gray-500">
+              <span className="font-medium">Αναφορά Προβλήματος (IT)</span>
+              <span>
+                {areaLabel} • {topicLabel} • {impactLabel}
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
             <span
-              className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs ${
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs ${
                 online
                   ? "bg-green-100 text-green-700"
                   : "bg-red-100 text-red-700"
@@ -536,7 +561,7 @@ export default function IncidentSimpleEmailOnlyPage() {
               className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-white transition ${
                 disabled || submitting
                   ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-gray-800 hover:bg-black"
+                  : "bg-gray-900 hover:bg-black"
               }`}
             >
               {submitting ? (
@@ -544,26 +569,41 @@ export default function IncidentSimpleEmailOnlyPage() {
               ) : (
                 <Send className="w-4 h-4" />
               )}
-              Αναφορά προβλήματος
+              Αποστολή
             </button>
           </div>
         </div>
       </div>
 
-      {/* Form */}
-      <form
-        onSubmit={handleSubmit}
-        className="mx-auto max-w-3xl px-4 py-8 space-y-6"
-      >
-        <h1 className="text-2xl font-semibold">Αναφορά Προβλήματος</h1>
-        <p className="text-sm text-gray-600">
-          Συμπληρώστε τα πεδία με *. Το μήνυμα θα σταλεί απευθείας στο IT.
-          Πατήστε <kbd className="px-1 border rounded">Ctrl</kbd>+
-          <kbd className="px-1 border rounded">Enter</kbd> για αποστολή.
+      {/* Content */}
+      <div className="mx-auto max-w-4xl px-4 pt-6">
+        {/* Stepper */}
+        <div className="no-print mb-4 flex items-center gap-2 text-xs text-gray-600">
+          <span className="inline-flex items-center gap-1 rounded-full bg-white border px-2 py-1">
+            <span className="text-[10px] font-semibold">1</span> Περιοχή & Θέμα
+          </span>
+          <span className="h-px flex-1 bg-gray-200" />
+          <span className="inline-flex items-center gap-1 rounded-full bg-white border px-2 py-1">
+            <span className="text-[10px] font-semibold">2</span> Περιγραφή
+          </span>
+          <span className="h-px flex-1 bg-gray-200" />
+          <span className="inline-flex items-center gap-1 rounded-full bg-white border px-2 py-1">
+            <span className="text-[10px] font-semibold">3</span> Συνημμένα &
+            Αποστολή
+          </span>
+        </div>
+
+        <h1 className="text-2xl font-semibold mb-2">Αναφορά Προβλήματος</h1>
+        <p className="text-sm text-gray-600 mb-4">
+          Συμπληρώστε τα πεδία με *. Το μήνυμα θα σταλεί απευθείας στην IT.
+          Πατήστε{" "}
+          <kbd className="px-1 border rounded bg-white text-[11px]">Ctrl</kbd>+
+          <kbd className="px-1 border rounded bg-white text-[11px]">Enter</kbd>{" "}
+          για γρήγορη αποστολή.
         </p>
 
         {!!errorMsg && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-start gap-2">
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-start gap-2">
             <ShieldAlert className="w-4 h-4 mt-0.5" />
             <div>
               <b>Σφάλμα:</b> {errorMsg}
@@ -576,13 +616,13 @@ export default function IncidentSimpleEmailOnlyPage() {
           </div>
         )}
         {!!successMsg && (
-          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 flex items-start gap-2">
+          <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 flex items-start gap-2">
             <MailCheck className="w-4 h-4 mt-0.5" /> {successMsg}
           </div>
         )}
 
         {/* Tips */}
-        <div className="rounded-2xl border border-[#e5e1d8] bg-white p-4 text-sm text-gray-700 flex items-start gap-2">
+        <div className="mb-6 rounded-2xl border border-[#e5e1d8] bg-white p-4 text-sm text-gray-700 flex items-start gap-2">
           <Info className="w-4 h-4 mt-0.5 shrink-0" />
           <div>
             <div className="font-medium">Tips για γρήγορη διάγνωση</div>
@@ -594,308 +634,410 @@ export default function IncidentSimpleEmailOnlyPage() {
                 Αναφέρετε <b>ακριβές μήνυμα σφάλματος</b> (αν υπάρχει).
               </li>
               <li>
-                Σύρετε/επιλέξτε <b>εικόνες</b> ως συνημμένα (png/jpg).
+                Επισυνάψτε <b>screenshots</b> του προβλήματος (png/jpg).
               </li>
             </ul>
           </div>
         </div>
 
-        <section className="rounded-2xl border border-[#e5e1d8] bg-white p-5 space-y-4">
-          <div>
-            <label className="block text-sm text-gray-600 mb-1" htmlFor="title">
-              Τίτλος *
-            </label>
-            <input
-              id="title"
-              value={form.title}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, title: e.target.value }))
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-              placeholder="Π.χ. Δεν φορτώνει η σελίδα Ραντεβού"
-              required
-              maxLength={120}
-            />
-          </div>
-
-          {/* Area & Topic */}
-          <div className="grid sm:grid-cols-2 gap-4">
+        {/* Main 2-column layout: form + preview */}
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
+          {/* Form */}
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-6 rounded-2xl border border-[#e5e1d8] bg-white p-5"
+          >
+            {/* Τίτλος */}
             <div>
               <label
                 className="block text-sm text-gray-600 mb-1"
-                htmlFor="area"
+                htmlFor="title"
               >
-                Περιοχή/Υπηρεσία *
+                Τίτλος *
               </label>
-              <select
-                id="area"
-                value={form.area}
-                onChange={(e) => {
-                  const nextArea = e.target.value;
-                  const firstTopic =
-                    AREAS[nextArea]?.topics?.[0]?.id || "other";
-                  setForm((s) => ({ ...s, area: nextArea, topic: firstTopic }));
-                }}
+              <input
+                id="title"
+                value={form.title}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, title: e.target.value }))
+                }
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-              >
-                {AREA_IDS.map((id) => (
-                  <option key={id} value={id}>
-                    {AREAS[id].label}
-                  </option>
-                ))}
-              </select>
+                placeholder="Π.χ. Δεν φορτώνει η σελίδα Ραντεβού"
+                required
+                maxLength={120}
+              />
+              <div className="mt-1 text-xs text-gray-400">
+                Σύντομη περιγραφή για το θέμα του email.
+              </div>
             </div>
 
+            {/* Area & Topic */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label
+                  className="block text-sm text-gray-600 mb-1"
+                  htmlFor="area"
+                >
+                  Περιοχή/Υπηρεσία *
+                </label>
+                <select
+                  id="area"
+                  value={form.area}
+                  onChange={(e) => {
+                    const nextArea = e.target.value;
+                    const firstTopic =
+                      AREAS[nextArea]?.topics?.[0]?.id || "other";
+                    setForm((s) => ({
+                      ...s,
+                      area: nextArea,
+                      topic: firstTopic,
+                    }));
+                  }}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                >
+                  {AREA_IDS.map((id) => (
+                    <option key={id} value={id}>
+                      {AREAS[id].label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  className="block text-sm text-gray-600 mb-1"
+                  htmlFor="topic"
+                >
+                  Συγκεκριμένο θέμα *
+                </label>
+                <select
+                  id="topic"
+                  value={form.topic}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, topic: e.target.value }))
+                  }
+                  className={`w-full rounded-lg bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 border ${
+                    isOtherTopic ? "border-amber-300" : "border-gray-300"
+                  }`}
+                >
+                  {(AREAS[form.area]?.topics || []).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+                {isOtherTopic && (
+                  <div className="mt-2">
+                    <input
+                      value={form.otherTopic}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, otherTopic: e.target.value }))
+                      }
+                      className={`w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 ${
+                        otherTopicTooShort
+                          ? "border-red-300"
+                          : "border-gray-300"
+                      }`}
+                      placeholder="Περιγράψτε σύντομα το θέμα (π.χ. «Σφάλμα κατά την εκτύπωση»)"
+                      maxLength={80}
+                    />
+                    <div className="mt-1 flex justify-between text-xs text-gray-500">
+                      <span>{form.otherTopic.trim().length}/80</span>
+                      {otherTopicTooShort && (
+                        <span className="text-red-600">
+                          Συμπληρώστε τουλάχιστον 3 χαρακτήρες.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Impact */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label
+                  className="block text-sm text-gray-600 mb-1"
+                  htmlFor="impact"
+                >
+                  Επίδραση *
+                </label>
+                <select
+                  id="impact"
+                  value={form.impact}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, impact: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                >
+                  {IMPACT.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  className="block text-sm text-gray-600 mb-1"
+                  htmlFor="impactStart"
+                >
+                  Πότε ξεκίνησε
+                </label>
+                <input
+                  id="impactStart"
+                  type="datetime-local"
+                  value={form.impactStart}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, impactStart: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                />
+              </div>
+            </div>
+
+            {/* Description */}
             <div>
               <label
                 className="block text-sm text-gray-600 mb-1"
-                htmlFor="topic"
+                htmlFor="description"
               >
-                Συγκεκριμένο θέμα *
+                Περιγραφή *
               </label>
-              <select
-                id="topic"
-                value={form.topic}
+              <textarea
+                id="description"
+                rows={6}
+                value={form.description}
                 onChange={(e) =>
-                  setForm((s) => ({ ...s, topic: e.target.value }))
+                  setForm((s) => ({ ...s, description: e.target.value }))
                 }
-                className={`w-full rounded-lg bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 border ${
-                  isOtherTopic ? "border-amber-300" : "border-gray-300"
+                className={`w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 ${
+                  descTooShort ? "border-red-300" : "border-gray-300"
+                }`}
+                placeholder={
+                  "Τι προσπαθείτε να κάνετε; Τι βλέπετε στην οθόνη; Αν υπάρχει μήνυμα σφάλματος, γράψτε το ακριβώς."
+                }
+                required
+                maxLength={2000}
+              />
+              <div className="mt-1 flex justify-between text-xs text-gray-500">
+                <span>{form.description.trim().length}/2000</span>
+                {descTooShort && (
+                  <span className="text-red-600">
+                    Γράψτε τουλάχιστον 6 χαρακτήρες.
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Phone & CC */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label
+                  className="block text-sm text-gray-600 mb-1"
+                  htmlFor="phone"
+                >
+                  Τηλέφωνο επικοινωνίας (προαιρετικό)
+                </label>
+                <input
+                  id="phone"
+                  value={form.phone}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, phone: e.target.value }))
+                  }
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 ${
+                    phoneInvalid && form.phone
+                      ? "border-red-300"
+                      : "border-gray-300"
+                  }`}
+                  placeholder="Π.χ. 6981XXXXXX"
+                />
+                {phoneInvalid && form.phone && (
+                  <div className="mt-1 text-xs text-red-600">
+                    Το τηλέφωνο δεν φαίνεται έγκυρο ελληνικό (+30, 2ΧΧΧ ή 69ΧΧ).
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col justify-end gap-1">
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={form.sendCopyToMe}
+                    onChange={(e) =>
+                      setForm((s) => ({
+                        ...s,
+                        sendCopyToMe: e.target.checked,
+                      }))
+                    }
+                  />
+                  Στείλε μου αντίγραφο (CC)
+                </label>
+                {reporterEmail && (
+                  <span className="text-xs text-gray-500">
+                    Θα σταλεί στο: {reporterEmail}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Attach images */}
+            <div>
+              <label className="block text-sm text-gray-600 mb-2">
+                Συνημμένα (εικόνες)
+              </label>
+              <div
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+                className="border-2 border-dashed rounded-xl p-4 bg-gray-50 text-sm text-gray-600 flex flex-col items-center justify-center gap-2"
+              >
+                <Upload className="w-5 h-5" />
+                <div className="text-center">
+                  Σύρετε εδώ εικόνες ή
+                  <label className="ml-1 underline cursor-pointer text-gray-800">
+                    επιλέξτε
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={onChooseFiles}
+                    />
+                  </label>
+                </div>
+                <div className="text-xs text-gray-500">
+                  Έως {MAX_FILES} αρχεία, max {bytesToHuman(MAX_FILE_BYTES)} ανά
+                  αρχείο, {bytesToHuman(MAX_TOTAL_BYTES)} σύνολο.
+                </div>
+              </div>
+
+              {files.length > 0 && (
+                <ul className="mt-3 grid sm:grid-cols-2 gap-2">
+                  {files.map((f, idx) => (
+                    <li
+                      key={idx}
+                      className="flex items-center gap-3 p-2 border rounded-lg bg-white"
+                    >
+                      <img
+                        src={URL.createObjectURL(f)}
+                        alt={f.name}
+                        className="w-12 h-12 object-cover rounded"
+                        onLoad={(e) => URL.revokeObjectURL(e.currentTarget.src)}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm text-gray-800">
+                          {f.name}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {bytesToHuman(f.size)}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(idx)}
+                        className="p-1 rounded hover:bg-gray-100"
+                        aria-label={`Αφαίρεση ${f.name}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="mt-2 text-xs flex items-center justify-between">
+                <span
+                  className={totalTooBig ? "text-red-600" : "text-gray-500"}
+                >
+                  Σύνολο: {bytesToHuman(totalBytes)} /{" "}
+                  {bytesToHuman(MAX_TOTAL_BYTES)}
+                </span>
+                {attachError && (
+                  <span className="text-red-600">{attachError}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                disabled={disabled || submitting}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-white transition ${
+                  disabled || submitting
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-gray-900 hover:bg-black"
                 }`}
               >
-                {(AREAS[form.area]?.topics || []).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-              {isOtherTopic && (
-                <input
-                  value={form.otherTopic}
-                  onChange={(e) =>
-                    setForm((s) => ({ ...s, otherTopic: e.target.value }))
-                  }
-                  className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 ${
-                    otherTopicTooShort ? "border-red-300" : "border-gray-300"
-                  }`}
-                  placeholder="Περιγράψτε σύντομα το θέμα (π.χ. «Σφάλμα κατά την εκτύπωση»)"
-                  maxLength={80}
-                />
+                {submitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                Αναφορά προβλήματος
+              </button>
+              <button
+                type="button"
+                onClick={clearDraft}
+                className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                Καθαρισμός πρόχειρου
+              </button>
+              {!online && (
+                <span className="inline-flex items-center gap-1 text-sm text-red-700">
+                  <WifiOff className="w-4 h-4" /> Δεν υπάρχει σύνδεση
+                </span>
               )}
-              {otherTopicTooShort && (
-                <div className="mt-1 text-xs text-red-600">
-                  Συμπληρώστε τουλάχιστον 3 χαρακτήρες.
+            </div>
+          </form>
+
+          {/* Sidebar preview */}
+          <aside className="space-y-4">
+            <div className="rounded-2xl border border-[#e5e1d8] bg-white p-4">
+              <div className="text-xs text-gray-500 mb-1">
+                Προεπισκόπηση θέματος email
+              </div>
+              <div className="text-sm font-mono bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                {subjectPreview}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#e5e1d8] bg-white p-4 text-xs text-gray-600 space-y-2">
+              <div className="font-semibold text-sm mb-1">Σύνοψη αναφοράς</div>
+              <div>
+                <span className="font-medium">Περιοχή:</span> {areaLabel}
+              </div>
+              <div>
+                <span className="font-medium">Θέμα:</span> {topicLabel}
+                {isOtherTopic && form.otherTopic && (
+                  <> – {form.otherTopic.trim()}</>
+                )}
+              </div>
+              <div>
+                <span className="font-medium">Επίδραση:</span> {impactLabel}
+              </div>
+              <div>
+                <span className="font-medium">Ξεκίνησε:</span>{" "}
+                {form.impactStart || "—"}
+              </div>
+              <div>
+                <span className="font-medium">Συνημμένα:</span>{" "}
+                {files.length > 0
+                  ? `${files.length} (${bytesToHuman(totalBytes)})`
+                  : "κανένα"}
+              </div>
+              {reporterEmail && (
+                <div>
+                  <span className="font-medium">CC:</span>{" "}
+                  {form.sendCopyToMe ? reporterEmail : "όχι"}
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Impact */}
-          <div>
-            <label
-              className="block text-sm text-gray-600 mb-1"
-              htmlFor="impact"
-            >
-              Επίδραση *
-            </label>
-            <select
-              id="impact"
-              value={form.impact}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, impact: e.target.value }))
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-            >
-              {IMPACT.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Description */}
-          <div>
-            <label
-              className="block text-sm text-gray-600 mb-1"
-              htmlFor="description"
-            >
-              Περιγραφή *
-            </label>
-            <textarea
-              id="description"
-              rows={6}
-              value={form.description}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, description: e.target.value }))
-              }
-              className={`w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 ${
-                descTooShort ? "border-red-300" : "border-gray-300"
-              }`}
-              placeholder={
-                "Τι προσπαθείτε να κάνετε; Τι βλέπετε στην οθόνη; Αν υπάρχει μήνυμα σφάλματος, γράψτε το ακριβώς."
-              }
-              required
-              maxLength={2000}
-            />
-            <div className="mt-1 flex justify-between text-xs text-gray-500">
-              <span>{form.description.trim().length}/2000</span>
-              {descTooShort && (
-                <span className="text-red-600">
-                  Γράψτε τουλάχιστον 6 χαρακτήρες.
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Attach images */}
-          <div>
-            <label className="block text-sm text-gray-600 mb-2">
-              Συνημμένα (εικόνες)
-            </label>
-            <div
-              onDragOver={onDragOver}
-              onDrop={onDrop}
-              className="border-2 border-dashed rounded-xl p-4 bg-gray-50 text-sm text-gray-600 flex flex-col items-center justify-center gap-2"
-            >
-              <Upload className="w-5 h-5" />
-              <div className="text-center">
-                Σύρετε εδώ εικόνες ή
-                <label className="ml-1 underline cursor-pointer text-gray-800">
-                  επιλέξτε
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={onChooseFiles}
-                  />
-                </label>
-              </div>
-              <div className="text-xs text-gray-500">
-                Έως {MAX_FILES} αρχεία, max {bytesToHuman(MAX_FILE_BYTES)} ανά
-                αρχείο, {bytesToHuman(MAX_TOTAL_BYTES)} σύνολο.
-              </div>
-            </div>
-
-            {files.length > 0 && (
-              <ul className="mt-3 grid sm:grid-cols-2 gap-2">
-                {files.map((f, idx) => (
-                  <li
-                    key={idx}
-                    className="flex items-center gap-3 p-2 border rounded-lg bg-white"
-                  >
-                    <img
-                      src={URL.createObjectURL(f)}
-                      alt={f.name}
-                      className="w-12 h-12 object-cover rounded"
-                      onLoad={(e) => URL.revokeObjectURL(e.currentTarget.src)}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm text-gray-800">
-                        {f.name}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {bytesToHuman(f.size)}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(idx)}
-                      className="p-1 rounded hover:bg-gray-100"
-                      aria-label={`Αφαίρεση ${f.name}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <div className="mt-2 text-xs flex items-center justify-between">
-              <span className={totalTooBig ? "text-red-600" : "text-gray-500"}>
-                Σύνολο: {bytesToHuman(totalBytes)} /{" "}
-                {bytesToHuman(MAX_TOTAL_BYTES)}
-              </span>
-              {attachError && (
-                <span className="text-red-600">{attachError}</span>
-              )}
-            </div>
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label
-                className="block text-sm text-gray-600 mb-1"
-                htmlFor="impactStart"
-              >
-                Πότε ξεκίνησε
-              </label>
-              <input
-                id="impactStart"
-                type="datetime-local"
-                value={form.impactStart}
-                onChange={(e) =>
-                  setForm((s) => ({ ...s, impactStart: e.target.value }))
-                }
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-              />
-            </div>
-            <div className="flex items-end justify-between">
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={form.sendCopyToMe}
-                  onChange={(e) =>
-                    setForm((s) => ({ ...s, sendCopyToMe: e.target.checked }))
-                  }
-                />
-                Στείλε μου αντίγραφο (CC)
-              </label>
-              {reporterEmail && (
-                <span className="text-xs text-gray-500">
-                  Θα σταλεί στο: {reporterEmail}
-                </span>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* Προεπισκόπηση Θέματος */}
-        <div className="rounded-2xl border border-[#e5e1d8] bg-white p-4">
-          <div className="text-xs text-gray-500 mb-1">
-            Προεπισκόπηση θέματος email
-          </div>
-          <div className="text-sm font-mono bg-gray-50 border border-gray-200 rounded px-3 py-2">
-            [{areaLabel} › {topicLabel}] {impactLabel} —{" "}
-            {form.title || "(χωρίς τίτλο)"}
-          </div>
+          </aside>
         </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={disabled || submitting}
-            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-white transition ${
-              disabled || submitting
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-gray-900 hover:bg-black"
-            }`}
-          >
-            {submitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
-            Αναφορά προβλήματος
-          </button>
-          {!online && (
-            <span className="inline-flex items-center gap-1 text-sm text-red-700">
-              <WifiOff className="w-4 h-4" /> Δεν υπάρχει σύνδεση
-            </span>
-          )}
-        </div>
-      </form>
+      </div>
     </main>
   );
 }
