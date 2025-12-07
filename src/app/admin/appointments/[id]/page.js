@@ -11,7 +11,25 @@ import {
   Clock3,
   FileText,
 } from "lucide-react";
-import { format } from "date-fns"; // ⬅ NEW
+import { format } from "date-fns";
+
+const VISIT_TYPES = [
+  {
+    value: "Εξέταση",
+    label: "Εξέταση – 30'",
+    duration: 30,
+  },
+  {
+    value: "Αξιολόγηση Αποτελέσματος",
+    label: "Αξιολόγηση Αποτελέσματος – 15'",
+    duration: 15,
+  },
+  {
+    value: "Ιατρικός Επισκέπτης",
+    label: "Ιατρικός Επισκέπτης – 15'",
+    duration: 15,
+  },
+];
 
 function formatDateTimeEl(iso) {
   if (!iso) return "—";
@@ -41,7 +59,7 @@ export default function EditAppointmentPage() {
     reason: "",
     notes: "",
   });
-
+  const [reasonPreset, setReasonPreset] = useState("");
   const [patient, setPatient] = useState(null);
   const [status, setStatus] = useState(null);
   const [originalDateTime, setOriginalDateTime] = useState(null);
@@ -98,12 +116,24 @@ export default function EditAppointmentPage() {
       const dt = new Date(data.appointment_time);
 
       setForm({
-        date: dt.toISOString().slice(0, 10), // YYYY-MM-DD
-        time: dt.toTimeString().slice(0, 5), // HH:MM
+        date: dt.toISOString().slice(0, 10),
+        time: dt.toTimeString().slice(0, 5),
         duration_minutes: data.duration_minutes || 30,
         reason: data.reason || "",
         notes: data.notes || "",
       });
+
+      const preset = VISIT_TYPES.find(
+        (v) =>
+          v.value === (data.reason || "").trim() &&
+          (data.duration_minutes || 30) === v.duration
+      );
+
+      if (preset) {
+        setReasonPreset(preset.value);
+      } else {
+        setReasonPreset("");
+      }
 
       setPatient(data.patients || null);
       setStatus(data.status || null);
@@ -124,7 +154,37 @@ export default function EditAppointmentPage() {
     }
   };
 
-  // ⬅ NEW: load available slots when date or duration changes
+  const handleReasonPresetChange = (e) => {
+    const value = e.target.value;
+    setReasonPreset(value);
+
+    const preset = VISIT_TYPES.find((v) => v.value === value);
+    if (preset) {
+      setForm((prev) => ({
+        ...prev,
+        reason: preset.value,
+        duration_minutes: preset.duration, // auto-sync duration
+      }));
+    }
+  };
+
+  useEffect(() => {
+    // Try to find a preset that matches current state
+    const preset = VISIT_TYPES.find(
+      (v) =>
+        v.value === (form.reason || "").trim() &&
+        Number(form.duration_minutes || 0) === v.duration
+    );
+
+    const newValue = preset ? preset.value : "";
+
+    setReasonPreset((prev) => {
+      // avoid useless re-renders
+      if (prev === newValue) return prev;
+      return newValue;
+    });
+  }, [form.reason, form.duration_minutes]);
+
   useEffect(() => {
     const fetchSlots = async () => {
       if (!form.date) {
@@ -142,9 +202,9 @@ export default function EditAppointmentPage() {
       setLoadingSlots(true);
 
       const date = new Date(`${form.date}T00:00:00`);
-      const weekday = date.getDay(); // 0=Κυρ
+      const weekday = date.getDay(); // 0 = Κυριακή
 
-      // 1) clinic_schedule
+      // 1) clinic_schedule (ωράριο ημέρας)
       const { data: scheduleData, error: scheduleErr } = await supabase
         .from("clinic_schedule")
         .select("start_time, end_time")
@@ -168,7 +228,7 @@ export default function EditAppointmentPage() {
         return { start, end };
       });
 
-      // 2) schedule_exceptions
+      // 2) schedule_exceptions (ημέρα & blocks)
       const { data: exceptions } = await supabase
         .from("schedule_exceptions")
         .select("start_time, end_time")
@@ -179,13 +239,16 @@ export default function EditAppointmentPage() {
       );
       setHasFullDayException(fullDayException);
 
+      // Μόνο exceptions με start & end → interval blocks
       const exceptionRanges =
-        exceptions?.map((e) => ({
-          start: e.start_time ? new Date(e.start_time) : null,
-          end: e.end_time ? new Date(e.end_time) : null,
-        })) || [];
+        exceptions
+          ?.filter((e) => e.start_time && e.end_time)
+          .map((e) => ({
+            start: new Date(e.start_time),
+            end: new Date(e.end_time),
+          })) || [];
 
-      // 3) already approved appointments that day (except current)
+      // 3) appointments εκείνη την ημέρα (approved μόνο, εκτός του τρέχοντος)
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(date);
@@ -203,16 +266,14 @@ export default function EditAppointmentPage() {
         console.error(bookedErr);
       }
 
-      const bookedSlots = [];
-      (booked || []).forEach(({ appointment_time, duration_minutes }) => {
-        const start = new Date(appointment_time);
-        const slotsCount = Math.ceil((duration_minutes || 30) / 15);
-        for (let i = 0; i < slotsCount; i++) {
-          const slot = new Date(start);
-          slot.setMinutes(start.getMinutes() + i * 15);
-          bookedSlots.push(slot.toTimeString().slice(0, 5));
-        }
-      });
+      // intervals (start, end) για ήδη κλεισμένα ραντεβού
+      const bookedRanges =
+        booked?.map(({ appointment_time, duration_minutes }) => {
+          const start = new Date(appointment_time);
+          const dur = duration_minutes || 30;
+          const end = new Date(start.getTime() + dur * 60 * 1000);
+          return { start, end };
+        }) || [];
 
       const duration =
         form.duration_minutes && Number(form.duration_minutes) > 0
@@ -223,6 +284,7 @@ export default function EditAppointmentPage() {
 
       workingPeriods.forEach(({ start, end }) => {
         const cursor = new Date(start);
+
         while (cursor < end) {
           const endSlot = new Date(cursor);
           endSlot.setMinutes(endSlot.getMinutes() + duration);
@@ -230,10 +292,14 @@ export default function EditAppointmentPage() {
 
           const timeStr = cursor.toTimeString().slice(0, 5);
 
-          const overlapsBooked = bookedSlots.includes(timeStr);
+          // ---- INTERVAL OVERLAP CHECKS ----
+          const overlapsBooked = bookedRanges.some((b) => {
+            // [cursor, endSlot) intersects [b.start, b.end)
+            return cursor < b.end && endSlot > b.start;
+          });
+
           const overlapsException = exceptionRanges.some((exc) => {
-            if (!exc.start || !exc.end) return true;
-            return cursor >= exc.start && cursor < exc.end;
+            return cursor < exc.end && endSlot > exc.start;
           });
 
           const now = new Date();
@@ -249,6 +315,7 @@ export default function EditAppointmentPage() {
 
           allSlots.push({ time: timeStr, available });
 
+          // επόμενο slot ανά 15'
           cursor.setMinutes(cursor.getMinutes() + 15);
         }
       });
@@ -277,23 +344,37 @@ export default function EditAppointmentPage() {
       finalDate.setHours(hours, minutes, 0, 0);
 
       const duration = Number(form.duration_minutes) || 30;
-
-      // extra guard overlapping (εκτός τρέχοντος)
       const end = new Date(finalDate.getTime() + duration * 60 * 1000);
 
-      const { data: overlaps, error: overlapErr } = await supabase
+      // ---- ΝΕΟΣ ΕΛΕΓΧΟΣ overlap για όλη την ημέρα ----
+      const dayStart = new Date(form.date);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(form.date);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const { data: sameDayAppointments, error: overlapErr } = await supabase
         .from("appointments")
-        .select("id, appointment_time, duration_minutes")
-        .gte(
-          "appointment_time",
-          new Date(finalDate.getTime() - 60 * 1000).toISOString()
-        )
-        .lt("appointment_time", end.toISOString())
+        .select("id, appointment_time, duration_minutes, status")
+        .gte("appointment_time", dayStart.toISOString())
+        .lte("appointment_time", dayEnd.toISOString())
         .neq("id", id);
 
       if (overlapErr) throw overlapErr;
 
-      if (overlaps && overlaps.length > 0) {
+      const hasOverlap = (sameDayAppointments || []).some((appt) => {
+        // αγνόησε cancelled/rejected αν θέλεις
+        if (["cancelled", "rejected"].includes(appt.status)) return false;
+
+        const startExisting = new Date(appt.appointment_time);
+        const endExisting = new Date(
+          startExisting.getTime() + (appt.duration_minutes || 30) * 60 * 1000
+        );
+
+        // intervals overlap?
+        return finalDate < endExisting && end > startExisting;
+      });
+
+      if (hasOverlap) {
         setError(
           "Υπάρχει ήδη ραντεβού σε αυτό το διάστημα. Επιλέξτε άλλη ώρα."
         );
@@ -585,21 +666,63 @@ export default function EditAppointmentPage() {
                     onChange={handleChange}
                     className="w-full rounded-xl border border-[#e1d8ca] bg-white/90 px-3 py-2 text-sm text-[#2f2e2b] shadow-sm outline-none transition focus:border-[#cdbfa8] focus:ring-4 focus:ring-[#e0d4c3]/60"
                   />
+                  <p className="mt-1 text-[11px] text-[#8c857a]">
+                    Η διάρκεια ενημερώνεται αυτόματα όταν επιλέγετε τυπικό λόγο
+                    ραντεβού.
+                  </p>
                 </div>
 
-                {/* Reason */}
+                {/* Reason + Presets */}
                 <div>
                   <label className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[#999084]">
                     Λόγος Επίσκεψης
                   </label>
-                  <input
-                    type="text"
-                    name="reason"
-                    value={form.reason}
-                    onChange={handleChange}
-                    className="w-full rounded-xl border border-[#e1d8ca] bg-white/90 px-3 py-2 text-sm text-[#2f2e2b] shadow-sm outline-none transition focus:border-[#cdbfa8] focus:ring-4 focus:ring-[#e0d4c3]/60"
-                    placeholder="π.χ. Εξέταση, Αξιολόγηση αποτελεσμάτων..."
-                  />
+
+                  {/* Preset select */}
+                  <select
+                    value={reasonPreset}
+                    onChange={handleReasonPresetChange}
+                    className="mb-2 w-full rounded-xl border border-[#e1d8ca] bg-white/90 px-3 py-2 text-xs sm:text-sm text-[#2f2e2b] shadow-sm outline-none transition focus:border-[#cdbfa8] focus:ring-4 focus:ring-[#e0d4c3]/60"
+                  >
+                    <option value="">
+                      Επιλέξτε τυπικό λόγο ραντεβού ή αφήστε κενό για ελεύθερη
+                      καταχώρηση
+                    </option>
+                    {VISIT_TYPES.map((v) => (
+                      <option key={v.value} value={v.value}>
+                        {v.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Αν δεν έχει επιλεγεί fixed option → custom input */}
+                  {reasonPreset === "" && (
+                    <>
+                      <input
+                        type="text"
+                        name="reason"
+                        value={form.reason}
+                        onChange={handleChange}
+                        className="w-full rounded-xl border border-[#e1d8ca] bg-white/90 px-3 py-2 text-sm text-[#2f2e2b] shadow-sm outline-none transition focus:border-[#cdbfa8] focus:ring-4 focus:ring-[#e0d4c3]/60"
+                        placeholder="π.χ. Εξέταση, Αξιολόγηση αποτελεσμάτων..."
+                      />
+                      <p className="mt-1 text-[11px] text-[#8c857a]">
+                        Αν επιλέξετε τυπικό λόγο, η διάρκεια θα ενημερωθεί
+                        αυτόματα.
+                      </p>
+                    </>
+                  )}
+
+                  {/* Αν έχει επιλεγεί fixed option → απλά helper text */}
+                  {reasonPreset !== "" && (
+                    <p className="text-[11px] text-[#8c857a]">
+                      Ο λόγος ραντεβού έχει οριστεί σε{" "}
+                      <span className="font-semibold">{form.reason}</span> και η
+                      διάρκεια προσαρμόστηκε αυτόματα. Για custom κείμενο,
+                      επιλέξτε "<span className="italic">—</span>" από το
+                      παραπάνω πεδίο.
+                    </p>
+                  )}
                 </div>
 
                 {/* Notes */}

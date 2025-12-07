@@ -106,10 +106,10 @@ export default function Home() {
 
   return (
     <main
-      className={`py-8 min-h-screen bg-[#fdfaf6] text-[#3b3a36] ${notoSerif.className}`}
+      className={`min-h-screen bg-[#fdfaf6] text-[#3b3a36] ${notoSerif.className}`}
     >
       {/* ======================= HERO ======================= */}
-      <section className="relative flex flex-col items-center justify-center min-h-[75vh] md:h-[90vh] px-4 pt-20 pb-16 sm:px-6 text-center overflow-hidden">
+      <section className="relative flex flex-col items-center justify-center h-screen min-h-screen px-4 sm:px-6 lg:px-8 pt-16 pb-14 text-center overflow-hidden">
         <video
           autoPlay
           loop
@@ -121,19 +121,20 @@ export default function Home() {
           Your browser does not support the video tag.
         </video>
 
+        {/* overlay */}
         <div className="absolute inset-0 bg-[#fdfaf6]/80 backdrop-blur-[12px] backdrop-brightness-110 z-0" />
 
-        <div className="relative z-10 max-w-xl sm:max-w-2xl mx-auto space-y-5 sm:space-y-6">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-semibold leading-tight tracking-tight text-[#2f2e2b]">
+        <div className="relative z-10 mx-auto max-w-2xl sm:max-w-3xl lg:max-w-4xl space-y-5 sm:space-y-6">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[3.1rem] font-semibold leading-tight tracking-tight text-[#2f2e2b]">
             Ενδοκρινολογία &amp; Ορμονική Ευεξία
           </h1>
 
-          <p className="text-sm sm:text-[15px] md:text-base text-[#5b5853]">
+          <p className="text-sm sm:text-[15px] md:text-base text-[#5b5853] max-w-xl mx-auto">
             Ήρεμη, σύγχρονη φροντίδα για τον θυρεοειδή, τον μεταβολισμό και τις
             ορμόνες σας.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <Link
               href="/appointments"
               className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-[#3b3a36] text-white px-8 py-3 text-sm md:text-base shadow-sm hover:bg-[#272623] transition"
@@ -181,7 +182,8 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center text-[#8c7c68]">
+        {/* Scroll indicator (kept for md+ so it doesn’t crowd small screens) */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 hidden sm:flex flex-col items-center text-[#8c7c68]">
           <span className="text-[11px] tracking-[0.18em] uppercase mb-1">
             Scroll
           </span>
@@ -194,7 +196,7 @@ export default function Home() {
       <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#e8e1d8] to-transparent" />
 
       {/* ======================= ΕΞΕΙΔΙΚΕΥΣΕΙΣ ======================= */}
-      <section className="py-14 sm:py-16 px-4 sm:px-6 bg-[#f9f4ee]">
+      <section className="py-14 sm:py-16 px-4 sm:px-6 lg:px-8 bg-[#f9f4ee]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-2xl mx-auto">
             <p className="inline-flex items-center gap-2 rounded-full bg-[#f3ede4] border border-[#e8e1d8] px-3 py-1 text-[11px] tracking-[0.16em] uppercase text-[#7a7469] mb-4">
@@ -210,19 +212,19 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="mt-7 sm:mt-8 grid gap-4 sm:gap-5 md:grid-cols-3">
+          <div className="mt-8 grid gap-4 sm:gap-5 md:grid-cols-3 auto-rows-fr">
             {SPECIALTIES.map((item) => (
               <div
                 key={item.title}
-                className="rounded-2xl border border-[#e8e1d8] bg-white/90 p-4 sm:p-5 shadow-sm hover:shadow-md hover:-translate-y-[2px] transition"
+                className="flex flex-col rounded-2xl border border-[#e8e1d8] bg-white/90 p-4 sm:p-5 shadow-sm hover:shadow-md hover:-translate-y-[2px] transition"
               >
-                <div className="inline-flex items-center justify-center rounded-2xl bg-[#f3ede4] text-[#8c7c68] p-2 mb-3">
+                <div className="inline-flex items-center justify-center rounded-2xl bg-[#f3ede4] text-[#8c7c68] p-2 mb-3 w-10 h-10">
                   {item.icon}
                 </div>
                 <h3 className="text-[15px] sm:text-base font-semibold text-[#2f2e2c] mb-2">
                   {item.title}
                 </h3>
-                <p className="text-sm text-[#5b5853] leading-relaxed">
+                <p className="text-sm text-[#5b5853] leading-relaxed flex-1">
                   {item.desc}
                 </p>
               </div>
@@ -234,8 +236,8 @@ export default function Home() {
       <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#e8e1d8] to-transparent" />
 
       {/* ======================= Η Ιατρός ======================= */}
-      <section className="py-16 sm:py-24 px-4 sm:px-6 bg-[#faf7f3] overflow-hidden">
-        <div className="relative max-w-6xl mx-auto grid md:grid-cols-2 gap-10 md:gap-16 items-center">
+      <section className="py-16 sm:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 bg-[#faf7f3] overflow-hidden">
+        <div className="relative max-w-6xl mx-auto grid md:grid-cols-2 lg:grid-cols-[1.1fr_0.9fr] gap-10 md:gap-12 items-center">
           <div className="pointer-events-none absolute -top-16 -left-24 h-56 w-56 rounded-full bg-[radial-gradient(circle_at_center,_#efe6d9_0%,transparent_60%)] opacity-60" />
 
           <div className="space-y-5 sm:space-y-6 text-center md:text-left relative">
@@ -245,7 +247,7 @@ export default function Home() {
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight">
               Η Δρ. Γεωργία Κόλλια
             </h2>
-            <p className="text-sm sm:text-[0.98rem] md:text-[1.05rem] text-[#4a4944] leading-relaxed">
+            <p className="text-sm sm:text-[0.98rem] md:text-[1.05rem] text-[#4a4944] leading-relaxed max-w-xl md:max-w-none mx-auto md:mx-0">
               Η Δρ. Κόλλια ειδικεύεται στην ενδοκρινολογία με έμφαση στον
               θυρεοειδή, τον μεταβολισμό και τις ορμονικές διαταραχές. Προσφέρει
               εξατομικευμένη παρακολούθηση, συνδυάζοντας εμπειρία και σύγχρονη
@@ -273,7 +275,7 @@ export default function Home() {
 
             <Link
               href="/about"
-              className="inline-flex items-center justify-center gap-2 text-[#2f2e2b] border border-[#2f2e2b] px-6 py-2.5 rounded-full hover:bg-[#2f2e2b] hover:text-white transition duration-300 shadow-sm"
+              className="inline-flex items-center justify-center gap-2 text-[#2f2e2b] border border-[#2f2e2b] px-6 py-2.5 rounded-full hover:bg-[#2f2e2b] hover:text-white transition duration-300 shadow-sm mt-2"
             >
               Δείτε Περισσότερα
             </Link>
@@ -293,13 +295,13 @@ export default function Home() {
       </section>
 
       {/* ======================= Το Ιατρείο ======================= */}
-      <section className="py-16 sm:py-24 px-4 sm:px-6 bg-[#f2eee8] overflow-hidden">
-        <div className="relative max-w-6xl mx-auto grid md:grid-cols-2 gap-10 md:gap-16 items-center">
+      <section className="py-16 sm:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 bg-[#f2eee8] overflow-hidden">
+        <div className="relative max-w-6xl mx-auto grid md:grid-cols-2 lg:grid-cols-[0.95fr_1.05fr] gap-10 md:gap-12 items-center">
           <div className="pointer-events-none absolute -top-16 -right-24 h-56 w-56 rounded-full bg-[radial-gradient(ellipse_at_center,_#efe6d9_0%,transparent_60%)] opacity-60" />
           <div className="pointer-events-none absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-[radial-gradient(ellipse_at_center,_#f5ede2_0%,transparent_60%)] opacity-60" />
 
           <div className="order-1 md:order-none space-y-3">
-            <div className="max-w-xs sm:max-w-lg mx-auto relative rounded-3xl overflow-hidden shadow-2xl ring-1 ring-[#e8e1d8]">
+            <div className="max-w-xs sm:max-w-md md:max-w-lg mx-auto relative rounded-3xl overflow-hidden shadow-2xl ring-1 ring-[#e8e1d8]">
               <Image
                 src="/iatreio.jpg"
                 alt="Clinic Interior"
@@ -323,7 +325,7 @@ export default function Home() {
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight">
               Ένας χώρος γαλήνης &amp; εμπιστοσύνης
             </h2>
-            <p className="text-sm sm:text-[0.98rem] md:text-[1.05rem] text-[#4a4944] leading-relaxed">
+            <p className="text-sm sm:text-[0.98rem] md:text-[1.05rem] text-[#4a4944] leading-relaxed max-w-xl md:max-w-none mx-auto md:mx-0">
               Ένας κομψός, φιλόξενος χώρος που προάγει τη γαλήνη και την
               εμπιστοσύνη. Σχεδιασμένος ώστε να αισθάνεστε άνεση και ασφάλεια σε
               κάθε επίσκεψη.
@@ -362,7 +364,10 @@ export default function Home() {
       <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#e8e1d8] to-transparent" />
 
       {/* ======================= Ώρες Λειτουργίας ======================= */}
-      <section className="py-16 px-4 sm:px-6 bg-[#faf7f3]" id="hours">
+      <section
+        className="py-16 sm:py-18 lg:py-20 px-4 sm:px-6 lg:px-8 bg-[#faf7f3]"
+        id="hours"
+      >
         <div className="max-w-5xl mx-auto">
           <div className="text-center">
             <div className="mx-auto mb-4 inline-flex rounded-full border border-[#e8e1d8] bg-[#f3eee6] p-2">
@@ -376,7 +381,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-8 grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {HOURS.map(({ day, hours }) => {
               const isClosed = hours.includes("Κλειστά");
               return (
@@ -418,10 +423,15 @@ export default function Home() {
       {/* ======================= CTA ======================= */}
       <section
         id="contact"
-        className="relative py-20 sm:py-24 px-4 sm:px-6 bg-[#3b3a36] text-white text-center overflow-hidden"
+        className="relative py-18 sm:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 bg-[#3b3a36] text-white text-center overflow-hidden"
       >
         <div className="absolute inset-0 opacity-10">
-          <Image src="/cta.jpg" alt="cta image" fill className="object-cover" />
+          <Image
+            src="/cta.jpg"
+            alt="cta image"
+            fill
+            className="object-cover pointer-events-none"
+          />
         </div>
         <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,transparent_0%,rgba(0,0,0,0.3)_70%,rgba(0,0,0,0.45)_100%)]" />
 
@@ -433,7 +443,7 @@ export default function Home() {
             Κάντε το πρώτο βήμα προς την ορμονική ισορροπία και την καλύτερη
             ποιότητα ζωής. Η ομάδα μας είναι εδώ για να σας βοηθήσει.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <Link
               href="/appointments"
               className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-white/95 text-[#3b3a36] px-6 py-3 shadow-sm hover:bg-white transition"

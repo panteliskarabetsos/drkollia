@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import offlineAuth from "../../../../lib/offlineAuth";
 import { FaArrowLeft } from "react-icons/fa";
-import { AlertCircle, Users } from "lucide-react";
+import { AlertCircle, Users, Wifi, WifiOff } from "lucide-react";
 import { db } from "../../../../lib/db";
 import { createPatient } from "../../../../lib/offlinePatients";
+
 /* ---------- helpers ---------- */
 const onlyDigits = (s) => (s || "").replace(/\D+/g, "");
 const normalizeAMKA = (s) => onlyDigits(s).slice(0, 11);
@@ -94,6 +95,7 @@ export default function NewPatientPage() {
   const [submitIntent, setSubmitIntent] = useState("save");
   const firstErrorRef = useRef(null);
   const online = useOnline();
+
   // debounced duplicate checks
   const debouncedCheckDuplicate = useDebouncedCallback(async (field, value) => {
     await checkDuplicate(field, value);
@@ -104,11 +106,12 @@ export default function NewPatientPage() {
       const { data } = await supabase.auth.getSession();
       const s = data?.session || null;
       const hasOffline = !!offlineAuth?.isEnabled?.();
-      const online = typeof navigator === "undefined" ? true : navigator.onLine;
+      const onlineNow =
+        typeof navigator === "undefined" ? true : navigator.onLine;
 
       if (!s && !hasOffline) {
         // redirect ONLY when online (prevents offline loop)
-        if (online && !redirectedRef.current) {
+        if (onlineNow && !redirectedRef.current) {
           redirectedRef.current = true;
           router.replace("/login?redirect=/admin/patients/new");
         }
@@ -168,8 +171,13 @@ export default function NewPatientPage() {
 
   if (loading)
     return (
-      <div className="grid min-h-screen place-items-center bg-gradient-to-b from-stone-50 via-white to-stone-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-stone-300 border-t-[#8c7c68]" />
+      <div className="grid min-h-screen place-items-center bg-[radial-gradient(1200px_500px_at_10%_-10%,#f5f2eb_25%,transparent),radial-gradient(900px_400px_at_90%_-20%,#ece5d9_25%,transparent)]">
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-stone-200 bg-white/80 px-6 py-5 shadow-lg">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-stone-300 border-t-[#8c7c68]" />
+          <p className="text-sm text-stone-600">
+            Φόρτωση φόρμας ασθενούς, παρακαλώ περιμένετε...
+          </p>
+        </div>
       </div>
     );
 
@@ -266,16 +274,18 @@ export default function NewPatientPage() {
       });
 
       const nowISO = new Date().toISOString();
-      const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+      const onlineNow =
+        typeof navigator !== "undefined" ? navigator.onLine : true;
       let newId;
-      if (online) {
+
+      if (onlineNow) {
         // ---- ONLINE: save to Supabase and mirror to Dexie ----
         const { data, error } = await supabase
           .from("patients")
           .insert([{ ...cleanedForm, created_at: nowISO, updated_at: nowISO }])
           .select("id")
           .single();
-        newId = data.id;
+        newId = data?.id;
         if (error) {
           console.error("Supabase insert error:", error);
           setMessage({ type: "error", text: "Σφάλμα κατά την αποθήκευση." });
@@ -348,7 +358,7 @@ export default function NewPatientPage() {
 
       if (submitIntent === "save_and_new_appt") {
         const param =
-          online && newId && !String(newId).startsWith("local-")
+          onlineNow && newId && !String(newId).startsWith("local-")
             ? `patient_id=${newId}`
             : `patient_local_id=${newId}`;
         router.push(`/admin/appointments/new?${param}`);
@@ -409,57 +419,85 @@ export default function NewPatientPage() {
   };
 
   return (
-    <main className="py-8 min-h-screen text-stone-800 bg-[radial-gradient(1200px_500px_at_10%_-10%,#f3f1ea_25%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#f1eee6_25%,transparent)]">
+    <main className="min-h-screen bg-[radial-gradient(1200px_500px_at_10%_-10%,#f5f2eb_25%,transparent),radial-gradient(900px_400px_at_90%_-20%,#ece5d9_25%,transparent)] text-stone-800 pb-24">
       {/* Top bar */}
-      <div className="sticky top-0 z-30 border-b bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
-          <button
-            onClick={() => router.back()}
-            className="inline-flex items-center gap-2 text-sm rounded-lg border border-stone-200 px-3 py-1.5 hover:bg-stone-50"
-            title="Επιστροφή"
-          >
-            <FaArrowLeft className="opacity-70" />
-            Επιστροφή
-          </button>
+      <div className="sticky top-0 z-30 border-b border-stone-200/70 bg-white/75 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-stone-700 shadow-sm hover:bg-stone-50"
+              title="Επιστροφή"
+            >
+              <FaArrowLeft className="h-3.5 w-3.5 opacity-70" />
+              <span>Επιστροφή</span>
+            </button>
+            <span className="hidden text-xs text-stone-500 sm:inline-flex">
+              Admin / Ασθενείς / Νέος
+            </span>
+          </div>
 
-          <div className="text-center">
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
+          <div className="flex flex-1 flex-col items-center gap-1 text-center sm:flex-none">
+            <h1 className="text-base font-semibold tracking-tight sm:text-xl">
               Νέος Ασθενής
             </h1>
-            <p className="text-xs text-stone-600">
-              Συμπληρώστε τα βασικά στοιχεία και (προαιρετικά) κλινικές
+            <p className="text-[11px] text-stone-500 sm:text-xs">
+              Συμπληρώστε τα βασικά στοιχεία και (προαιρετικά) τις κλινικές
               πληροφορίες.
             </p>
           </div>
 
-          {/* progress pill */}
-          <div className="hidden sm:flex items-center gap-2 text-xs rounded-full border border-stone-200 bg-white px-3 py-1.5 shadow-sm">
-            <span className="text-stone-500">Πρόοδος</span>
-            <span className="font-semibold">{progress}%</span>
-            <span
-              className="ml-2 h-1.5 w-20 rounded-full bg-stone-200 overflow-hidden"
-              aria-hidden
-            >
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-1 rounded-full border border-stone-200 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-stone-600 shadow-sm sm:inline-flex">
+              {online ? (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  <Wifi className="h-3 w-3 opacity-70" />
+                  <span>Συνδεδεμένο</span>
+                </>
+              ) : (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  <WifiOff className="h-3 w-3 opacity-70" />
+                  <span>Εκτός σύνδεσης</span>
+                </>
+              )}
+            </div>
+
+            {/* progress pill */}
+            <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-white/90 px-3 py-1.5 text-[11px] shadow-sm">
+              <span className="text-stone-500">Πρόοδος</span>
+              <span className="font-semibold">{progress}%</span>
               <span
-                className="block h-full bg-[#8c7c68]"
-                style={{ width: `${progress}%` }}
-              />
-            </span>
+                className="ml-2 h-1.5 w-20 overflow-hidden rounded-full bg-stone-200"
+                aria-hidden
+              >
+                <span
+                  className="block h-full bg-[#8c7c68]"
+                  style={{ width: `${progress}%` }}
+                />
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
         {/* error summary */}
         {Object.keys(errors).length > 0 && (
-          <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-            <p className="font-medium mb-1">Υπάρχουν εκκρεμότητες στη φόρμα:</p>
-            <ul className="list-disc pl-5 space-y-1">
+          <div className="mx-auto mb-6 max-w-3xl rounded-2xl border border-rose-200/80 bg-rose-50/90 p-4 text-sm text-rose-900 shadow-sm">
+            <div className="mb-2 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              <p className="font-medium">
+                Υπάρχουν εκκρεμότητες στη φόρμα ασθενούς:
+              </p>
+            </div>
+            <ul className="grid gap-1 pl-5 text-xs sm:text-sm">
               {Object.entries(errors).map(([k, msg]) => (
-                <li key={k}>
+                <li key={k} className="list-disc">
                   <button
                     type="button"
-                    className="underline underline-offset-2"
+                    className="underline underline-offset-2 hover:text-rose-800"
                     onClick={() => {
                       const el = document.getElementById(k);
                       if (el) {
@@ -479,14 +517,18 @@ export default function NewPatientPage() {
           </div>
         )}
 
+        {/* single column form, centered */}
         <form
           id="new-patient-form"
           onSubmit={handleSubmit}
-          className="space-y-10"
+          className="mx-auto max-w-4xl space-y-8"
         >
           {/* ——— Section: Basics ——— */}
-          <Section title="🧾 Στοιχεία Ασθενούς">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 bg-white/70 p-6 rounded-2xl shadow-sm border border-stone-200">
+          <Section
+            title="🧾 Στοιχεία Ασθενούς"
+            subtitle="Βασικά στοιχεία ταυτοποίησης και επικοινωνίας."
+          >
+            <div className="grid grid-cols-1 gap-6 rounded-2xl border border-stone-200/80 bg-white/80 p-6 shadow-sm md:grid-cols-2 lg:grid-cols-3">
               <InputField
                 name="first_name"
                 label="Όνομα"
@@ -611,8 +653,11 @@ export default function NewPatientPage() {
               />
             </div>
 
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white/70 p-6 rounded-2xl shadow-sm border border-stone-200">
+            <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div className="rounded-2xl border border-stone-200/80 bg-white/80 p-5 shadow-sm">
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">
+                  Τρόπος ζωής
+                </h3>
                 <SelectField
                   name="smoking"
                   label="Κάπνισμα"
@@ -631,7 +676,7 @@ export default function NewPatientPage() {
                     <InputField
                       name="customSmoking"
                       label="Προσαρμοσμένη τιμή"
-                      placeholder="περιγράψτε..."
+                      placeholder="Περιγράψτε..."
                       value={form.customSmoking}
                       onChange={handleChange}
                     />
@@ -639,7 +684,10 @@ export default function NewPatientPage() {
                 )}
               </div>
 
-              <div className="bg-white/70 p-6 rounded-2xl shadow-sm border border-stone-200">
+              <div className="rounded-2xl border border-stone-200/80 bg-white/80 p-5 shadow-sm">
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">
+                  Συνήθειες
+                </h3>
                 <SelectField
                   name="alcohol"
                   label="Αλκοόλ"
@@ -658,7 +706,7 @@ export default function NewPatientPage() {
                     <InputField
                       name="customAlcohol"
                       label="Προσαρμοσμένη τιμή"
-                      placeholder="περιγράψτε..."
+                      placeholder="Περιγράψτε..."
                       value={form.customAlcohol}
                       onChange={handleChange}
                     />
@@ -667,7 +715,7 @@ export default function NewPatientPage() {
               </div>
             </div>
 
-            <div className="mt-6 bg-white/70 p-6 rounded-2xl shadow-sm border border-stone-200">
+            <div className="mt-6 rounded-2xl border border-stone-200/80 bg-white/80 p-5 shadow-sm">
               <TextAreaField
                 name="medications"
                 label="Φάρμακα"
@@ -680,20 +728,22 @@ export default function NewPatientPage() {
           {/* ——— Section: Clinical ——— */}
           <Section
             title={
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <span>📋 Κλινικές Πληροφορίες</span>
                 <button
                   type="button"
                   onClick={() => setShowClinical((v) => !v)}
-                  className="text-sm rounded-full border border-stone-300 px-3 py-1 hover:bg-stone-50"
+                  className="inline-flex items-center gap-2 rounded-full border border-stone-300 bg-white/80 px-3 py-1 text-xs font-medium text-stone-700 shadow-sm hover:bg-stone-50"
                 >
-                  {showClinical ? "Σύμπτυξη" : "Εμφάνιση"}
+                  <span className="h-1.5 w-1.5 rounded-full bg-stone-400" />
+                  {showClinical ? "Σύμπτυξη" : "Εμφάνιση ενότητας"}
                 </button>
               </div>
             }
+            subtitle="Προαιρετικά, για πιο πλήρη κλινική εικόνα."
           >
             {showClinical && (
-              <div className="grid grid-cols-1 gap-6 bg-white/70 p-6 rounded-2xl shadow-sm border border-stone-200">
+              <div className="grid grid-cols-1 gap-6 rounded-2xl border border-stone-200/80 bg-white/80 p-6 shadow-sm">
                 <TextAreaField
                   name="gynecological_history"
                   label="Γυναικολογικό Ιστορικό"
@@ -735,29 +785,38 @@ export default function NewPatientPage() {
           </Section>
 
           {message && (
-            <div
-              className={`mt-2 text-center text-sm font-medium ${
-                message.type === "error" ? "text-red-600" : "text-green-600"
-              }`}
-            >
-              {message.text}
+            <div className="mt-2">
+              <div
+                className={`mx-auto max-w-xl rounded-2xl border px-4 py-3 text-center text-sm shadow-sm ${
+                  message.type === "error"
+                    ? "border-rose-200 bg-rose-50 text-rose-800"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                }`}
+              >
+                {message.text}
+              </div>
             </div>
           )}
 
           {/* Sticky actions */}
-          <div className="sticky bottom-0 inset-x-0 z-20 mt-6 border-t bg-white/80 backdrop-blur">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-              <span className="text-xs text-stone-600">
-                {dirty ? "Μη αποθηκευμένες αλλαγές" : "Όλα αποθηκευμένα"}
-              </span>
-              {!online && (
-                <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2 text-sm">
-                  Είστε εκτός σύνδεσης. Τα νέα στοιχεία θα αποθηκευτούν τοπικά
-                  και θα συγχρονιστούν αυτόματα μόλις συνδεθείτε.
-                </div>
-              )}
+          <div className="sticky inset-x-0 bottom-0 z-20 mt-8 border-t border-stone-200/80 bg-white/85 backdrop-blur">
+            <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div className="flex flex-col gap-1 text-xs text-stone-600 sm:flex-row sm:items-center sm:gap-3">
+                <span>
+                  {dirty
+                    ? "Μη αποθηκευμένες αλλαγές"
+                    : "Όλες οι αλλαγές έχουν αποθηκευτεί."}
+                </span>
+                {!online && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[11px] text-amber-900">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    Εκτός σύνδεσης — θα γίνει αυτόματος συγχρονισμός όταν
+                    επανέλθει η σύνδεση.
+                  </span>
+                )}
+              </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -767,15 +826,15 @@ export default function NewPatientPage() {
                       ?.requestSubmit();
                   }}
                   disabled={loading}
-                  className="text-sm rounded-lg border border-stone-300 px-4 py-2 hover:bg-stone-50 transition disabled:opacity-50"
+                  className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-xs font-medium text-stone-800 shadow-sm transition hover:-translate-y-[1px] hover:bg-stone-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Αποθήκευση & Νέο Ραντεβού
+                  Αποθήκευση &amp; Νέο Ραντεβού
                 </button>
                 <button
                   type="submit"
                   onClick={() => setSubmitIntent("save")}
                   disabled={loading}
-                  className="bg-[#2e2c28] hover:bg-[#1f1e1b] text-white px-5 py-2 rounded-lg text-sm font-semibold tracking-wide shadow-md hover:shadow-lg transition disabled:opacity-50"
+                  className="rounded-xl bg-[#2e2c28] px-5 py-2 text-xs font-semibold tracking-wide text-white shadow-md transition hover:-translate-y-[1px] hover:bg-black hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {loading ? "Αποθήκευση..." : "Καταχώρηση"}
                 </button>
@@ -789,11 +848,16 @@ export default function NewPatientPage() {
 }
 
 /* ---------- components ---------- */
-const Section = ({ title, children }) => (
-  <section className="rounded-2xl border border-stone-200 bg-white/60 px-6 py-8 shadow-sm">
-    <h2 className="text-lg font-semibold mb-6 text-stone-700 tracking-tight">
-      {title}
-    </h2>
+const Section = ({ title, subtitle, children }) => (
+  <section className="rounded-3xl border border-stone-200/80 bg-white/40 px-4 py-6 shadow-sm sm:px-6 sm:py-7">
+    <div className="mb-5 flex flex-col gap-1 border-b border-stone-100 pb-4">
+      <h2 className="text-sm font-semibold tracking-tight text-stone-800 sm:text-base">
+        {title}
+      </h2>
+      {subtitle && (
+        <p className="text-xs text-stone-500 sm:text-[13px]">{subtitle}</p>
+      )}
+    </div>
     {children}
   </section>
 );
@@ -811,15 +875,19 @@ const InputField = ({
   errorMessage = "",
   below,
 }) => (
-  <div>
+  <div className="space-y-1.5">
     <label
       htmlFor={name}
-      className="block text-sm font-medium text-stone-700 mb-1"
+      className="flex items-center justify-between text-xs font-medium text-stone-700"
     >
-      {label}
-      {required && <span className="ml-1 text-rose-500">*</span>}
+      <span>
+        {label}
+        {required && <span className="ml-1 text-rose-500">*</span>}
+      </span>
       {hint && (
-        <span className="ml-2 text-xs text-stone-500 font-normal">{hint}</span>
+        <span className="ml-2 text-[11px] font-normal text-stone-500">
+          {hint}
+        </span>
       )}
     </label>
     <input
@@ -832,22 +900,22 @@ const InputField = ({
       aria-invalid={error ? "true" : "false"}
       aria-describedby={error ? `${name}-error` : undefined}
       className={[
-        "w-full px-3 py-2 rounded-lg text-sm bg-white transition",
-        "border focus:outline-none focus:ring-2",
+        "w-full rounded-lg border px-3 py-2 text-sm bg-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.01)]",
+        "transition focus:outline-none focus:ring-2",
         error
-          ? "border-rose-400 focus:ring-rose-300"
-          : "border-stone-300 focus:ring-[#9e9483]",
+          ? "border-rose-300 focus:ring-rose-200"
+          : "border-stone-300 focus:ring-[#b0a492]",
       ].join(" ")}
       autoComplete="off"
     />
     {error && (
       <div
         id={`${name}-error`}
-        className="mt-1 flex items-start gap-2 text-sm text-rose-700"
+        className="mt-0.5 flex items-start gap-1.5 text-xs text-rose-700"
         role="alert"
         aria-live="polite"
       >
-        <AlertCircle className="mt-[2px] h-4 w-4" />
+        <AlertCircle className="mt-[1px] h-3.5 w-3.5" />
         <p>{errorMessage}</p>
       </div>
     )}
@@ -856,11 +924,8 @@ const InputField = ({
 );
 
 const SelectField = ({ name, label, value, onChange, options = [] }) => (
-  <div>
-    <label
-      htmlFor={name}
-      className="block text-sm font-medium text-stone-700 mb-1"
-    >
+  <div className="space-y-1.5">
+    <label htmlFor={name} className="block text-xs font-medium text-stone-700">
       {label}
     </label>
     <select
@@ -868,7 +933,7 @@ const SelectField = ({ name, label, value, onChange, options = [] }) => (
       id={name}
       value={value}
       onChange={onChange}
-      className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#9e9483] transition"
+      className="w-full rounded-lg border border-stone-300 bg-white/90 px-3 py-2 text-sm shadow-[0_0_0_1px_rgba(0,0,0,0.01)] focus:outline-none focus:ring-2 focus:ring-[#b0a492] transition"
     >
       <option value="">Επιλέξτε</option>
       {options.map((opt) =>
@@ -895,10 +960,10 @@ const TextAreaField = ({
 }) => {
   const count = value?.length ?? 0;
   return (
-    <div>
+    <div className="space-y-1.5">
       <label
         htmlFor={name}
-        className="block text-sm font-medium text-stone-700 mb-1"
+        className="block text-xs font-medium text-stone-700"
       >
         {label}
       </label>
@@ -909,9 +974,9 @@ const TextAreaField = ({
         value={value}
         onChange={onChange}
         maxLength={maxLength}
-        className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-stone-300 resize-none focus:outline-none focus:ring-2 focus:ring-[#9e9483] transition"
+        className="w-full resize-none rounded-lg border border-stone-300 bg-white/90 px-3 py-2 text-sm shadow-[0_0_0_1px_rgba(0,0,0,0.01)] focus:outline-none focus:ring-2 focus:ring-[#b0a492] transition"
       />
-      <div className="mt-1 text-xs text-stone-500 text-right">
+      <div className="mt-0.5 text-right text-[11px] text-stone-500">
         {count}/{maxLength}
       </div>
     </div>
@@ -919,18 +984,18 @@ const TextAreaField = ({
 };
 
 const ConflictCard = ({ title, items }) => (
-  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 shadow-sm">
-    <div className="flex items-center gap-2 font-medium mb-1.5">
-      <Users className="h-4 w-4" />
+  <div className="rounded-2xl border border-rose-200 bg-rose-50/95 p-3 text-xs text-rose-900 shadow-sm">
+    <div className="mb-1.5 flex items-center gap-2 font-medium">
+      <Users className="h-3.5 w-3.5" />
       <span>{title}</span>
-      <span className="ml-auto text-xs bg-rose-100 text-rose-700 rounded-full px-2 py-0.5">
+      <span className="ml-auto rounded-full bg-rose-100 px-2 py-0.5 text-[10px] text-rose-700">
         {items.length}
       </span>
     </div>
-    <ul className="space-y-1">
+    <ul className="space-y-0.5">
       {items.map((p) => (
-        <li key={p.id} className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-rose-500 inline-block" />
+        <li key={p.id} className="flex items-center gap-2 text-[11px]">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-rose-500" />
           <span className="leading-tight">
             {p.last_name} {p.first_name}
           </span>
