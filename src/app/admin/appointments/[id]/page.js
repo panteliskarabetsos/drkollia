@@ -719,7 +719,7 @@ export default function EditAppointmentPage() {
                       Ο λόγος ραντεβού έχει οριστεί σε{" "}
                       <span className="font-semibold">{form.reason}</span> και η
                       διάρκεια προσαρμόστηκε αυτόματα. Για custom κείμενο,
-                      επιλέξτε "<span className="italic">—</span>" από το
+                      &quot;<span className="italic">—</span>&quot; από το
                       παραπάνω πεδίο.
                     </p>
                   )}
