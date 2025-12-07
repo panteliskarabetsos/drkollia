@@ -513,7 +513,7 @@ export default function NewAppointmentPage() {
                   Προς το παρόν δεν δεχόμαστε νέα ηλεκτρονικά ραντεβού.
                 </p>
                 <p className="mt-1 text-[13px]">
-                  Μπορείτε να κλείσετε τηλεφωνικά στο{" "}
+                  Μπορείτε να κλείσετε το ραντεβού σας τηλεφωνικά στο{" "}
                   <a
                     href="tel:2109934316"
                     className="font-semibold underline underline-offset-2 hover:text-red-900"
