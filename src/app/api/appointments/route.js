@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/app/lib/supabaseServerClient";
+import { createSupabaseServerClient } from "../../../lib/supabaseServerClient";
 
 function birthDateFromAmka(amka) {
   const dd = parseInt(amka.slice(0, 2), 10);
