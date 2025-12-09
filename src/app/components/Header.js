@@ -94,6 +94,7 @@ export default function Header() {
     { href: "/about", label: "Σχετικά" },
     { href: "/iatreio", label: "Ιατρείο" },
     { href: "/contact", label: "Επικοινωνία" },
+    // { href: "/ypiresies", label: "Υπηρεσίες" },
   ];
 
   const isActive = (href) => pathname === href;
