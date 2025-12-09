@@ -12,7 +12,7 @@ import {
   CheckCircle2,
   PhoneCall,
 } from "lucide-react";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { format } from "date-fns";
 import { el } from "date-fns/locale";
 
 import { Calendar } from "@/components/ui/calendar";
@@ -111,6 +111,7 @@ export default function NewAppointmentPage() {
     customReason: "",
     notes: "",
     acceptTerms: false,
+    visitorCompany: "",
   });
 
   const [availableSlots, setAvailableSlots] = useState([]);
@@ -242,6 +243,7 @@ export default function NewAppointmentPage() {
       customReason: "",
       notes: "",
       acceptTerms: false,
+      visitorCompany: "",
     });
     setNewPatientData({
       first_name: "",
@@ -251,7 +253,9 @@ export default function NewAppointmentPage() {
       amka: "",
     });
     // υποθέτουμε ότι υπάρχουν αυτά τα states στο πλήρες αρχείο
+    // eslint-disable-next-line no-undef
     setSelectedPatient(null);
+    // eslint-disable-next-line no-undef
     setNewPatientMode(false);
     router.push("/");
   };
@@ -358,6 +362,14 @@ export default function NewAppointmentPage() {
       errors.appointment = "missing";
     }
 
+    if (
+      formData.reason === "Ιατρικός Επισκέπτης" &&
+      !formData.visitorCompany.trim()
+    ) {
+      errors.visitorCompany =
+        "Παρακαλώ συμπληρώστε την εταιρεία ή τον οργανισμό.";
+    }
+
     if (Object.keys(errors).length > 0) {
       const { appointment, ...fieldErrors } = errors;
       setFormErrors(fieldErrors);
@@ -386,6 +398,28 @@ export default function NewAppointmentPage() {
         ? formData.customReason
         : formData.reason;
 
+    const isVisitor = formData.reason === "Ιατρικός Επισκέπτης";
+
+    // Build final notes: include visitor info if it's a medical rep
+    let finalNotes = formData.notes?.trim() || "";
+
+    if (isVisitor) {
+      const visitorInfoLines = [
+        "Ιατρικός επισκέπτης",
+        `Ονοματεπώνυμο: ${firstName} ${lastName}`,
+        `Τηλέφωνο: ${phoneTrim}`,
+        `Email: ${emailTrim}`,
+        formData.visitorCompany?.trim() &&
+          `Εταιρεία / Οργανισμός: ${formData.visitorCompany.trim()}`,
+      ].filter(Boolean);
+
+      const visitorBlock = visitorInfoLines.join("\n");
+
+      finalNotes = finalNotes
+        ? `${visitorBlock}\n\n${finalNotes}`
+        : visitorBlock;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -399,7 +433,7 @@ export default function NewAppointmentPage() {
           email: emailTrim,
           amka: amkaTrim || null,
           reason: effectiveReason,
-          notes: formData.notes || null,
+          notes: finalNotes || null,
           appointment_time_iso: combinedDate.toISOString(),
           duration_minutes: duration,
         }),
@@ -432,7 +466,10 @@ export default function NewAppointmentPage() {
     !!formData.appointment_time &&
     (formData.reason !== "Προσαρμογή"
       ? !!formData.reason
-      : !!formData.customReason?.trim());
+      : !!formData.customReason?.trim()) &&
+    (formData.reason === "Ιατρικός Επισκέπτης"
+      ? !!formData.visitorCompany?.trim()
+      : true);
 
   const activeVisitMeta =
     formData.reason && VISIT_TYPES[formData.reason]
@@ -443,7 +480,6 @@ export default function NewAppointmentPage() {
     ? format(formData.appointment_date, "dd/MM/yyyy")
     : null;
 
-  // 🔹 Simple progress state for header stepper
   const step1Done =
     newPatientData.first_name &&
     newPatientData.last_name &&
@@ -461,9 +497,11 @@ export default function NewAppointmentPage() {
 
   const currentStepIndex = steps.findIndex((s) => !s.done);
   const currentStep = currentStepIndex === -1 ? 2 : currentStepIndex;
+
+  const progressPercentage = ((currentStep + 1) / steps.length) * 100;
+
   const isBookingDisabled = !settingsLoading && !acceptNewAppointments;
 
-  // 🔹 Visible slots grouped (UI only)
   const visibleSlotsGrouped = useMemo(() => {
     if (!formData.appointment_date || !allScheduleSlots.length) {
       return { morning: [], afternoon: [], evening: [] };
@@ -570,9 +608,105 @@ export default function NewAppointmentPage() {
     },
   ];
 
+  // 🔹 Minimal screen when online appointments are disabled
+  if (isBookingDisabled) {
+    return (
+      <main className="relative min-h-screen overflow-hidden bg-[#f5f0e8]">
+        {/* Soft ambient video background */}
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-60"
+        >
+          <source src="/background.mp4" type="video/mp4" />
+        </video>
+
+        {/* Blurry overlay */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#f6f0e7]/85 via-[#f6f0e7]/90 to-[#f3ece3]/92 backdrop-blur-md" />
+
+        <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12 md:px-8">
+          <div className="mx-auto w-full max-w-xl rounded-[30px] border border-white/70 bg-white/65 p-6 shadow-2xl backdrop-blur-2xl md:max-w-2xl md:p-8">
+            {/* Top row: back + eyebrow */}
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => router.push("/")}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-white/70 text-[#6b675f] shadow-sm transition hover:border-[#e0d5c6] hover:bg-white"
+                aria-label="Επιστροφή στην αρχική"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <p className="text-[10px] uppercase tracking-[0.25em] text-[#9b968c]">
+                Online Ραντεβού
+              </p>
+            </div>
+
+            {/* Main content */}
+            <div className="flex flex-col gap-6 md:flex-row md:items-start">
+              <div className="md:flex-1">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#fdf4e6] text-[#b86330]">
+                  <CalendarX className="h-5 w-5" />
+                </div>
+                <h1 className="mt-3 text-2xl font-serif font-semibold tracking-tight text-[#2f2e2b] md:text-3xl">
+                  Τα online ραντεβού είναι προσωρινά μη διαθέσιμα
+                </h1>
+                <p className="mt-3 text-sm leading-relaxed text-[#6b675f]">
+                  Προς το παρόν τα ραντεβού{" "}
+                  <span className="font-medium">κλείνονται αποκλειστικά</span>{" "}
+                  τηλεφωνικά μέσω της γραμματείας του ιατρείου.
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-[#8b8579]">
+                  Αν επιθυμείτε να κλείσετε νέο ραντεβού ή να αλλάξετε ένα ήδη
+                  προγραμματισμένο, μπορείτε να επικοινωνήσετε μαζί μας
+                  τηλεφωνικά κατά τις ώρες λειτουργίας του ιατρείου.
+                </p>
+              </div>
+
+              {/* Call card */}
+              <div className="mt-5 w-full rounded-2xl border border-[#efe1cf] bg-[#fdf6ed]/90 px-4 py-4 text-xs text-[#4a453c] shadow-sm md:mt-0 md:w-64">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a5b2e]">
+                  Τηλεφωνικό Ραντεβού
+                </p>
+                <p className="mt-2">
+                  Τηλέφωνο ιατρείου:{" "}
+                  <a
+                    href="tel:2109934316"
+                    className="font-semibold underline underline-offset-2 hover:text-[#2f2e2b]"
+                  >
+                    210 9934316
+                  </a>
+                </p>
+                <p className="mt-1 text-[11px] text-[#8a8274]">
+                  Παρακαλούμε έχετε διαθέσιμο το ονοματεπώνυμο και έναν σύντομο
+                  λόγο επίσκεψης.
+                </p>
+
+                <a
+                  href="tel:2109934316"
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#2f2e2b] px-4 py-2.5 text-sm font-medium text-white shadow-md transition hover:-translate-y-0.5 hover:bg-black"
+                >
+                  <PhoneCall className="h-4 w-4" />
+                  Κλήση για ραντεβού
+                </a>
+
+                <p className="mt-3 text-[10px] text-[#8a8274]">
+                  Για επείγοντα περιστατικά, παρακαλούμε απευθυνθείτε στα
+                  εφημερεύοντα νοσοκομεία.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // 🔹 Normal booking screen when online appointments ARE accepted
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#f5f0e8] px-4 py-16 md:px-8">
-      {/* 🔹 Background video */}
+      {/* Background video */}
       <video
         autoPlay
         loop
@@ -583,7 +717,7 @@ export default function NewAppointmentPage() {
         <source src="/background.mp4" type="video/mp4" />
       </video>
 
-      {/* 🔹 Soft overlay */}
+      {/* Soft overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#f6f0e7]/95 via-[#fdfaf6]/96 to-[#fdfaf6]/98 backdrop-blur-sm" />
 
       <form
@@ -609,191 +743,84 @@ export default function NewAppointmentPage() {
                     Online Ραντεβού
                   </p>
                   <h1 className="mt-1 text-2xl font-serif font-semibold tracking-tight text-[#2f2e2b] md:text-3xl">
-                    {isBookingDisabled
-                      ? "Τα online ραντεβού είναι προσωρινά μη διαθέσιμα"
-                      : "Κλείστε το ραντεβού σας"}
+                    Κλείστε το ραντεβού σας
                   </h1>
 
-                  {isBookingDisabled && (
-                    <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-[#fdf4e6] px-3 py-1 text-[11px] font-medium text-[#8a5b2e]">
-                      <CalendarX className="h-3.5 w-3.5" />
-                      <span>
-                        Ηλεκτρονικά ραντεβού σε παύση – κλείσιμο μόνο τηλεφωνικά
-                      </span>
-                    </div>
-                  )}
-
                   <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[#8b8579] md:text-sm">
-                    {isBookingDisabled ? (
-                      <>
-                        Προς το παρόν τα ραντεβού κλείνονται αποκλειστικά
-                        τηλεφωνικά. Μπορείτε να χρησιμοποιήσετε τη σελίδα για να
-                        ενημερωθείτε για τον τρόπο που λειτουργούν τα ραντεβού
-                        και τις διαθέσιμες υπηρεσίες.
-                      </>
-                    ) : (
-                      <>
-                        Συμπληρώστε τα στοιχεία σας και επιλέξτε την ημέρα και
-                        ώρα που σας εξυπηρετεί. Η πληρωμή γίνεται αποκλειστικά
-                        στο ιατρείο, την ημέρα της επίσκεψης.
-                      </>
-                    )}
+                    Συμπληρώστε τα στοιχεία σας και επιλέξτε την ημέρα και ώρα
+                    που σας εξυπηρετεί. Η πληρωμή γίνεται αποκλειστικά στο
+                    ιατρείο, την ημέρα της επίσκεψης.
                   </p>
                 </div>
               </div>
 
-              {/* 🔹 Stepper */}
-              <div className="mt-1 flex flex-wrap items-center gap-2 rounded-2xl bg-[#f7f1e6]/80 px-3 py-2">
-                {steps.map((step, index) => {
-                  const isDone = step.done;
-                  const isCurrent = index === currentStep;
-                  return (
-                    <div
-                      key={step.id}
-                      className={
-                        "flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-medium transition " +
-                        (isDone
-                          ? "bg-[#2f2e2b] text-white shadow-sm"
-                          : isCurrent
-                          ? "bg-white text-[#2f2e2b] shadow-sm border border-[#ddd2c2]"
-                          : "bg-transparent text-[#8d877c]")
-                      }
-                    >
-                      <div className="flex h-4 w-4 items-center justify-center rounded-full border border-current text-[9px]">
-                        {isDone ? (
-                          <CheckCircle2 className="h-3 w-3" />
-                        ) : (
-                          step.id
-                        )}
+              {/* Stepper */}
+              <div className="mt-4">
+                {/* Γραμμή + μικροί κύκλοι */}
+                <div className="relative flex items-center justify-between">
+                  {/* λεπτή γραμμή φόντου */}
+                  <div className="absolute left-4 right-4 top-1/2 h-px -translate-y-1/2 bg-[#e3dacb]" />
+
+                  {steps.map((step, index) => {
+                    const isDone = step.done;
+                    const isCurrent = index === currentStep;
+
+                    return (
+                      <div
+                        key={step.id}
+                        className="relative flex flex-1 items-center justify-center"
+                      >
+                        <div
+                          className={
+                            "flex h-7 w-7 items-center justify-center rounded-full border text-[11px] transition-all " +
+                            (isDone
+                              ? "border-[#2f2e2b] bg-[#2f2e2b] text-white shadow-sm"
+                              : isCurrent
+                              ? "border-[#2f2e2b] bg-white text-[#2f2e2b] shadow-sm"
+                              : "border-[#dfd4c5] bg-[#f9f5ee] text-[#b0a89a]")
+                          }
+                        >
+                          {isDone ? (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          ) : (
+                            step.id
+                          )}
+                        </div>
                       </div>
-                      <span>{step.label}</span>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+
+                {/* Labels κάτω από τα βήματα */}
+                <div className="mt-2 flex justify-between gap-2 text-[11px] text-[#8c8578]">
+                  {steps.map((step, index) => {
+                    const isCurrent = index === currentStep;
+                    const isDone = step.done;
+
+                    return (
+                      <span
+                        key={step.id}
+                        className={
+                          "flex-1 text-center truncate " +
+                          (isCurrent
+                            ? "font-semibold text-[#3b3a36]"
+                            : isDone
+                            ? "text-[#5c554a]"
+                            : "text-[#b0a89a]")
+                        }
+                      >
+                        {step.label}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </header>
 
-          {/* Global “no new appointments” ribbon */}
-          {isBookingDisabled && (
-            <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-amber-100 bg-gradient-to-r from-amber-50/95 via-amber-50/90 to-orange-50/90 px-4 py-3 text-xs text-amber-900 shadow-sm md:flex-row md:items-center md:justify-between">
-              <div className="flex items-start gap-3">
-                <CalendarX className="mt-[2px] h-5 w-5 flex-shrink-0 text-amber-500" />
-                <div>
-                  <p className="text-sm font-semibold">
-                    Προς το παρόν δεν δεχόμαστε νέα ηλεκτρονικά ραντεβού.
-                  </p>
-                  <p className="mt-1">
-                    Το ιατρείο λειτουργεί κανονικά και τα ραντεβού
-                    προγραμματίζονται τηλεφωνικά. Η ομάδα μας θα σας καθοδηγήσει
-                    για τη διαθέσιμη ημέρα και ώρα.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-col items-stretch gap-2 text-xs md:items-end">
-                <a
-                  href="tel:2109934316"
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-[#2f2e2b] px-4 py-2 text-sm font-medium text-white shadow-md transition hover:-translate-y-0.5 hover:bg-black"
-                >
-                  <PhoneCall className="h-4 w-4" />
-                  Κλήση ιατρείου: 210 9934316
-                </a>
-                <p className="text-[10px] text-amber-800/80 md:text-right">
-                  Συνήθως απαντάμε εντός λίγων λεπτών κατά τις ώρες λειτουργίας.
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* Main layout */}
-          <div className="mt-6 relative">
-            {isBookingDisabled && (
-              <>
-                {/* Dim & blur background content */}
-                <div className="absolute inset-0 z-10 rounded-[24px] bg-gradient-to-b from-white/80 via-white/88 to-white/92 backdrop-blur-sm" />
-
-                {/* Central info card */}
-                <div className="absolute inset-0 z-20 flex items-center justify-center px-4">
-                  <div className="max-w-xl md:max-w-2xl rounded-3xl border border-[#f0e2d0] bg-white/97 p-6 text-center shadow-2xl md:p-8">
-                    <div className="flex flex-col gap-5 md:flex-row md:text-left">
-                      <div className="md:flex-1">
-                        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-[#fdf4e6] text-[#b86330] md:mx-0">
-                          <CalendarX className="h-5 w-5" />
-                        </div>
-                        <h2 className="mt-3 text-sm font-semibold text-[#2f2e2b] md:text-base">
-                          Τα online ραντεβού είναι προσωρινά απενεργοποιημένα
-                        </h2>
-                        <p className="mt-2 text-xs leading-relaxed text-[#6b675f] md:text-sm">
-                          Το ηλεκτρονικό σύστημα ραντεβού βρίσκεται προσωρινά σε
-                          παύση. Το ιατρείο συνεχίζει κανονικά τη λειτουργία του
-                          και η γραμματεία καταχωρεί τα ραντεβού σας τηλεφωνικά.
-                        </p>
-
-                        <div className="mt-3 grid gap-2 text-[11px] text-[#7a7165] md:text-xs">
-                          <div className="inline-flex items-center gap-1 rounded-full bg-[#f7efe2] px-3 py-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#b86330]" />
-                            <span>Κλείσιμο ή αλλαγή ραντεβού</span>
-                          </div>
-                          <div className="inline-flex items-center gap-1 rounded-full bg-[#f7efe2] px-3 py-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#b86330]" />
-                            <span>
-                              Πληροφορίες για εξετάσεις & προετοιμασία
-                            </span>
-                          </div>
-                          <div className="inline-flex items-center gap-1 rounded-full bg-[#f7efe2] px-3 py-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#b86330]" />
-                            <span>Σύντομες ιατρικές διευκρινίσεις</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 flex flex-col justify-between rounded-2xl border border-[#efe1cf] bg-[#fdf6ed] px-4 py-4 text-xs text-[#4a453c] md:mt-0 md:w-64">
-                        <div className="space-y-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a5b2e]">
-                            Επικοινωνία Ιατρείου
-                          </p>
-                          <p>
-                            Τηλέφωνο:{" "}
-                            <a
-                              href="tel:2109934316"
-                              className="font-semibold underline underline-offset-2 hover:text-[#2f2e2b]"
-                            >
-                              210 9934316
-                            </a>
-                          </p>
-                          <p>Email: gokollia@gmail.com</p>
-                          <p className="text-[11px] text-[#8a8274]">
-                            Για επείγοντα περιστατικά απευθυνθείτε στα
-                            εφημερεύοντα νοσοκομεία.
-                          </p>
-                        </div>
-                        <div className="mt-3">
-                          <a
-                            href="tel:2109934316"
-                            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#2f2e2b] px-4 py-2.5 text-sm font-medium text-white shadow-md transition hover:-translate-y-0.5 hover:bg-black"
-                          >
-                            <PhoneCall className="h-4 w-4" />
-                            Κλήση για ραντεβού
-                          </a>
-                          <p className="mt-2 text-[10px] text-[#8a8274]">
-                            Παρακαλούμε έχετε διαθέσιμο το ονοματεπώνυμο και
-                            σύντομο λόγο επίσκεψης.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div
-              className={
-                "grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)] transition-opacity " +
-                (isBookingDisabled ? "pointer-events-none opacity-40" : "")
-              }
-              aria-hidden={isBookingDisabled}
-            >
+          <div className="mt-6">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)]">
               {/* LEFT COLUMN — Contact */}
               <section className={`${CARD_BASE} p-4 md:p-6`}>
                 <SectionHeader
@@ -1036,7 +1063,6 @@ export default function NewAppointmentPage() {
                           <button
                             key={btn.value}
                             type="button"
-                            disabled={!acceptNewAppointments}
                             onClick={() =>
                               setFormData((prev) => ({
                                 ...prev,
@@ -1059,10 +1085,7 @@ export default function NewAppointmentPage() {
                               "w-full flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-xs shadow-sm transition-all " +
                               (isActive
                                 ? "border-[#2f2e2b] bg-gradient-to-br from-[#fdf7ef] via-[#f6ede1] to-[#efe3d4] text-[#262521] shadow-md ring-1 ring-[#d4c4ac]/80"
-                                : "border-[#e5e1d8] bg-white/95 text-[#3b3a36] hover:-translate-y-0.5 hover:border-[#d2c7b7] hover:bg-[#fbf8f1] hover:shadow") +
-                              (!acceptNewAppointments
-                                ? " opacity-60 cursor-not-allowed"
-                                : "")
+                                : "border-[#e5e1d8] bg-white/95 text-[#3b3a36] hover:-translate-y-0.5 hover:border-[#d2c7b7] hover:bg-[#fbf8f1] hover:shadow")
                             }
                           >
                             {/* Κείμενο αριστερά */}
@@ -1111,6 +1134,48 @@ export default function NewAppointmentPage() {
                         </span>
                       </p>
                     )}
+                    {formData.reason === "Ιατρικός Επισκέπτης" && (
+                      <div className="mt-3">
+                        <label
+                          htmlFor="visitorCompany"
+                          className="mb-1 block text-xs font-medium text-[#6b675f]"
+                        >
+                          Εταιρεία / Οργανισμός *
+                        </label>
+                        <input
+                          id="visitorCompany"
+                          type="text"
+                          placeholder="π.χ. Φαρμακευτική Εταιρεία Χ"
+                          value={formData.visitorCompany}
+                          onChange={(e) => {
+                            setFormData({
+                              ...formData,
+                              visitorCompany: e.target.value,
+                            });
+                            setFormErrors((prev) => ({
+                              ...prev,
+                              visitorCompany: undefined,
+                            }));
+                          }}
+                          aria-invalid={!!formErrors?.visitorCompany}
+                          className={`${INPUT_BASE} ${
+                            formErrors?.visitorCompany
+                              ? "border-red-400"
+                              : "border-[#e5e1d8]"
+                          }`}
+                          required
+                        />
+                        {formErrors?.visitorCompany && (
+                          <p className="mt-1 text-xs text-red-600">
+                            {formErrors.visitorCompany}
+                          </p>
+                        )}
+                        <p className="mt-1 text-[10px] text-[#9b968c]">
+                          Συμπληρώστε την εταιρεία ή τον οργανισμό που
+                          εκπροσωπείτε.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Ημερομηνία */}
@@ -1123,7 +1188,7 @@ export default function NewAppointmentPage() {
                         <Button
                           variant="outline"
                           className="w-full justify-start rounded-xl border border-[#e5e1d8] bg-white/85 px-3 py-2.5 text-left text-sm font-normal text-[#3b3a36] shadow-sm hover:bg-white focus-visible:ring-[#d7cfc2]"
-                          disabled={!formData.reason || !acceptNewAppointments}
+                          disabled={!formData.reason}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
                           {formData.appointment_date
@@ -1137,7 +1202,6 @@ export default function NewAppointmentPage() {
                           locale={greekLocale}
                           selected={formData.appointment_date}
                           onSelect={(date) => {
-                            if (!acceptNewAppointments) return;
                             setFormData({
                               ...formData,
                               appointment_date: date,
@@ -1435,18 +1499,12 @@ export default function NewAppointmentPage() {
                     <button
                       type="submit"
                       disabled={
-                        isSubmitting ||
-                        !isFormValid ||
-                        !formData.acceptTerms ||
-                        !acceptNewAppointments
+                        isSubmitting || !isFormValid || !formData.acceptTerms
                       }
                       className={
                         "w-full rounded-2xl px-4 py-3 text-sm font-medium tracking-tight text-white shadow-md transition " +
                         "focus:outline-none focus:ring-4 focus:ring-[#d7cfc2]/60 " +
-                        (isSubmitting ||
-                        !isFormValid ||
-                        !formData.acceptTerms ||
-                        !acceptNewAppointments
+                        (isSubmitting || !isFormValid || !formData.acceptTerms
                           ? "cursor-not-allowed bg-[#8e8a82]"
                           : "bg-[#2f2e2b] hover:-translate-y-0.5 hover:bg-black")
                       }
@@ -1475,8 +1533,6 @@ export default function NewAppointmentPage() {
                           </svg>
                           Καταχώρηση...
                         </span>
-                      ) : isBookingDisabled ? (
-                        "Τα online ραντεβού δεν είναι διαθέσιμα"
                       ) : (
                         "Κλείστε Ραντεβού"
                       )}
