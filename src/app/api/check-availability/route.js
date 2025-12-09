@@ -58,8 +58,8 @@ function buildSlotsFromRanges(ranges) {
       slots.push(t);
     }
   }
-  // unique + sort
-  return [...new Set(slots)].sort((a, b) => a - b);
+  // Ήδη δεν έχουμε duplicates, οπότε απλό sort
+  return slots.sort((a, b) => a - b);
 }
 
 function isWithinRange(min, start, end) {
@@ -69,6 +69,196 @@ function isWithinRange(min, start, end) {
 function overlap(aStart, aEnd, bStart, bEnd) {
   return aStart < bEnd && bStart < aEnd;
 }
+
+/* ---------------------- ΝΕΟΣ ΑΛΓΟΡΙΘΜΟΣ SLOTS ---------------------- */
+
+// slot.free = αν το 15λεπτο είναι πραγματικά ελεύθερο (χωρίς ραντεβού / εξαίρεση)
+function isFreeSlot(slot) {
+  return !!slot.free;
+}
+
+// 30': επιτρέπουμε μόνο αρχές από 2 ΣΥΝΕΧΟΜΕΝΑ free 15λεπτα
+function compute30Slots(slots) {
+  const resultTimes = [];
+
+  for (let i = 0; i < slots.length - 1; i++) {
+    const s1 = slots[i];
+    const s2 = slots[i + 1];
+    if (!s1 || !s2) continue;
+    if (!isFreeSlot(s1) || !isFreeSlot(s2)) continue;
+
+    // πρέπει να είναι συνεχόμενα 15λεπτα
+    if (s2.startMin !== s1.startMin + SLOT_STEP) continue;
+
+    // θέλουμε 30' μόνο σε λεπτά :00 ή :30
+    if (s1.startMin % 30 !== 0) continue;
+
+    resultTimes.push(s1.time); // αρχή 30λεπτου
+  }
+
+  return resultTimes;
+}
+// 15': προσπαθούμε πρώτα να γεμίσουμε «σπασμένες» περιοχές
+// που ΔΕΝ μειώνουν πόσα 30' χωράνε συνολικά.
+// Αν δεν υπάρχουν τέτοιες, διαλέγουμε τα 15' που
+// προκαλούν τη ΜΙΚΡΟΤΕΡΗ δυνατή ζημιά στη χωρητικότητα των 30'.
+function computeSmart15Slots(slots) {
+  const freeSlots = slots.filter((s) => isFreeSlot(s));
+  if (!freeSlots.length) return [];
+
+  const safeZeroLoss = []; // 15' που δεν μειώνουν τον max αριθμό 30'
+  const safeZeroLossNice = []; // τα παραπάνω αλλά μόνο σε :15 / :45
+  let bestLossSlots = []; // 15' με την ελάχιστη «ζημιά» (loss)
+  let bestLossNiceSlots = []; // ίδια, αλλά μόνο :15 / :45
+  let globalMinLoss = Infinity;
+
+  let runStart = 0;
+  const runCount = freeSlots.length;
+
+  // Χωρίζουμε τα free 15' σε συνεχόμενα runs (με βήμα 15')
+  for (let i = 0; i <= runCount; i++) {
+    const current = i < runCount ? freeSlots[i] : null;
+    const prev = i > 0 ? freeSlots[i - 1] : null;
+
+    const isBreak =
+      i === runCount || !prev || current.startMin !== prev.startMin + SLOT_STEP;
+
+    if (isBreak) {
+      const runEnd = i - 1;
+
+      if (runEnd >= runStart) {
+        const length = runEnd - runStart + 1;
+
+        // Τα startMin για αυτό το run
+        const startMins = [];
+        for (let j = 0; j < length; j++) {
+          startMins.push(freeSlots[runStart + j].startMin);
+        }
+
+        // Μέγιστος αριθμός 30' που χωράνε σε αυτό το run,
+        // με τον περιορισμό ότι τα 30' ξεκινάνε σε λεπτά :00 ή :30
+        function max30(mask) {
+          let count = 0;
+          let j = 0;
+
+          while (j < length - 1) {
+            if (
+              mask[j] &&
+              mask[j + 1] &&
+              startMins[j] % 30 === 0 // αρχή 30'
+            ) {
+              count++;
+              mask[j] = false;
+              mask[j + 1] = false;
+              j += 2;
+              continue;
+            }
+            j++;
+          }
+
+          return count;
+        }
+
+        const baseCap = max30(new Array(length).fill(true));
+
+        // Δοκιμάζουμε: αν κλείσουμε αυτό το 15', πόσα 30' μένουν;
+        for (let localIdx = 0; localIdx < length; localIdx++) {
+          const mask = new Array(length).fill(true);
+          mask[localIdx] = false; // βάζουμε 15' ραντεβού εδώ
+
+          const newCap = max30(mask);
+          const loss = baseCap - newCap; // πόσα 30' χάσαμε;
+          const slot = freeSlots[runStart + localIdx];
+
+          if (loss === 0) {
+            // ΤΕΛΕΙΑ slots: γεμίζουν κενά χωρίς να μειώνουν χωρητικότητα 30'
+            safeZeroLoss.push(slot);
+            if (slot.startMin % 30 === 15) {
+              safeZeroLossNice.push(slot); // προτιμάμε :15 / :45
+            }
+          } else if (loss > 0) {
+            // Slots που μειώνουν λίγο τη χωρητικότητα 30'
+            if (loss < globalMinLoss) {
+              globalMinLoss = loss;
+              bestLossSlots = [];
+              bestLossNiceSlots = [];
+            }
+            if (loss === globalMinLoss) {
+              bestLossSlots.push(slot);
+              if (slot.startMin % 30 === 15) {
+                bestLossNiceSlots.push(slot);
+              }
+            }
+          }
+        }
+      }
+
+      runStart = i;
+    }
+  }
+
+  function pickTimes(arr) {
+    return Array.from(new Set(arr.map((s) => s.time)));
+  }
+
+  // 1) Ιδανικό: 15' σε :15 / :45 που ΔΕΝ κόβουν κανένα 30'
+  if (safeZeroLossNice.length) {
+    return pickTimes(safeZeroLossNice);
+  }
+
+  // 2) Ακόμα ιδανικό: οποιαδήποτε 15' που δεν κόβουν 30'
+  if (safeZeroLoss.length) {
+    return pickTimes(safeZeroLoss);
+  }
+
+  // 3) Δεν υπάρχουν καθόλου zero-loss σημεία.
+  //    Αν ΔΕΝ χωράνε πουθενά 30' έτσι κι αλλιώς, τότε
+  //    όλα τα free 15' είναι ουσιαστικά «κρακεράκια» και είναι ΟΚ.
+  const has30Capacity = compute30Slots(slots).length > 0;
+  if (!has30Capacity) {
+    return freeSlots.map((s) => s.time);
+  }
+
+  // 4) Ακόμα χωράνε 30': δίνουμε ΜΟΝΟ τα 15' με την ελάχιστη ζημιά,
+  //    προτιμώντας ξανά :15 / :45.
+  if (bestLossNiceSlots.length) {
+    return pickTimes(bestLossNiceSlots);
+  }
+  if (bestLossSlots.length) {
+    return pickTimes(bestLossSlots);
+  }
+
+  // 5) Πάρα πολύ σπάνιο fallback: αν για κάποιο λόγο δεν βρεθεί τίποτα,
+  //    άφησε όλα τα free 15' (ίδιο με το παλιό behavior).
+  return freeSlots.map((s) => s.time);
+}
+
+// Γενική συνάρτηση: από grid 15λεπτων → { time, available } για συγκεκριμένο duration
+function markAvailableSlots(gridSlots, durationMinutes) {
+  let allowedTimes = [];
+
+  if (durationMinutes <= 15) {
+    // 15' ραντεβού (Αξιολόγηση, Ιατρικός Επισκέπτης κ.λπ.)
+    allowedTimes = computeSmart15Slots(gridSlots);
+
+    // fallback: αν δεν βρέθηκε κανένα «καλό» slot, επέτρεψε όλα τα free 15'
+    if (allowedTimes.length === 0) {
+      allowedTimes = gridSlots.filter((s) => isFreeSlot(s)).map((s) => s.time);
+    }
+  } else {
+    // 30' ραντεβού (Εξέταση)
+    allowedTimes = compute30Slots(gridSlots);
+  }
+
+  const allowedSet = new Set(allowedTimes);
+
+  return gridSlots.map((slot) => ({
+    time: slot.time,
+    available: allowedSet.has(slot.time),
+  }));
+}
+
+/* ------------------------------------------------------------------ */
 
 async function getVisitorCountForMonth(dateObj) {
   const start = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
@@ -92,7 +282,7 @@ async function getVisitorCountForMonth(dateObj) {
   return count || 0;
 }
 
-async function computeAvailabilityForDate(dateISO, duration) {
+async function computeAvailabilityForDate(dateISO, durationMinutes) {
   const dateObj = new Date(`${dateISO}T00:00:00.000Z`);
   const weekday = dateObj.getUTCDay(); // ok for weekday mapping in practice
 
@@ -159,21 +349,22 @@ async function computeAvailabilityForDate(dateISO, duration) {
       return { startMin: start, endMin: start + dur };
     });
 
-  // 4) Evaluate availability for each slot
-  const allSlots = [];
-  const availableSlots = [];
+  // 4) Grid 15λεπτων ανεξάρτητο από duration
+  //    free = αν το 15λεπτο είναι μέσα στο ωράριο ΚΑΙ όχι σε εξαίρεση / άλλο ραντεβού
+  const gridSlots = baseSlots.map((startMin) => {
+    const endMin = startMin + SLOT_STEP;
 
-  for (const startMin of baseSlots) {
-    const endMin = startMin + duration;
-
-    // must fit inside at least one working range
+    // Πρέπει να είναι μέσα σε κάποιο working range
     const fitsWorking = workingRanges.some(
       (r) => startMin >= r.startMin && endMin <= r.endMin
     );
 
     if (!fitsWorking) {
-      allSlots.push({ time: toHHMM(startMin), available: false });
-      continue;
+      return {
+        startMin,
+        time: toHHMM(startMin),
+        free: false,
+      };
     }
 
     const blockedByException = exceptionRanges.some((er) =>
@@ -184,11 +375,22 @@ async function computeAvailabilityForDate(dateISO, duration) {
       overlap(startMin, endMin, br.startMin, br.endMin)
     );
 
-    const ok = !blockedByException && !blockedByAppt;
+    const free = !blockedByException && !blockedByAppt;
 
-    allSlots.push({ time: toHHMM(startMin), available: ok });
-    if (ok) availableSlots.push(toHHMM(startMin));
-  }
+    return {
+      startMin,
+      time: toHHMM(startMin),
+      free,
+    };
+  });
+
+  // 5) Εφαρμογή "έξυπνου" αλγορίθμου ανά duration (15' / 30')
+  const markedSlots = markAvailableSlots(gridSlots, durationMinutes);
+
+  const allSlots = markedSlots;
+  const availableSlots = markedSlots
+    .filter((s) => s.available)
+    .map((s) => s.time);
 
   return { allSlots, availableSlots, fullDayException: false };
 }
