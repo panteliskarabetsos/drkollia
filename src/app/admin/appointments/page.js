@@ -1299,7 +1299,7 @@ export default function AdminAppointmentsPage() {
                 const appt = appointments.find(
                   (a) => a.id === selectedAppointmentId
                 );
-                const creatorName = appt?.creator?.name || "Άγνωστος";
+                const creatorName = appt?.creator?.name || "Φόρμα ραντεβού";
                 const createdAtStr = formatDateTimeEl(appt?.created_at);
 
                 return (

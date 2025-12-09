@@ -298,6 +298,7 @@ export async function POST(req) {
       notes,
       appointment_time_iso,
       duration_minutes,
+      isVisitor: isVisitorFromBody,
     } = body || {};
 
     if (
@@ -380,9 +381,13 @@ export async function POST(req) {
         { status: 400 }
       );
     }
+    // Ιατρικός επισκέπτης = oχι patient entry
+    const isVisitor =
+      reason === "Ιατρικός Επισκέπτης" || Boolean(isVisitorFromBody);
 
     // Visitor monthly cap
-    if (reason === "Ιατρικός Επισκέπτης") {
+    // Visitor monthly cap
+    if (isVisitor) {
       const startOfMonth = new Date(
         appointmentDate.getFullYear(),
         appointmentDate.getMonth(),
@@ -422,83 +427,87 @@ export async function POST(req) {
     }
 
     // Find existing patient by phone or AMKA
-    const filters = [];
-    if (phoneTrim) filters.push(`phone.eq.${phoneTrim}`);
-    if (amkaTrim) filters.push(`amka.eq.${amkaTrim}`);
-
     let patientId = null;
 
-    if (filters.length) {
-      const { data: found } = await supabaseAdmin
-        .from("patients")
-        .select("id, first_name, last_name, phone, amka")
-        .or(filters.join(","))
-        .limit(1)
-        .maybeSingle();
+    // Find / create patient and same-day guard ONLY for real patients
+    if (!isVisitor) {
+      // Find existing patient by phone or AMKA
+      const filters = [];
+      if (phoneTrim) filters.push(`phone.eq.${phoneTrim}`);
+      if (amkaTrim) filters.push(`amka.eq.${amkaTrim}`);
 
-      if (found?.id) patientId = found.id;
-    }
+      if (filters.length) {
+        const { data: found } = await supabaseAdmin
+          .from("patients")
+          .select("id, first_name, last_name, phone, amka")
+          .or(filters.join(","))
+          .limit(1)
+          .maybeSingle();
 
-    const firstNameNorm = normalizeGreekName(first_name);
-    const lastNameNorm = normalizeGreekName(last_name);
+        if (found?.id) patientId = found.id;
+      }
 
-    if (!patientId) {
-      const { data: created, error: pErr } = await supabaseAdmin
-        .from("patients")
-        .insert([
-          {
-            first_name: firstNameNorm,
-            last_name: lastNameNorm,
-            phone: phoneTrim,
-            email: emailTrim,
-            amka: amkaTrim || null,
-            birth_date: birthISO || null,
-            gender: "other",
-          },
-        ])
-        .select("id")
-        .single();
+      const firstNameNorm = normalizeGreekName(first_name);
+      const lastNameNorm = normalizeGreekName(last_name);
 
-      if (pErr || !created?.id) {
+      if (!patientId) {
+        const { data: created, error: pErr } = await supabaseAdmin
+          .from("patients")
+          .insert([
+            {
+              first_name: firstNameNorm,
+              last_name: lastNameNorm,
+              phone: phoneTrim,
+              email: emailTrim,
+              amka: amkaTrim || null,
+              birth_date: birthISO || null,
+              gender: "other",
+            },
+          ])
+          .select("id")
+          .single();
+
+        if (pErr || !created?.id) {
+          return new Response(
+            JSON.stringify({ message: "Failed to create patient" }),
+            { status: 500 }
+          );
+        }
+        patientId = created.id;
+      }
+
+      // Same-day duplicate appointment guard
+      const startOfDay = new Date(appointmentDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(appointmentDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const { data: sameDay, error: sdErr } = await supabaseAdmin
+        .from("appointments")
+        .select("id, status")
+        .eq("patient_id", patientId)
+        .gte("appointment_time", startOfDay.toISOString())
+        .lte("appointment_time", endOfDay.toISOString());
+
+      if (sdErr) {
         return new Response(
-          JSON.stringify({ message: "Failed to create patient" }),
+          JSON.stringify({ message: "Same-day check failed" }),
           { status: 500 }
         );
       }
-      patientId = created.id;
-    }
 
-    // Same-day duplicate appointment guard
-    const startOfDay = new Date(appointmentDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(appointmentDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const { data: sameDay, error: sdErr } = await supabaseAdmin
-      .from("appointments")
-      .select("id, status")
-      .eq("patient_id", patientId)
-      .gte("appointment_time", startOfDay.toISOString())
-      .lte("appointment_time", endOfDay.toISOString());
-
-    if (sdErr) {
-      return new Response(
-        JSON.stringify({ message: "Same-day check failed" }),
-        { status: 500 }
+      const hasActiveSameDay = (sameDay || []).some(
+        (a) => !["cancelled", "rejected"].includes(a.status)
       );
-    }
 
-    const hasActiveSameDay = (sameDay || []).some(
-      (a) => !["cancelled", "rejected"].includes(a.status)
-    );
-
-    if (hasActiveSameDay) {
-      return new Response(
-        JSON.stringify({
-          message: "Έχετε ήδη ραντεβού για την επιλεγμένη ημέρα.",
-        }),
-        { status: 409 }
-      );
+      if (hasActiveSameDay) {
+        return new Response(
+          JSON.stringify({
+            message: "Έχετε ήδη ραντεβού για την επιλεγμένη ημέρα.",
+          }),
+          { status: 409 }
+        );
+      }
     }
 
     // Simple overlap guard (race safety)
@@ -546,7 +555,7 @@ export async function POST(req) {
       .from("appointments")
       .insert([
         {
-          patient_id: patientId,
+          patient_id: isVisitor ? null : patientId,
           appointment_time: appointmentDate.toISOString(),
           duration_minutes: duration,
           reason,
@@ -582,7 +591,7 @@ export async function POST(req) {
       JSON.stringify({
         message: "OK",
         appointment_id: createdAppt.id,
-        patient_id: patientId,
+        patient_id: isVisitor ? null : patientId,
         appointment_time: appointmentDate.toISOString(),
       }),
       { status: 200 }
