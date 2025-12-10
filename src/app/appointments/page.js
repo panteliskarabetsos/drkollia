@@ -119,8 +119,10 @@ export default function NewAppointmentPage() {
   const [visitorCount, setVisitorCount] = useState(null);
   const [showVisitorMessage, setShowVisitorMessage] = useState(false);
 
-  const [acceptNewAppointments, setAcceptNewAppointments] = useState(true);
-  const [settingsLoading, setSettingsLoading] = useState(false);
+  // null = δεν έχουμε ακόμη απάντηση από το API
+  const [acceptNewAppointments, setAcceptNewAppointments] = useState(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+
   const [submitError, setSubmitError] = useState("");
 
   const greekLocale = useMemo(
@@ -158,12 +160,16 @@ export default function NewAppointmentPage() {
 
       if (!res.ok) {
         console.error("Clinic settings API error:", res.status, data);
+        // fallback: allow booking if settings fail
+        setAcceptNewAppointments(true);
         return;
       }
 
-      setAcceptNewAppointments(!!data?.accept_new_appointments);
+      setAcceptNewAppointments(Boolean(data?.accept_new_appointments));
     } catch (e) {
       console.error("Clinic settings fetch error:", e);
+      // fallback: allow booking if settings fail
+      setAcceptNewAppointments(true);
     } finally {
       setSettingsLoading(false);
     }
@@ -319,7 +325,7 @@ export default function NewAppointmentPage() {
     const lastNameRaw = (newPatientData.last_name || "").trim();
 
     // Quick client gate using already-fetched settings
-    if (!acceptNewAppointments) {
+    if (acceptNewAppointments === false) {
       setSubmitError("Προς το παρόν δεν δεχόμαστε νέα ηλεκτρονικά ραντεβού.");
       return;
     }
@@ -436,6 +442,7 @@ export default function NewAppointmentPage() {
           notes: finalNotes || null,
           appointment_time_iso: combinedDate.toISOString(),
           duration_minutes: duration,
+          isVisitor,
         }),
       });
 
@@ -500,7 +507,7 @@ export default function NewAppointmentPage() {
 
   const progressPercentage = ((currentStep + 1) / steps.length) * 100;
 
-  const isBookingDisabled = !settingsLoading && !acceptNewAppointments;
+  const isBookingDisabled = acceptNewAppointments === false;
 
   const visibleSlotsGrouped = useMemo(() => {
     if (!formData.appointment_date || !allScheduleSlots.length) {
@@ -608,7 +615,85 @@ export default function NewAppointmentPage() {
     },
   ];
 
-  // 🔹 Minimal screen when online appointments are disabled
+  //  Loading screen while we determine if online appointments are accepted
+  if (settingsLoading || acceptNewAppointments === null) {
+    return (
+      <main className="relative min-h-screen overflow-hidden bg-[#f5f0e8]">
+        {/* Soft ambient video background */}
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-60"
+        >
+          <source src="/background.mp4" type="video/mp4" />
+        </video>
+
+        {/* Blurry overlay */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#f6f0e7]/85 via-[#f6f0e7]/90 to-[#f3ece3]/92 backdrop-blur-md" />
+
+        <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12 md:px-8">
+          <div className="mx-auto w-full max-w-xl rounded-[30px] border border-white/70 bg-white/65 p-6 shadow-2xl backdrop-blur-2xl md:max-w-2xl md:p-8">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => router.push("/")}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-white/70 text-[#6b675f] shadow-sm transition hover:border-[#e0d5c6] hover:bg-white"
+                aria-label="Επιστροφή στην αρχική"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <p className="text-[10px] uppercase tracking-[0.25em] text-[#9b968c]">
+                Online Ραντεβού
+              </p>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#fdf4e6] text-[#7b6f5b]">
+                <CalendarIcon className="h-5 w-5" />
+              </div>
+
+              <div className="flex-1">
+                <h1 className="text-xl font-serif font-semibold tracking-tight text-[#2f2e2b] md:text-2xl">
+                  Έλεγχος διαθεσιμότητας online ραντεβού
+                </h1>
+                <p className="mt-2 text-sm leading-relaxed text-[#6b675f]">
+                  Παρακαλώ περιμένετε για λίγα δευτερόλεπτα...
+                </p>
+
+                <div className="mt-4 flex items-center gap-2 text-sm text-[#6b675f]">
+                  <svg
+                    className="h-5 w-5 animate-spin"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v8H4z"
+                    />
+                  </svg>
+                  <span>Φόρτωση ρυθμίσεων ιατρείου...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Minimal screen when online appointments are disabled
   if (isBookingDisabled) {
     return (
       <main className="relative min-h-screen overflow-hidden bg-[#f5f0e8]">
@@ -650,7 +735,7 @@ export default function NewAppointmentPage() {
                   <CalendarX className="h-5 w-5" />
                 </div>
                 <h1 className="mt-3 text-2xl font-serif font-semibold tracking-tight text-[#2f2e2b] md:text-3xl">
-                  Τα online ραντεβού είναι προσωρινά μη διαθέσιμα
+                  Τα ηλεκτρονικά ραντεβού είναι προσωρινά μη διαθέσιμα
                 </h1>
                 <p className="mt-3 text-sm leading-relaxed text-[#6b675f]">
                   Προς το παρόν τα ραντεβού{" "}
@@ -679,8 +764,8 @@ export default function NewAppointmentPage() {
                   </a>
                 </p>
                 <p className="mt-1 text-[11px] text-[#8a8274]">
-                  Παρακαλούμε έχετε διαθέσιμο το ονοματεπώνυμο και έναν σύντομο
-                  λόγο επίσκεψης.
+                  Παρακαλούμε έχετε διαθέσιμο τον αριθμό κινητού σας τηλεφώνου
+                  και τον ΑΜΚΑ σας.
                 </p>
 
                 <a
