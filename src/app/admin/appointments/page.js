@@ -1354,6 +1354,11 @@ export default function AdminAppointmentsPage() {
                     setAppointmentNoteModalOpen(false);
                   }}
                   className="no-print rounded-xl bg-[#2f2e2b] px-4 py-2 text-sm text-white shadow-sm transition hover:bg-black"
+                  disabled={!isOnline}
+                  aria-disabled={!isOnline}
+                  title={
+                    isOnline ? "Επεξεργασία σημειώσεων" : "Απαιτείται σύνδεση"
+                  }
                 >
                   Επεξεργασία
                 </button>

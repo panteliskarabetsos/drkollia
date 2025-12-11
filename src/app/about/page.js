@@ -21,71 +21,58 @@ export default function AboutPage() {
       className={`min-h-screen bg-[#fdfaf6] text-[#3b3a36] ${notoSerif.className}`}
     >
       {/* =================== Hero =================== */}
-      <section className="relative h-[60vh] md:h-[68vh] bg-[url('/banner-about.jpg')] bg-cover bg-center flex items-center justify-center text-white">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(0,0,0,0.5)_0%,rgba(0,0,0,0.2)_45%,rgba(0,0,0,0.6)_100%)] backdrop-blur-[2px]" />
-        <div className="relative z-10 text-center px-6 max-w-3xl space-y-4">
-          <p className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/40 px-3 py-1 text-xs tracking-[0.16em] uppercase">
-            Ενδοκρινολογία • Θυρεοειδής • Μεταβολισμός
-          </p>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight">
-            Σχετικά με τη Δρ. Γεωργία Κόλλια
-          </h1>
-          <p className="text-base md:text-lg text-[#f4f0e8] max-w-2xl mx-auto">
-            Στο ιατρείο της Δρ. Κόλλια, η ενδοκρινολογία συναντά την ηρεμία και
-            τον σεβασμό. Κάθε επίσκεψη είναι μια ευκαιρία να κατανοήσετε
-            καλύτερα το σώμα σας και να βάλετε ξανά την ισορροπία στην
-            καθημερινότητά σας.
-          </p>
+      <section className="relative h-[60vh] md:h-[68vh] min-h-[420px] overflow-hidden bg-[#fdfaf6]">
+        {/* Blurred background image */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0 bg-[url('/banner-about.jpg')] bg-cover bg-center scale-105 blur-sm" />
         </div>
-      </section>
 
-      {/* Floating summary strip */}
-      <section className="-mt-10 md:-mt-12 mb-10 px-4">
-        <div className="max-w-5xl mx-auto grid gap-3 sm:grid-cols-3 bg-white/90 backdrop-blur-md rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.06)] border border-[#ebe2d8] px-4 py-4 md:px-6 md:py-5">
-          {[
-            {
-              title: "Προσέγγιση",
-              text: "Εξατομικευμένα πλάνα με βάση τις ανάγκες σας.",
-            },
-            {
-              title: "Επικοινωνία",
-              text: "Κατανοητές εξηγήσεις, χωρίς περίπλοκους όρους.",
-            },
-            {
-              title: "Συνεργασία",
-              text: "Μακροχρόνια παρακολούθηση και υποστήριξη.",
-            },
-          ].map((item) => (
-            <div key={item.title} className="text-center sm:text-left">
-              <p className="text-[13px] tracking-[0.12em] uppercase text-[#a28f7a] mb-1">
-                {item.title}
+        {/* Dark overlay for text readability */}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/55 to-black/20" />
+
+        {/* Bottom fade into page background */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-b from-transparent via-[#fdfaf6]/40 to-[#fdfaf6]" />
+
+        {/* Content */}
+        <div className="relative z-10 flex h-full items-center">
+          <div className="max-w-5xl mx-auto px-6">
+            <div className="max-w-xl space-y-4">
+              <p className="text-[11px] tracking-[0.22em] uppercase text-white/70">
+                Ενδοκρινολογία • Θυρεοειδής • Μεταβολισμός
               </p>
-              <p className="text-xs md:text-sm text-[#50473c]">{item.text}</p>
+
+              <h1 className="text-3xl md:text-4xl lg:text-5xl font-semibold leading-tight text-white">
+                Σχετικά με τη Δρ. Γεωργία Κόλλια
+              </h1>
+
+              <p className="text-sm md:text-base text-white/80 leading-relaxed">
+                Στο ιατρείο της Δρ. Κόλλια, η ενδοκρινολογία συναντά την ηρεμία
+                και τον σεβασμό. Κάθε επίσκεψη είναι μια ευκαιρία να κατανοήσετε
+                καλύτερα το σώμα σας και να βάλετε ξανά την ισορροπία στην
+                καθημερινότητά σας.
+              </p>
             </div>
-          ))}
+          </div>
         </div>
       </section>
 
       {/* =================== Profile =================== */}
-      <section className="py-16 md:py-20 px-6 bg-[#f7f3ec]">
-        <div className="relative max-w-6xl mx-auto grid md:grid-cols-[1.7fr_1.1fr] gap-16 items-center">
-          {/* ambient accent */}
-          <div className="pointer-events-none absolute -top-20 -left-24 h-56 w-56 rounded-full bg-[radial-gradient(circle_at_center,_#efe6d9_0%,transparent_60%)] opacity-70" />
-
+      <section className="py-16 md:py-20 px-6 bg-[#fdfaf6]">
+        <div className="max-w-5xl mx-auto grid md:grid-cols-[1.5fr_1.2fr] gap-14 items-center">
           {/* Text */}
-          <div className="space-y-6 text-center md:text-left relative z-10">
-            <p className="inline-flex items-center gap-2 rounded-full bg-[#f3ede4] border border-[#e8e1d8] px-3 py-1 text-[11px] tracking-[0.16em] uppercase text-[#7a7469]">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#8c7c68]" />
+          <div className="space-y-6 text-center md:text-left">
+            <p className="inline-flex items-center gap-2 rounded-full bg-white border border-[#ece0d3] px-3 py-1 text-[11px] tracking-[0.16em] uppercase text-[#7a7469]">
+              <ShieldCheck className="w-3.5 h-3.5" />
               Προσωπική Φροντίδα Υγείας
             </p>
 
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-[#3b3a36]">
+            <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-[#3b3a36]">
               Η Δρ. Γεωργία Κόλλια
             </h2>
 
-            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-[#5b5853]">
-              <li className="inline-flex items-start gap-2">
-                <span className="mt-[6px] w-2 h-2 rounded-full bg-[#8c7c68]" />
+            <ul className="space-y-3 text-sm text-[#5b5853]">
+              <li className="flex items-start gap-2">
+                <span className="mt-[6px] w-1.5 h-1.5 rounded-full bg-[#8c7c68]" />
                 <p>
                   Ιδιαίτερη εμπειρία σε{" "}
                   <span className="font-semibold">
@@ -95,15 +82,15 @@ export default function AboutPage() {
                   .
                 </p>
               </li>
-              <li className="inline-flex items-start gap-2">
-                <span className="mt-[6px] w-2 h-2 rounded-full bg-[#8c7c68]" />
+              <li className="flex items-start gap-2">
+                <span className="mt-[6px] w-1.5 h-1.5 rounded-full bg-[#8c7c68]" />
                 <p>
                   Στήριξη σε κάθε στάδιο της πορείας – από την πρώτη διάγνωση,
                   μέχρι τη μακροχρόνια παρακολούθηση και σταθεροποίηση.
                 </p>
               </li>
-              <li className="inline-flex items-start gap-2">
-                <span className="mt-[6px] w-2 h-2 rounded-full bg-[#8c7c68]" />
+              <li className="flex items-start gap-2">
+                <span className="mt-[6px] w-1.5 h-1.5 rounded-full bg-[#8c7c68]" />
                 <p>
                   Έμφαση στη{" "}
                   <span className="font-semibold">
@@ -112,70 +99,25 @@ export default function AboutPage() {
                   και στην απομυθοποίηση δύσκολων όρων και εξετάσεων.
                 </p>
               </li>
-              <li className="inline-flex items-start gap-2">
-                <span className="mt-[6px] w-2 h-2 rounded-full bg-[#8c7c68]" />
+              <li className="flex items-start gap-2">
+                <span className="mt-[6px] w-1.5 h-1.5 rounded-full bg-[#8c7c68]" />
                 <p>
                   Πρακτικές, εφαρμόσιμες οδηγίες που προσαρμόζονται στη δουλειά,
                   την οικογένεια και τον τρόπο ζωής του κάθε ασθενούς.
                 </p>
               </li>
             </ul>
-
-            {/* quick highlights */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-[#5b5853] pt-2">
-              <div className="inline-flex items-start gap-2">
-                <span className="mt-[6px] w-2 h-2 rounded-full bg-[#8c7c68]" />
-                <p>
-                  Ιδιαίτερη έμφαση σε{" "}
-                  <span className="font-semibold">
-                    θυρεοειδοπάθειες, μεταβολικές διαταραχές και ορμόνες
-                    γυναικών
-                  </span>
-                  .
-                </p>
-              </div>
-              <div className="inline-flex items-start gap-2">
-                <span className="mt-[6px] w-2 h-2 rounded-full bg-[#8c7c68]" />
-                <p>
-                  Ήρεμο, δομημένο πλαίσιο ενημέρωσης για{" "}
-                  <span className="font-semibold">
-                    καλύτερη κατανόηση των εξετάσεων και του θεραπευτικού πλάνου
-                  </span>
-                  .
-                </p>
-              </div>
-              <div className="inline-flex items-start gap-2">
-                <span className="mt-[6px] w-2 h-2 rounded-full bg-[#8c7c68]" />
-                <p>
-                  Εστίαση στη{" "}
-                  <span className="font-semibold">
-                    μακροχρόνια παρακολούθηση
-                  </span>{" "}
-                  και όχι σε αποσπασματικές επισκέψεις.
-                </p>
-              </div>
-              <div className="inline-flex items-start gap-2">
-                <span className="mt-[6px] w-2 h-2 rounded-full bg-[#8c7c68]" />
-                <p>
-                  Προσαρμογή της θεραπείας στην{" "}
-                  <span className="font-semibold">
-                    καθημερινότητα, τις συνήθειες και τους στόχους
-                  </span>{" "}
-                  του ασθενούς.
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* Portrait */}
           <div className="mx-auto w-full max-w-sm">
-            <div className="overflow-hidden rounded-3xl shadow-2xl border border-[#eae2d9] ring-1 ring-[#e8e1d8] bg-[#fdfaf6]">
+            <div className="overflow-hidden rounded-3xl border border-[#e8dfd3] bg-white">
               <Image
                 src="/doctor.jpg"
                 alt="Δρ. Γεωργία Κόλλια"
                 width={480}
                 height={520}
-                className="object-cover w-full h-full transition-transform duration-700 hover:scale-[1.02]"
+                className="object-cover w-full h-full"
                 priority={false}
               />
             </div>
@@ -184,10 +126,10 @@ export default function AboutPage() {
       </section>
 
       {/* =================== Care Philosophy =================== */}
-      <section className="py-16 px-6 bg-[#fffaf4]">
-        <div className="max-w-6xl mx-auto grid lg:grid-cols-[1.4fr_1.6fr] gap-12 items-start">
+      <section className="py-16 px-6 bg-white">
+        <div className="max-w-5xl mx-auto grid lg:grid-cols-[1.3fr_1.4fr] gap-10 items-start">
           <div className="space-y-5">
-            <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-[#3b3a36] mb-2">
+            <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-[#3b3a36]">
               Φιλοσοφία Φροντίδας
             </h2>
             <p className="text-sm md:text-[0.98rem] text-[#4a4944] leading-relaxed">
@@ -225,7 +167,7 @@ export default function AboutPage() {
             ].map((item) => (
               <div
                 key={item.title}
-                className="rounded-2xl border border-[#ece4d8] bg-white/90 p-4 shadow-sm"
+                className="rounded-2xl border border-[#eee2d6] bg-[#fffdf9] p-4"
               >
                 <h3 className="text-sm font-semibold text-[#2f2e2b] mb-1.5">
                   {item.title}
@@ -240,16 +182,16 @@ export default function AboutPage() {
       </section>
 
       {/* =================== Expertise & Journey =================== */}
-      <section className="py-20 px-6 bg-[#fdfaf6]">
-        <div className="max-w-6xl mx-auto space-y-12">
-          <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-center">
+      <section className="py-18 md:py-20 px-6 bg-[#fdfaf6]">
+        <div className="max-w-6xl mx-auto space-y-10">
+          <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-center">
             Εξειδίκευση & Πορεία
           </h2>
 
-          <div className="grid md:grid-cols-2 gap-16 text-[#4a4944]">
+          <div className="grid md:grid-cols-2 gap-14 text-[#4a4944]">
             {/* Expertise list */}
             <div>
-              <h3 className="text-2xl font-medium text-[#3b3a36] mb-4">
+              <h3 className="text-xl font-medium text-[#3b3a36] mb-4">
                 Τομείς Εξειδίκευσης
               </h3>
               <ul className="space-y-3 text-sm md:text-[0.97rem]">
@@ -262,7 +204,7 @@ export default function AboutPage() {
                   "Οστεοπόρωση και μεταβολικά νοσήματα των οστών.",
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-3">
-                    <span className="mt-1 w-2 h-2 bg-[#8c7c68] rounded-full shrink-0" />
+                    <span className="mt-1 w-1.5 h-1.5 bg-[#8c7c68] rounded-full shrink-0" />
                     <span>{item}</span>
                   </li>
                 ))}
@@ -271,7 +213,7 @@ export default function AboutPage() {
 
             {/* Timeline */}
             <div>
-              <h3 className="text-2xl font-medium text-[#3b3a36] mb-4">
+              <h3 className="text-xl font-medium text-[#3b3a36] mb-4">
                 Επαγγελματική Πορεία
               </h3>
               <ol className="relative border-s border-[#e8e1d8] ps-5 space-y-6 text-sm md:text-[0.96rem]">
@@ -294,7 +236,7 @@ export default function AboutPage() {
                   {
                     Icon: Award,
                     title: "Συνεχής μετεκπαίδευση",
-                    body: "Σεμινάρια, πιστοποιήσεις και εξειδικευμένα εκπαιδευτικά προγράμματα με στόχο την διαρκή αναβάθμιση των παρεχόμενων υπηρεσιών.",
+                    body: "Σεμινάρια, πιστοποιήσεις και εξειδικευμένα εκπαιδευτικά προγράμματα με στόχο τη διαρκή αναβάθμιση των παρεχόμενων υπηρεσιών.",
                   },
                 ].map(({ Icon, title, body }, i) => (
                   <li key={i} className="ms-2">
@@ -314,7 +256,7 @@ export default function AboutPage() {
       </section>
 
       {/* =================== First Visit =================== */}
-      <section className="py-18 md:py-20 px-6 bg-[#f7f2ea]">
+      <section className="py-16 md:py-20 px-6 bg-white">
         <div className="max-w-6xl mx-auto">
           <div className="max-w-3xl mx-auto text-center mb-10">
             <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-[#3b3a36] mb-3">
@@ -348,9 +290,9 @@ export default function AboutPage() {
             ].map((item) => (
               <div
                 key={item.step}
-                className="relative rounded-2xl border border-[#e8dfd2] bg-white/90 px-5 py-6 shadow-sm"
+                className="relative rounded-2xl border border-[#e8dfd2] bg-[#fffdf9] px-5 py-6"
               >
-                <div className="absolute -top-3 left-5 w-7 h-7 rounded-full bg-[#c8ad85] text-white text-xs flex items-center justify-center font-semibold shadow-md">
+                <div className="absolute -top-3 left-5 w-7 h-7 rounded-full bg-[#c8ad85] text-white text-xs flex items-center justify-center font-semibold">
                   {item.step}
                 </div>
                 <h3 className="mt-3 text-sm font-semibold text-[#2f2e2b] mb-1.5">
@@ -366,10 +308,10 @@ export default function AboutPage() {
       </section>
 
       {/* Divider */}
-      <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#e8e1d8] to-transparent" />
+      <div className="w-full h-px bg-gradient-to-r from-transparent via-[#e8e1d8] to-transparent" />
 
-      {/* =================== Values (quick cards) =================== */}
-      <section className="py-16 px-6 bg-[#fffaf4]">
+      {/* =================== Values =================== */}
+      <section className="py-16 px-6 bg-[#fdfaf6]">
         <div className="max-w-6xl mx-auto grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {[
             {
@@ -387,7 +329,7 @@ export default function AboutPage() {
           ].map(({ title, text }) => (
             <div
               key={title}
-              className="rounded-2xl border border-[#ece7df] bg-white p-5 shadow-sm"
+              className="rounded-2xl border border-[#ece7df] bg-white p-5"
             >
               <h4 className="text-[15px] font-semibold text-[#2f2e2b]">
                 {title}
@@ -401,10 +343,10 @@ export default function AboutPage() {
       </section>
 
       {/* Divider */}
-      <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#e8e1d8] to-transparent" />
+      <div className="w-full h-px bg-gradient-to-r from-transparent via-[#e8e1d8] to-transparent" />
 
       {/* =================== Testimonials =================== */}
-      <section className="bg-[#fffaf4] py-20 px-4 sm:px-8">
+      <section className="bg-[#fdfaf6] py-16 px-4 sm:px-8">
         <Carousel />
       </section>
     </main>
@@ -472,7 +414,7 @@ export function Carousel() {
   }, [prev, next]);
 
   return (
-    <section className="py-14 px-4">
+    <section className="py-10 px-4">
       <div
         ref={containerRef}
         tabIndex={0}
@@ -482,29 +424,17 @@ export function Carousel() {
         aria-roledescription="carousel"
         aria-label="Απόψεις Ασθενών"
       >
-        <h2 className="text-3xl font-semibold text-[#6d5b44] mb-12 tracking-tight relative inline-block after:content-[''] after:block after:h-[2px] after:bg-[#d5c4ae] after:w-16 after:mx-auto after:mt-3">
+        <h2 className="text-2xl md:text-3xl font-semibold text-[#6d5b44] mb-10 tracking-tight">
           Απόψεις Ασθενών
         </h2>
 
         <div className="relative">
           <article
-            className={`relative rounded-3xl px-8 md:px-10 py-10 md:py-12 shadow-xl border border-[#eee3d5] bg-white/70 backdrop-blur-md transition-all duration-500 ease-in-out ${
-              fade ? "opacity-100 scale-100" : "opacity-0 scale-95"
+            className={`relative rounded-3xl px-8 md:px-10 py-10 md:py-12 border border-[#eee3d5] bg-white/80 transition-all duration-400 ease-in-out ${
+              fade ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1"
             }`}
             aria-live="polite"
           >
-            {/* Top quotes */}
-            <div className="flex justify-start mb-3 md:mb-4">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-8 h-8 text-[#d6ba8a] opacity-70"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M7 7H5a3 3 0 0 0-3 3v5h5v-5h0V7Zm12 0h-2a3 3 0 0 0-3 3v5h5v-5h0V7Z" />
-              </svg>
-            </div>
-
             <Stars rating={testimonials[index].stars} />
             <p className="text-[#4f473c] text-base md:text-lg italic leading-relaxed mb-6">
               “{testimonials[index].text}”
@@ -515,9 +445,6 @@ export function Carousel() {
                 {testimonials[index].source}
               </span>
             </div>
-
-            {/* subtle glow divider */}
-            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-2/3 h-[2px] bg-gradient-to-r from-transparent via-[#e8dac0] to-transparent rounded-full" />
           </article>
 
           {/* arrows */}
@@ -525,14 +452,14 @@ export function Carousel() {
             <button
               onClick={prev}
               aria-label="Προηγούμενη κριτική"
-              className="p-2 rounded-full bg-white/80 hover:bg-white shadow-md transition"
+              className="p-2 rounded-full bg-white/90 hover:bg-white shadow-sm transition"
             >
               <ChevronLeft className="w-5 h-5 text-[#a28f75]" />
             </button>
             <button
               onClick={next}
               aria-label="Επόμενη κριτική"
-              className="p-2 rounded-full bg-white/80 hover:bg-white shadow-md transition"
+              className="p-2 rounded-full bg-white/90 hover:bg-white shadow-sm transition"
             >
               <ChevronRight className="w-5 h-5 text-[#a28f75]" />
             </button>
@@ -546,7 +473,7 @@ export function Carousel() {
               key={i}
               onClick={() => changeIndex(i)}
               aria-label={`Μετάβαση στην κριτική ${i + 1}`}
-              className={`w-3 h-3 rounded-full transition-all duration-300 border ${
+              className={`w-2.5 h-2.5 rounded-full transition-all duration-300 border ${
                 index === i
                   ? "bg-[#c0a887] border-[#c0a887]"
                   : "bg-[#e8dfd3] border-[#d5cbbd] hover:scale-105"
