@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
-import { offlineAuth } from "@/lib/offlineAuth";
+import { offlineAuth } from "../../../lib/offlineAuth";
 
 // shadcn/ui
 import {
@@ -80,12 +80,19 @@ function lsGet(key, fallback) {
   }
 }
 function lsSet(key, value) {
+  localStorage.setItem(LS_PREFIX + key, JSON.stringify(value));
+}
+function lsTrySet(key, value) {
   try {
     localStorage.setItem(LS_PREFIX + key, JSON.stringify(value));
-  } catch {}
+    return true;
+  } catch (e) {
+    console.error("lsTrySet failed:", LS_PREFIX + key, e);
+    return false;
+  }
 }
 
-// -------------------- pin helpers --------------------
+// -------------------- helpers --------------------
 function digitsOnly(str) {
   return (str || "").replace(/\D/g, "");
 }
@@ -109,6 +116,16 @@ function isDescendingSequence(pin) {
     if (Number(pin[i]) !== (Number(pin[i - 1]) + 9) % 10) return false;
   }
   return true;
+}
+function clamp(n, min, max) {
+  const x = Number.isFinite(Number(n)) ? Number(n) : min;
+  return Math.min(max, Math.max(min, x));
+}
+function isEmail(v) {
+  const s = String(v || "").trim();
+  if (!s) return false;
+  // simple + practical
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
 // -------------------- clinic_settings helpers (single row id=1) --------------------
@@ -153,6 +170,8 @@ async function updateClinicSettings(patch) {
 export default function AdminSettingsPage() {
   const router = useRouter();
 
+  const [tab, setTab] = useState("appointments");
+
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -164,8 +183,8 @@ export default function AdminSettingsPage() {
   const [oldPin, setOldPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
-
   const [show, setShow] = useState({ old: false, next: false, confirm: false });
+  const [localReady, setLocalReady] = useState(false);
 
   // device/offline policy (local)
   const [deviceLabel, setDeviceLabel] = useState("");
@@ -188,7 +207,6 @@ export default function AdminSettingsPage() {
   const [settingsUpdatedAt, setSettingsUpdatedAt] = useState(null);
 
   // ui feedback
-  const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [errors, setErrors] = useState({
     oldPin: null,
@@ -196,7 +214,18 @@ export default function AdminSettingsPage() {
     confirmPin: null,
   });
 
+  const [saving, setSaving] = useState({
+    appointments: false,
+    notifications: false,
+    offline: false,
+    device: false,
+    reload: false,
+  });
+
   const newPinRef = useRef(null);
+  const baselineRef = useRef(null);
+
+  const isBusy = useMemo(() => Object.values(saving).some(Boolean), [saving]);
 
   const refreshOffline = useCallback(() => {
     setEnabled(!!offlineAuth?.isEnabled?.());
@@ -204,13 +233,12 @@ export default function AdminSettingsPage() {
   }, []);
 
   const loadAllSettings = useCallback(async () => {
-    // ---- local first
-    setDeviceLabel(lsGet("deviceLabel", ""));
-    setAutoLockMinutes(lsGet("autoLockMinutes", 10));
-    setMaxAttempts(lsGet("maxAttempts", 6));
-    setCooldownSeconds(lsGet("cooldownSeconds", 30));
+    // ---- local first (ALWAYS)
+    const localDeviceLabel = lsGet("deviceLabel", "");
+    const localAutoLock = lsGet("autoLockMinutes", 10);
+    const localMaxAttempts = lsGet("maxAttempts", 6);
+    const localCooldown = lsGet("cooldownSeconds", 30);
 
-    // local fallbacks for clinic settings (in case your table has only accept_new_appointments)
     const localClinicPhone = lsGet("clinicPhone", "");
     const localClosedMsg = lsGet(
       "closedMessage",
@@ -220,52 +248,164 @@ export default function AdminSettingsPage() {
     const localAN = lsGet("sendAdminNotifications", false);
     const localAE = lsGet("adminEmail", "");
 
-    // ---- server settings (clinic_settings row id=1)
-    const s = await fetchClinicSettings();
+    // apply local device immediately (so reload never shows defaults)
+    setDeviceLabel(localDeviceLabel);
+    setAutoLockMinutes(localAutoLock);
+    setMaxAttempts(localMaxAttempts);
+    setCooldownSeconds(localCooldown);
+    setLocalReady(true);
 
-    setAcceptingAppointments(
+    // ---- server settings (best-effort)
+    let s = null;
+    try {
+      s = await fetchClinicSettings();
+    } catch (e) {
+      console.error("fetchClinicSettings failed:", e);
+      // don't throw: keep page usable with local fallbacks
+      s = null;
+    }
+
+    const nextAccepting =
       s?.accept_new_appointments === undefined
         ? true
-        : !!s.accept_new_appointments
-    );
+        : !!s.accept_new_appointments;
 
-    // if you later add these columns, they will load from server automatically:
-    setClinicPhone(
-      Object.prototype.hasOwnProperty.call(s, "clinic_phone")
+    const nextClinicPhone =
+      s && Object.prototype.hasOwnProperty.call(s, "clinic_phone")
         ? String(s.clinic_phone ?? "")
-        : String(localClinicPhone ?? "")
-    );
+        : String(localClinicPhone ?? "");
 
-    setClosedMessage(
-      Object.prototype.hasOwnProperty.call(s, "closed_message")
+    const nextClosedMessage =
+      s && Object.prototype.hasOwnProperty.call(s, "closed_message")
         ? String(
             (typeof s.closed_message === "string" && s.closed_message.trim()
               ? s.closed_message
               : localClosedMsg) ?? localClosedMsg
           )
-        : String(localClosedMsg ?? "")
-    );
+        : String(localClosedMsg ?? "");
 
-    setSendConfirmationEmails(
-      Object.prototype.hasOwnProperty.call(s, "send_confirmation_emails")
+    const nextSendCE =
+      s && Object.prototype.hasOwnProperty.call(s, "send_confirmation_emails")
         ? !!s.send_confirmation_emails
-        : !!localCE
-    );
+        : !!localCE;
 
-    setSendAdminNotifications(
-      Object.prototype.hasOwnProperty.call(s, "send_admin_notifications")
+    const nextSendAN =
+      s && Object.prototype.hasOwnProperty.call(s, "send_admin_notifications")
         ? !!s.send_admin_notifications
-        : !!localAN
-    );
+        : !!localAN;
 
-    setAdminEmail(
-      Object.prototype.hasOwnProperty.call(s, "admin_email")
+    const nextAdminEmail =
+      s && Object.prototype.hasOwnProperty.call(s, "admin_email")
         ? String(s.admin_email ?? "")
-        : String(localAE ?? "")
-    );
+        : String(localAE ?? "");
+
+    setAcceptingAppointments(nextAccepting);
+    setClinicPhone(nextClinicPhone);
+    setClosedMessage(nextClosedMessage);
+
+    setSendConfirmationEmails(nextSendCE);
+    setSendAdminNotifications(nextSendAN);
+    setAdminEmail(nextAdminEmail);
 
     setSettingsUpdatedAt(s?.updated_at ?? null);
+
+    baselineRef.current = {
+      deviceLabel: localDeviceLabel,
+      autoLockMinutes: localAutoLock,
+      maxAttempts: localMaxAttempts,
+      cooldownSeconds: localCooldown,
+      acceptingAppointments: nextAccepting,
+      clinicPhone: nextClinicPhone,
+      closedMessage: nextClosedMessage,
+      sendConfirmationEmails: nextSendCE,
+      sendAdminNotifications: nextSendAN,
+      adminEmail: nextAdminEmail,
+    };
+
+    if (!s) {
+      setMsg({
+        type: "info",
+        text: "Φορτώθηκαν τοπικές ρυθμίσεις. Δεν ήταν διαθέσιμες οι ρυθμίσεις server (clinic_settings).",
+      });
+    }
   }, []);
+
+  useEffect(() => {
+    if (!localReady) return;
+    lsSet("deviceLabel", deviceLabel);
+  }, [localReady, deviceLabel]);
+
+  useEffect(() => {
+    if (!localReady) return;
+    lsSet("autoLockMinutes", autoLockMinutes);
+  }, [localReady, autoLockMinutes]);
+
+  useEffect(() => {
+    if (!localReady) return;
+    lsSet("maxAttempts", maxAttempts);
+  }, [localReady, maxAttempts]);
+
+  useEffect(() => {
+    if (!localReady) return;
+    lsSet("cooldownSeconds", cooldownSeconds);
+  }, [localReady, cooldownSeconds]);
+
+  const saveDeviceSettings = () => {
+    clearFeedback();
+    setSaving((s) => ({ ...s, device: true }));
+
+    try {
+      const next = {
+        deviceLabel: String(deviceLabel || "").trim(),
+        autoLockMinutes: clamp(autoLockMinutes, 0, 240),
+        maxAttempts: clamp(maxAttempts, 1, 20),
+        cooldownSeconds: clamp(cooldownSeconds, 0, 600),
+      };
+
+      localStorage.setItem(
+        "admin_settings:deviceLabel",
+        JSON.stringify(next.deviceLabel)
+      );
+      localStorage.setItem(
+        "admin_settings:autoLockMinutes",
+        JSON.stringify(next.autoLockMinutes)
+      );
+      localStorage.setItem(
+        "admin_settings:maxAttempts",
+        JSON.stringify(next.maxAttempts)
+      );
+      localStorage.setItem(
+        "admin_settings:cooldownSeconds",
+        JSON.stringify(next.cooldownSeconds)
+      );
+
+      baselineRef.current = { ...(baselineRef.current || {}), ...next };
+
+      setMsg({
+        type: "success",
+        text: "Αποθηκεύτηκαν τοπικά οι ρυθμίσεις συσκευής.",
+      });
+    } catch (e) {
+      console.error(e);
+      setMsg({
+        type: "error",
+        text: "Αποτυχία αποθήκευσης στη συσκευή (localStorage blocked/quota).",
+      });
+    } finally {
+      setSaving((s) => ({ ...s, device: false }));
+    }
+  };
+
+  const undoDeviceSettings = () => {
+    const b = baselineRef.current;
+    if (!b) return;
+    clearFeedback();
+    setDeviceLabel(String(b.deviceLabel ?? ""));
+    setAutoLockMinutes(Number(b.autoLockMinutes ?? 10));
+    setMaxAttempts(Number(b.maxAttempts ?? 6));
+    setCooldownSeconds(Number(b.cooldownSeconds ?? 30));
+    setMsg({ type: "info", text: "Αναιρέθηκαν οι αλλαγές." });
+  };
 
   useEffect(() => {
     (async () => {
@@ -275,6 +415,7 @@ export default function AdminSettingsPage() {
         router.replace("/login?redirect=/admin/settings");
         return;
       }
+
       setUser(session.user);
       refreshOffline();
 
@@ -292,24 +433,26 @@ export default function AdminSettingsPage() {
     })();
   }, [router, refreshOffline, loadAllSettings]);
 
-  // persist local changes (device)
-  useEffect(() => lsSet("deviceLabel", deviceLabel), [deviceLabel]);
-  useEffect(() => lsSet("autoLockMinutes", autoLockMinutes), [autoLockMinutes]);
-  useEffect(() => lsSet("maxAttempts", maxAttempts), [maxAttempts]);
-  useEffect(() => lsSet("cooldownSeconds", cooldownSeconds), [cooldownSeconds]);
-
   // persist local fallbacks (clinic settings extras)
-  useEffect(() => lsSet("clinicPhone", clinicPhone), [clinicPhone]);
-  useEffect(() => lsSet("closedMessage", closedMessage), [closedMessage]);
-  useEffect(
-    () => lsSet("sendConfirmationEmails", sendConfirmationEmails),
-    [sendConfirmationEmails]
-  );
-  useEffect(
-    () => lsSet("sendAdminNotifications", sendAdminNotifications),
-    [sendAdminNotifications]
-  );
-  useEffect(() => lsSet("adminEmail", adminEmail), [adminEmail]);
+  useEffect(() => {
+    lsSet("clinicPhone", clinicPhone);
+  }, [clinicPhone]);
+
+  useEffect(() => {
+    lsSet("closedMessage", closedMessage);
+  }, [closedMessage]);
+
+  useEffect(() => {
+    lsSet("sendConfirmationEmails", sendConfirmationEmails);
+  }, [sendConfirmationEmails]);
+
+  useEffect(() => {
+    lsSet("sendAdminNotifications", sendAdminNotifications);
+  }, [sendAdminNotifications]);
+
+  useEffect(() => {
+    lsSet("adminEmail", adminEmail);
+  }, [adminEmail]);
 
   // sync offline status across tabs if storage used
   useEffect(() => {
@@ -319,6 +462,75 @@ export default function AdminSettingsPage() {
   }, [refreshOffline]);
 
   const isActive = enabled && hasPin;
+
+  const clearFeedback = () => {
+    setMsg(null);
+    setErrors({ oldPin: null, newPin: null, confirmPin: null });
+  };
+
+  // -------------------- dirty tracking --------------------
+  const dirtyAppointments = useMemo(() => {
+    const b = baselineRef.current;
+    if (!b) return false;
+    return (
+      b.acceptingAppointments !== acceptingAppointments ||
+      String(b.clinicPhone ?? "") !== String(clinicPhone ?? "") ||
+      String(b.closedMessage ?? "") !== String(closedMessage ?? "")
+    );
+  }, [acceptingAppointments, clinicPhone, closedMessage]);
+
+  const dirtyNotifications = useMemo(() => {
+    const b = baselineRef.current;
+    if (!b) return false;
+    return (
+      b.sendConfirmationEmails !== sendConfirmationEmails ||
+      b.sendAdminNotifications !== sendAdminNotifications ||
+      String(b.adminEmail ?? "") !== String(adminEmail ?? "")
+    );
+  }, [sendConfirmationEmails, sendAdminNotifications, adminEmail]);
+
+  const dirtyDevice = useMemo(() => {
+    const b = baselineRef.current;
+    if (!b) return false;
+    return (
+      String(b.deviceLabel ?? "") !== String(deviceLabel ?? "") ||
+      Number(b.autoLockMinutes) !== Number(autoLockMinutes) ||
+      Number(b.maxAttempts) !== Number(maxAttempts) ||
+      Number(b.cooldownSeconds) !== Number(cooldownSeconds)
+    );
+  }, [deviceLabel, autoLockMinutes, maxAttempts, cooldownSeconds]);
+
+  const validAdminEmail = useMemo(() => {
+    if (!sendAdminNotifications) return true;
+    return isEmail(adminEmail);
+  }, [sendAdminNotifications, adminEmail]);
+
+  const closedMessageOk = useMemo(() => {
+    return String(closedMessage || "").trim().length >= 10;
+  }, [closedMessage]);
+
+  // -------------------- pin validation --------------------
+  const validatePin = useCallback(
+    (pin, confirm, old) => {
+      const e = { oldPin: null, newPin: null, confirmPin: null };
+
+      if (isActive && !old) e.oldPin = "Εισάγετε τον τρέχοντα PIN.";
+      if (!pin) e.newPin = "Εισάγετε νέο PIN.";
+      else if (pin.length < MIN_PIN) e.newPin = `Τουλάχιστον ${MIN_PIN} ψηφία.`;
+      else if (isAllSame(pin)) e.newPin = "Αποφύγετε ίδιο ψηφίο παντού.";
+      else if (isAscendingSequence(pin) || isDescendingSequence(pin))
+        e.newPin = "Αποφύγετε απλές ακολουθίες (π.χ. 123456).";
+      else if (isActive && old && pin === old)
+        e.newPin = "Ο νέος PIN πρέπει να διαφέρει.";
+
+      if (!confirm) e.confirmPin = "Επιβεβαιώστε τον νέο PIN.";
+      else if (pin && confirm && pin !== confirm)
+        e.confirmPin = "Δεν ταιριάζει.";
+
+      return e;
+    },
+    [isActive]
+  );
 
   const pinStrength = useMemo(() => {
     if (!newPin) return 0;
@@ -340,41 +552,14 @@ export default function AdminSettingsPage() {
   const Requirement = ({ ok, children }) => (
     <div className="flex items-center gap-2 text-xs">
       {ok ? (
-        <CheckCircle2 className="h-3.5 w-3.5" />
+        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
       ) : (
-        <XCircle className="h-3.5 w-3.5" />
+        <XCircle className="h-3.5 w-3.5 text-muted-foreground" />
       )}
       <span className={ok ? "text-foreground" : "text-muted-foreground"}>
         {children}
       </span>
     </div>
-  );
-
-  const clearFeedback = () => {
-    setMsg(null);
-    setErrors({ oldPin: null, newPin: null, confirmPin: null });
-  };
-
-  const validatePin = useCallback(
-    (pin, confirm, old) => {
-      const e = { oldPin: null, newPin: null, confirmPin: null };
-
-      if (isActive && !old) e.oldPin = "Εισάγετε τον τρέχοντα PIN.";
-      if (!pin) e.newPin = "Εισάγετε νέο PIN.";
-      else if (pin.length < MIN_PIN) e.newPin = `Τουλάχιστον ${MIN_PIN} ψηφία.`;
-      else if (isAllSame(pin)) e.newPin = "Αποφύγετε ίδιο ψηφίο παντού.";
-      else if (isAscendingSequence(pin) || isDescendingSequence(pin))
-        e.newPin = "Αποφύγετε απλές ακολουθίες (π.χ. 123456).";
-      else if (isActive && old && pin === old)
-        e.newPin = "Ο νέος PIN πρέπει να διαφέρει.";
-
-      if (!confirm) e.confirmPin = "Επιβεβαιώστε τον νέο PIN.";
-      else if (pin && confirm && pin !== confirm)
-        e.confirmPin = "Δεν ταιριάζει.";
-
-      return e;
-    },
-    [isActive]
   );
 
   const PinField = ({
@@ -464,7 +649,7 @@ export default function AdminSettingsPage() {
     setErrors(e);
     if (e.newPin || e.confirmPin) return;
 
-    setBusy(true);
+    setSaving((s) => ({ ...s, offline: true }));
     try {
       await offlineAuth.enable(user.id, newPin);
 
@@ -482,7 +667,7 @@ export default function AdminSettingsPage() {
       console.error(err);
       setMsg({ type: "error", text: "Αποτυχία ορισμού PIN." });
     } finally {
-      setBusy(false);
+      setSaving((s) => ({ ...s, offline: false }));
     }
   };
 
@@ -492,7 +677,7 @@ export default function AdminSettingsPage() {
     setErrors(e);
     if (e.oldPin || e.newPin || e.confirmPin) return;
 
-    setBusy(true);
+    setSaving((s) => ({ ...s, offline: true }));
     try {
       const ok = await offlineAuth.changePin(oldPin, newPin);
       if (!ok) {
@@ -511,13 +696,13 @@ export default function AdminSettingsPage() {
       console.error(err);
       setMsg({ type: "error", text: "Αποτυχία αλλαγής PIN." });
     } finally {
-      setBusy(false);
+      setSaving((s) => ({ ...s, offline: false }));
     }
   };
 
   const handleDisable = async () => {
     clearFeedback();
-    setBusy(true);
+    setSaving((s) => ({ ...s, offline: true }));
     try {
       await offlineAuth.disable();
       setOldPin("");
@@ -534,7 +719,7 @@ export default function AdminSettingsPage() {
       console.error(err);
       setMsg({ type: "error", text: "Αποτυχία απενεργοποίησης." });
     } finally {
-      setBusy(false);
+      setSaving((s) => ({ ...s, offline: false }));
     }
   };
 
@@ -562,7 +747,7 @@ export default function AdminSettingsPage() {
 
   const handleClearOfflineData = async () => {
     clearFeedback();
-    setBusy(true);
+    setSaving((s) => ({ ...s, offline: true }));
     try {
       if (typeof offlineAuth?.clearDevice === "function") {
         await offlineAuth.clearDevice();
@@ -583,23 +768,19 @@ export default function AdminSettingsPage() {
       console.error(e);
       setMsg({ type: "error", text: "Αποτυχία καθαρισμού offline δεδομένων." });
     } finally {
-      setBusy(false);
+      setSaving((s) => ({ ...s, offline: false }));
     }
   };
 
   // -------------------- server settings save (clinic_settings) --------------------
   const saveAppointmentsSettings = async () => {
     clearFeedback();
-    setBusy(true);
+    setSaving((s) => ({ ...s, appointments: true }));
     try {
       const current = await fetchClinicSettings();
 
-      // always save accept_new_appointments to clinic_settings
-      const patch = {
-        accept_new_appointments: !!acceptingAppointments,
-      };
+      const patch = { accept_new_appointments: !!acceptingAppointments };
 
-      // only save extra fields if the columns exist in the table
       if (Object.prototype.hasOwnProperty.call(current, "clinic_phone")) {
         patch.clinic_phone = String(clinicPhone || "");
       }
@@ -610,7 +791,14 @@ export default function AdminSettingsPage() {
       const s = await updateClinicSettings(patch);
       setSettingsUpdatedAt(s?.updated_at ?? null);
 
-      // extras always saved locally (fallback), but success message stays simple
+      // update baseline for this section
+      baselineRef.current = {
+        ...(baselineRef.current || {}),
+        acceptingAppointments,
+        clinicPhone,
+        closedMessage,
+      };
+
       setMsg({ type: "success", text: "Αποθηκεύτηκαν οι ρυθμίσεις ραντεβού." });
     } catch (e) {
       console.error(e);
@@ -619,13 +807,13 @@ export default function AdminSettingsPage() {
         text: "Αποτυχία αποθήκευσης. Ελέγξτε RLS/πίνακα clinic_settings.",
       });
     } finally {
-      setBusy(false);
+      setSaving((s) => ({ ...s, appointments: false }));
     }
   };
 
   const saveNotificationSettings = async () => {
     clearFeedback();
-    setBusy(true);
+    setSaving((s) => ({ ...s, notifications: true }));
     try {
       const current = await fetchClinicSettings();
 
@@ -650,15 +838,28 @@ export default function AdminSettingsPage() {
         patch.admin_email = String(adminEmail || "");
       }
 
-      // if your table doesn't have these columns yet, we just keep local storage
       if (Object.keys(patch).length > 0) {
         const s = await updateClinicSettings(patch);
         setSettingsUpdatedAt(s?.updated_at ?? null);
+
+        baselineRef.current = {
+          ...(baselineRef.current || {}),
+          sendConfirmationEmails,
+          sendAdminNotifications,
+          adminEmail,
+        };
+
         setMsg({
           type: "success",
           text: "Αποθηκεύτηκαν οι ρυθμίσεις ειδοποιήσεων.",
         });
       } else {
+        baselineRef.current = {
+          ...(baselineRef.current || {}),
+          sendConfirmationEmails,
+          sendAdminNotifications,
+          adminEmail,
+        };
         setMsg({
           type: "info",
           text: "Οι ρυθμίσεις ειδοποιήσεων αποθηκεύτηκαν τοπικά (η clinic_settings δεν έχει ακόμα τις αντίστοιχες στήλες).",
@@ -671,7 +872,7 @@ export default function AdminSettingsPage() {
         text: "Αποτυχία αποθήκευσης ειδοποιήσεων. Ελέγξτε RLS/στήλες.",
       });
     } finally {
-      setBusy(false);
+      setSaving((s) => ({ ...s, notifications: false }));
     }
   };
 
@@ -682,6 +883,7 @@ export default function AdminSettingsPage() {
     }
   }, [loading, isActive]);
 
+  // -------------------- header badge --------------------
   const statusBadge = (
     <Badge
       variant={isActive ? "default" : "secondary"}
@@ -691,9 +893,28 @@ export default function AdminSettingsPage() {
     </Badge>
   );
 
+  // -------------------- top summary tiles --------------------
+  const SummaryTile = ({ icon: Icon, title, value, hint }) => (
+    <div className="rounded-2xl border bg-white/60 backdrop-blur supports-[backdrop-filter]:bg-white/50 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">{title}</p>
+          <p className="text-sm font-medium">{value}</p>
+          {hint ? (
+            <p className="text-xs text-muted-foreground">{hint}</p>
+          ) : null}
+        </div>
+        <div className="rounded-xl border bg-white/70 p-2">
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+    </div>
+  );
+
+  // -------------------- loading skeleton --------------------
   if (loading) {
     return (
-      <main className="relative max-w-4xl mx-auto px-6 py-10">
+      <main className="relative max-w-5xl mx-auto px-6 py-10">
         <div className="absolute inset-0 -z-10 bg-gradient-to-b from-stone-50 to-white" />
         <div className="flex items-start justify-between mb-6">
           <div className="space-y-2">
@@ -704,6 +925,12 @@ export default function AdminSettingsPage() {
             <Skeleton className="h-4 w-80" />
           </div>
           <Skeleton className="h-6 w-24 rounded-full" />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3 mb-6">
+          <Skeleton className="h-24 rounded-2xl" />
+          <Skeleton className="h-24 rounded-2xl" />
+          <Skeleton className="h-24 rounded-2xl" />
         </div>
 
         <Card className="shadow-sm">
@@ -719,12 +946,12 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <main className="relative max-w-4xl mx-auto px-6 py-10" aria-busy={busy}>
+    <main className="relative max-w-5xl mx-auto px-6 py-10" aria-busy={isBusy}>
       {/* ambient background */}
       <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-stone-50 to-transparent" />
-        <div className="absolute -top-12 -right-16 h-72 w-72 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 blur-3xl opacity-60" />
-        <div className="absolute top-24 -left-16 h-72 w-72 rounded-full bg-gradient-to-br from-amber-100 to-rose-100 blur-3xl opacity-35" />
+        <div className="absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-stone-50 to-transparent" />
+        <div className="absolute -top-14 -right-20 h-80 w-80 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 blur-3xl opacity-55" />
+        <div className="absolute top-28 -left-20 h-80 w-80 rounded-full bg-gradient-to-br from-amber-100 to-rose-100 blur-3xl opacity-30" />
       </div>
 
       {/* header */}
@@ -732,7 +959,7 @@ export default function AdminSettingsPage() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
-        className="flex items-start justify-between gap-4 mb-6"
+        className="flex items-start justify-between gap-4 mb-5"
       >
         <div className="space-y-1">
           <div className="flex items-center gap-3">
@@ -745,6 +972,7 @@ export default function AdminSettingsPage() {
             >
               <ChevronLeft className="h-5 w-5" />
             </Button>
+
             <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-2">
               <Lock className="h-7 w-7" />
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-stone-900 to-stone-600">
@@ -752,10 +980,11 @@ export default function AdminSettingsPage() {
               </span>
             </h1>
           </div>
+
           <p className="text-sm text-muted-foreground">
-            Διαχειριστείτε ρυθμίσεις εφαρμογής, ραντεβού, ειδοποιήσεων και
-            offline πρόσβασης.
+            Ραντεβού, ειδοποιήσεις, offline πρόσβαση και πολιτικές συσκευής.
           </p>
+
           {settingsUpdatedAt ? (
             <p className="text-xs text-muted-foreground">
               Τελευταία ενημέρωση:{" "}
@@ -763,8 +992,45 @@ export default function AdminSettingsPage() {
             </p>
           ) : null}
         </div>
+
         {statusBadge}
       </motion.div>
+
+      {/* summary */}
+      <div className="grid gap-3 sm:grid-cols-3 mb-6">
+        <SummaryTile
+          icon={CalendarDays}
+          title="Online ραντεβού"
+          value={acceptingAppointments ? "Ανοιχτά" : "Κλειστά"}
+          hint={
+            dirtyAppointments
+              ? "Έχεις αλλαγές που δεν αποθηκεύτηκαν"
+              : "Σε sync"
+          }
+        />
+        <SummaryTile
+          icon={Bell}
+          title="Emails"
+          value={[
+            sendConfirmationEmails ? "Confirmations: ON" : "Confirmations: OFF",
+            " · ",
+            sendAdminNotifications ? "Admin alerts: ON" : "Admin alerts: OFF",
+          ].join("")}
+          hint={
+            dirtyNotifications
+              ? "Έχεις αλλαγές που δεν αποθηκεύτηκαν"
+              : "Σε sync"
+          }
+        />
+        <SummaryTile
+          icon={KeyRound}
+          title="Offline πρόσβαση"
+          value={isActive ? "Έτοιμη (PIN ενεργό)" : "Ανενεργή"}
+          hint={
+            deviceLabel ? `Συσκευή: ${deviceLabel}` : "Χωρίς όνομα συσκευής"
+          }
+        />
+      </div>
 
       {/* global msg */}
       {msg ? (
@@ -790,25 +1056,65 @@ export default function AdminSettingsPage() {
         </Alert>
       ) : null}
 
-      <Tabs defaultValue="appointments" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="appointments" className="gap-2">
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="w-full flex flex-wrap gap-2 p-1 bg-white/60 backdrop-blur supports-[backdrop-filter]:bg-white/50 border rounded-2xl">
+          <TabsTrigger value="appointments" className="gap-2 rounded-xl px-3">
             <CalendarDays className="h-4 w-4" /> Ραντεβού
+            {dirtyAppointments ? (
+              <span className="ml-1 text-xs opacity-70">•</span>
+            ) : null}
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="gap-2">
+          <TabsTrigger value="notifications" className="gap-2 rounded-xl px-3">
             <Bell className="h-4 w-4" /> Ειδοποιήσεις
+            {dirtyNotifications ? (
+              <span className="ml-1 text-xs opacity-70">•</span>
+            ) : null}
           </TabsTrigger>
-          <TabsTrigger value="offline" className="gap-2">
+          <TabsTrigger value="offline" className="gap-2 rounded-xl px-3">
             <KeyRound className="h-4 w-4" /> Offline / PIN
           </TabsTrigger>
-          <TabsTrigger value="device" className="gap-2">
+          <TabsTrigger value="device" className="gap-2 rounded-xl px-3">
             <HardDrive className="h-4 w-4" /> Συσκευή
+            {dirtyDevice ? (
+              <span className="ml-1 text-xs opacity-70">•</span>
+            ) : null}
           </TabsTrigger>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={saving.reload}
+              onClick={async () => {
+                setSaving((s) => ({ ...s, reload: true }));
+                setMsg(null);
+                try {
+                  await loadAllSettings();
+                  setMsg({
+                    type: "info",
+                    text: "Έγινε επαναφόρτωση ρυθμίσεων.",
+                  });
+                } catch (e) {
+                  console.error(e);
+                  setMsg({ type: "error", text: "Αποτυχία επαναφόρτωσης." });
+                } finally {
+                  setSaving((s) => ({ ...s, reload: false }));
+                }
+              }}
+              className="rounded-xl"
+            >
+              {saving.reload ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Reload"
+              )}
+            </Button>
+          </div>
         </TabsList>
 
         {/* -------------------- appointments -------------------- */}
         <TabsContent value="appointments" className="mt-6">
-          <Card className="shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/70">
+          <Card className="shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/70 rounded-2xl">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <CalendarDays className="h-5 w-5" /> Online ραντεβού
@@ -820,7 +1126,7 @@ export default function AdminSettingsPage() {
             </CardHeader>
             <Separator />
             <CardContent className="p-6 space-y-6">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border bg-white/60 p-4">
                 <div className="space-y-1">
                   <p className="text-sm font-medium">
                     Αποδοχή νέων online ραντεβού
@@ -844,7 +1150,7 @@ export default function AdminSettingsPage() {
                 <Input
                   value={clinicPhone}
                   onChange={(e) => setClinicPhone(e.target.value)}
-                  placeholder="π.χ. 2101234567"
+                  placeholder="π.χ. 2101234567 ή +302101234567"
                 />
                 <p className="text-xs text-muted-foreground">
                   Θα εμφανίζεται στο μήνυμα όταν τα online ραντεβού είναι
@@ -853,54 +1159,80 @@ export default function AdminSettingsPage() {
               </div>
 
               <div className="grid gap-2">
-                <Label>Μήνυμα όταν τα online ραντεβού είναι κλειστά</Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Μήνυμα όταν τα online ραντεβού είναι κλειστά</Label>
+                  {!closedMessageOk ? (
+                    <span className="text-xs text-destructive">
+                      Γράψτε ένα πιο πλήρες μήνυμα.
+                    </span>
+                  ) : null}
+                </div>
                 <Textarea
                   value={closedMessage}
                   onChange={(e) => setClosedMessage(e.target.value)}
                   rows={4}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Πρόταση: βάλτε οδηγία + τηλέφωνο (αν υπάρχει).
+                </p>
               </div>
 
-              <div className="flex gap-2">
+              {!acceptingAppointments ? (
+                <Alert className="bg-white/60">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Preview (όταν είναι κλειστό)</AlertTitle>
+                  <AlertDescription className="text-sm space-y-1">
+                    <p>{String(closedMessage || "").trim() || "—"}</p>
+                    {String(clinicPhone || "").trim() ? (
+                      <p className="text-xs text-muted-foreground">
+                        Τηλέφωνο:{" "}
+                        <span className="font-medium text-foreground">
+                          {clinicPhone}
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Δεν έχει οριστεί τηλέφωνο.
+                      </p>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className="flex flex-wrap gap-2 items-center">
                 <Button
                   size="sm"
-                  className="inline-flex items-center gap-2"
-                  disabled={busy}
-                  onClick={saveAppointmentsSettings}
+                  className="rounded-xl"
+                  disabled={!dirtyDevice || saving.device}
+                  onClick={saveDeviceSettings}
                 >
-                  {busy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                  {saving.device ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
-                    <CheckCircle2 className="h-4 w-4" />
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
                   )}
                   Αποθήκευση
                 </Button>
+
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={busy}
-                  onClick={async () => {
-                    setBusy(true);
-                    setMsg(null);
-                    try {
-                      await loadAllSettings();
-                      setMsg({
-                        type: "info",
-                        text: "Έγινε επαναφόρτωση ρυθμίσεων από το server.",
-                      });
-                    } catch (e) {
-                      console.error(e);
-                      setMsg({
-                        type: "error",
-                        text: "Αποτυχία επαναφόρτωσης.",
-                      });
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
+                  className="rounded-xl"
+                  disabled={!dirtyDevice || saving.device}
+                  onClick={undoDeviceSettings}
                 >
-                  Επαναφόρτωση
+                  Αναίρεση αλλαγών
                 </Button>
+
+                {dirtyAppointments ? (
+                  <span className="text-xs text-muted-foreground">
+                    Μη αποθηκευμένες αλλαγές
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    Όλα αποθηκευμένα
+                  </span>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -908,7 +1240,7 @@ export default function AdminSettingsPage() {
 
         {/* -------------------- notifications -------------------- */}
         <TabsContent value="notifications" className="mt-6">
-          <Card className="shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/70">
+          <Card className="shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/70 rounded-2xl">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Bell className="h-5 w-5" /> Ειδοποιήσεις
@@ -919,7 +1251,7 @@ export default function AdminSettingsPage() {
             </CardHeader>
             <Separator />
             <CardContent className="p-6 space-y-6">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border bg-white/60 p-4">
                 <div className="space-y-1">
                   <p className="text-sm font-medium">
                     Email επιβεβαίωσης προς ασθενή
@@ -931,14 +1263,11 @@ export default function AdminSettingsPage() {
                 </div>
                 <Switch
                   checked={sendConfirmationEmails}
-                  onCheckedChange={(v) => {
-                    setMsg(null);
-                    setSendConfirmationEmails(!!v);
-                  }}
+                  onCheckedChange={(v) => setSendConfirmationEmails(!!v)}
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border bg-white/60 p-4">
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Admin ειδοποιήσεις</p>
                   <p className="text-xs text-muted-foreground">
@@ -949,35 +1278,79 @@ export default function AdminSettingsPage() {
                 <Switch
                   checked={sendAdminNotifications}
                   onCheckedChange={(v) => {
-                    setMsg(null);
                     setSendAdminNotifications(!!v);
+                    setMsg(null);
                   }}
                 />
               </div>
 
               <div className="grid gap-2">
-                <Label>Admin email</Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Admin email</Label>
+                  {sendAdminNotifications && !validAdminEmail ? (
+                    <span className="text-xs text-destructive">
+                      Μη έγκυρο email
+                    </span>
+                  ) : null}
+                </div>
                 <Input
                   value={adminEmail}
                   onChange={(e) => setAdminEmail(e.target.value)}
                   placeholder="π.χ. clinic@example.com"
+                  disabled={!sendAdminNotifications}
                 />
+                <p className="text-xs text-muted-foreground">
+                  {sendAdminNotifications
+                    ? "Χρησιμοποιείται για ειδοποιήσεις νέων online ραντεβού."
+                    : "Ενεργοποιήστε τις admin ειδοποιήσεις για να ορίσετε email."}
+                </p>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 items-center">
                 <Button
                   size="sm"
-                  className="inline-flex items-center gap-2"
-                  disabled={busy}
+                  className="inline-flex items-center gap-2 rounded-xl"
+                  disabled={
+                    saving.notifications ||
+                    !dirtyNotifications ||
+                    !validAdminEmail
+                  }
                   onClick={saveNotificationSettings}
                 >
-                  {busy ? (
+                  {saving.notifications ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <CheckCircle2 className="h-4 w-4" />
                   )}
                   Αποθήκευση
                 </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl"
+                  disabled={saving.notifications || !dirtyNotifications}
+                  onClick={() => {
+                    const b = baselineRef.current;
+                    if (!b) return;
+                    setMsg(null);
+                    setSendConfirmationEmails(!!b.sendConfirmationEmails);
+                    setSendAdminNotifications(!!b.sendAdminNotifications);
+                    setAdminEmail(String(b.adminEmail ?? ""));
+                  }}
+                >
+                  Αναίρεση αλλαγών
+                </Button>
+
+                {dirtyNotifications ? (
+                  <span className="text-xs text-muted-foreground">
+                    Μη αποθηκευμένες αλλαγές
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    Όλα αποθηκευμένα
+                  </span>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -985,7 +1358,7 @@ export default function AdminSettingsPage() {
 
         {/* -------------------- offline -------------------- */}
         <TabsContent value="offline" className="mt-6">
-          <Card className="shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/70">
+          <Card className="shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/70 rounded-2xl">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <KeyRound className="h-5 w-5" /> Offline πρόσβαση / PIN
@@ -996,7 +1369,7 @@ export default function AdminSettingsPage() {
             </CardHeader>
             <Separator />
             <CardContent className="p-6 space-y-6">
-              <Alert>
+              <Alert className="bg-white/60">
                 <Info className="h-4 w-4" />
                 <AlertTitle>Πώς δουλεύει</AlertTitle>
                 <AlertDescription className="text-sm">
@@ -1068,14 +1441,14 @@ export default function AdminSettingsPage() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
-                      className="inline-flex items-center gap-2"
-                      disabled={busy || !canSubmitSet}
+                      className="inline-flex items-center gap-2 rounded-xl"
+                      disabled={saving.offline || !canSubmitSet}
                       onClick={handleSetPin}
                     >
-                      {busy ? (
+                      {saving.offline ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <Shield className="h-4 w-4" />
@@ -1085,7 +1458,8 @@ export default function AdminSettingsPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={busy}
+                      className="rounded-xl"
+                      disabled={saving.offline}
                       onClick={() => {
                         clearFeedback();
                         setNewPin("");
@@ -1099,7 +1473,7 @@ export default function AdminSettingsPage() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div className="rounded-md bg-muted/50 border p-3 text-sm text-muted-foreground">
+                  <div className="rounded-2xl bg-white/60 border p-4 text-sm text-muted-foreground">
                     Αυτή η συσκευή είναι έτοιμη για offline πρόσβαση.
                   </div>
 
@@ -1145,11 +1519,11 @@ export default function AdminSettingsPage() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
-                      className="inline-flex items-center gap-2"
-                      disabled={busy || !canSubmitChange}
+                      className="inline-flex items-center gap-2 rounded-xl"
+                      disabled={saving.offline || !canSubmitChange}
                       onClick={handleChangePin}
                     >
-                      {busy ? (
+                      {saving.offline ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <KeyRound className="h-4 w-4" />
@@ -1162,8 +1536,8 @@ export default function AdminSettingsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={busy}
-                          className="inline-flex items-center gap-2"
+                          disabled={saving.offline}
+                          className="inline-flex items-center gap-2 rounded-xl"
                         >
                           <PowerOff className="h-4 w-4" />
                           Απενεργοποίηση offline
@@ -1179,11 +1553,11 @@ export default function AdminSettingsPage() {
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel disabled={busy}>
+                          <AlertDialogCancel disabled={saving.offline}>
                             Άκυρο
                           </AlertDialogCancel>
                           <AlertDialogAction
-                            disabled={busy}
+                            disabled={saving.offline}
                             onClick={handleDisable}
                           >
                             Απενεργοποίηση
@@ -1199,9 +1573,9 @@ export default function AdminSettingsPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={busy}
+                      disabled={saving.offline}
                       onClick={handleLockNow}
-                      className="inline-flex items-center gap-2"
+                      className="inline-flex items-center gap-2 rounded-xl"
                     >
                       <Lock className="h-4 w-4" />
                       Lock τώρα
@@ -1212,8 +1586,8 @@ export default function AdminSettingsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={busy}
-                          className="inline-flex items-center gap-2"
+                          disabled={saving.offline}
+                          className="inline-flex items-center gap-2 rounded-xl"
                         >
                           <Trash2 className="h-4 w-4" />
                           Καθαρισμός offline δεδομένων
@@ -1230,11 +1604,11 @@ export default function AdminSettingsPage() {
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel disabled={busy}>
+                          <AlertDialogCancel disabled={saving.offline}>
                             Άκυρο
                           </AlertDialogCancel>
                           <AlertDialogAction
-                            disabled={busy}
+                            disabled={saving.offline}
                             onClick={handleClearOfflineData}
                           >
                             Καθαρισμός
@@ -1251,7 +1625,7 @@ export default function AdminSettingsPage() {
 
         {/* -------------------- device -------------------- */}
         <TabsContent value="device" className="mt-6">
-          <Card className="shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/70">
+          <Card className="shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/70 rounded-2xl">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <HardDrive className="h-5 w-5" /> Συσκευή & πολιτικές offline
@@ -1271,7 +1645,7 @@ export default function AdminSettingsPage() {
                 />
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <div className="grid gap-2">
                   <Label>Auto-lock (λεπτά)</Label>
                   <Input
@@ -1279,7 +1653,7 @@ export default function AdminSettingsPage() {
                     value={autoLockMinutes}
                     onChange={(e) =>
                       setAutoLockMinutes(
-                        Number(digitsOnly(e.target.value || "0")) || 0
+                        clamp(digitsOnly(e.target.value || "0"), 0, 240)
                       )
                     }
                   />
@@ -1295,7 +1669,7 @@ export default function AdminSettingsPage() {
                     value={maxAttempts}
                     onChange={(e) =>
                       setMaxAttempts(
-                        Number(digitsOnly(e.target.value || "0")) || 0
+                        clamp(digitsOnly(e.target.value || "0"), 1, 20)
                       )
                     }
                   />
@@ -1311,7 +1685,7 @@ export default function AdminSettingsPage() {
                     value={cooldownSeconds}
                     onChange={(e) =>
                       setCooldownSeconds(
-                        Number(digitsOnly(e.target.value || "0")) || 0
+                        clamp(digitsOnly(e.target.value || "0"), 0, 600)
                       )
                     }
                   />
@@ -1321,7 +1695,61 @@ export default function AdminSettingsPage() {
                 </div>
               </div>
 
-              <Alert className="bg-white/60">
+              <div className="flex flex-wrap gap-2 items-center">
+                <Button
+                  size="sm"
+                  className="rounded-xl"
+                  disabled={!dirtyDevice}
+                  onClick={() => {
+                    // local-only: "save" just updates baseline + message (values already persisted via useEffect)
+                    const b = baselineRef.current || {};
+                    baselineRef.current = {
+                      ...b,
+                      deviceLabel,
+                      autoLockMinutes,
+                      maxAttempts,
+                      cooldownSeconds,
+                    };
+                    setMsg({
+                      type: "success",
+                      text: "Αποθηκεύτηκαν τοπικά οι ρυθμίσεις συσκευής.",
+                    });
+                  }}
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Αποθήκευση
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl"
+                  disabled={!dirtyDevice}
+                  onClick={() => {
+                    const b = baselineRef.current;
+                    if (!b) return;
+                    setMsg(null);
+                    setDeviceLabel(String(b.deviceLabel ?? ""));
+                    setAutoLockMinutes(Number(b.autoLockMinutes ?? 10));
+                    setMaxAttempts(Number(b.maxAttempts ?? 6));
+                    setCooldownSeconds(Number(b.cooldownSeconds ?? 30));
+                  }}
+                >
+                  Αναίρεση αλλαγών
+                </Button>
+
+                {dirtyDevice ? (
+                  <span className="text-xs text-muted-foreground">
+                    Μη αποθηκευμένες αλλαγές
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    Όλα αποθηκευμένα
+                  </span>
+                )}
+              </div>
+
+              {/* <Alert className="bg-white/60">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Σημείωση</AlertTitle>
                 <AlertDescription className="text-sm">
@@ -1332,7 +1760,7 @@ export default function AdminSettingsPage() {
                   <code className="px-1">admin_settings:maxAttempts</code>,{" "}
                   <code className="px-1">admin_settings:cooldownSeconds</code>.
                 </AlertDescription>
-              </Alert>
+              </Alert> */}
             </CardContent>
           </Card>
         </TabsContent>

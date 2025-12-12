@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -11,8 +11,9 @@ import {
   Calendar as CalendarIcon,
   CheckCircle2,
   PhoneCall,
+  ChevronRight,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, addMonths, startOfToday } from "date-fns";
 import { el } from "date-fns/locale";
 
 import { Calendar } from "@/components/ui/calendar";
@@ -22,6 +23,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+
+const CLINIC_PHONE = "2109934316";
 
 // 🔹 Ενδεικτικές πληροφορίες / τιμές ανά λόγο επίσκεψης
 const VISIT_TYPES = {
@@ -36,7 +39,7 @@ const VISIT_TYPES = {
     title: "Αξιολόγηση εργαστηριακών εξετάσεων",
     description:
       "Συζήτηση αποτελεσμάτων, προσαρμογή αγωγής και απαντήσεις σε απορίες σχετικά με την πορεία σας.",
-    priceLabel: "Χωρίς χρέωση αν εχει προηγηθεί εξέταση στο ιατρείο",
+    priceLabel: "Χωρίς χρέωση αν έχει προηγηθεί εξέταση στο ιατρείο",
     durationLabel: "Διάρκεια περίπου 10–20'",
   },
   "Ιατρικός Επισκέπτης": {
@@ -48,19 +51,12 @@ const VISIT_TYPES = {
   },
 };
 
-function normalizeGreekText(text) {
-  return text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
 const INPUT_BASE =
-  "w-full rounded-xl border bg-white/85 px-3 py-2.5 text-[15px] shadow-sm outline-none transition " +
+  "w-full rounded-2xl border bg-white/85 px-3 py-2.5 text-[15px] shadow-sm outline-none transition " +
   "focus:ring-4 focus:ring-[#d7cfc2]/60";
 
 const CARD_BASE =
-  "rounded-2xl border border-[#e7e2d8] bg-white/85 shadow-sm backdrop-blur";
+  "rounded-3xl border border-[#e7e2d8] bg-white/85 shadow-sm backdrop-blur";
 
 function SectionHeader({ eyebrow, title, subtitle, right }) {
   return (
@@ -83,11 +79,70 @@ function SectionHeader({ eyebrow, title, subtitle, right }) {
   );
 }
 
+function toDateISO(date) {
+  if (!date) return null;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function titleCaseGreek(str) {
+  if (!str) return "";
+  const cleaned = str
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, "-")
+    .toLowerCase();
+
+  return cleaned
+    .split(" ")
+    .map((part) =>
+      part
+        .split("-")
+        .map((seg) =>
+          seg ? seg[0].toLocaleUpperCase("el-GR") + seg.slice(1) : seg
+        )
+        .join("-")
+    )
+    .join(" ");
+}
+
+function birthDateFromAmka(amka) {
+  const dd = parseInt(amka.slice(0, 2), 10);
+  const mm = parseInt(amka.slice(2, 4), 10);
+  const yy = parseInt(amka.slice(4, 6), 10);
+  const currYY = new Date().getFullYear() % 100;
+  const fullYear = yy <= currYY ? 2000 + yy : 1900 + yy;
+
+  const d = new Date(fullYear, mm - 1, dd);
+  if (
+    d.getFullYear() !== fullYear ||
+    d.getMonth() !== mm - 1 ||
+    d.getDate() !== dd
+  )
+    return null;
+
+  return `${fullYear}-${String(mm).padStart(2, "0")}-${String(dd).padStart(
+    2,
+    "0"
+  )}`;
+}
+
 export default function NewAppointmentPage() {
   const router = useRouter();
 
-  const [visitorMonthFull, setVisitorMonthFull] = useState(false);
+  const contactRef = useRef(null);
+  const detailsRef = useRef(null);
+  const timeRef = useRef(null);
+  const confirmRef = useRef(null);
+
   const [formErrors, setFormErrors] = useState({});
+  const [submitError, setSubmitError] = useState("");
+
+  // null = δεν έχουμε ακόμη απάντηση από το API
+  const [acceptNewAppointments, setAcceptNewAppointments] = useState(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
 
   const [newPatientData, setNewPatientData] = useState({
     first_name: "",
@@ -97,15 +152,10 @@ export default function NewAppointmentPage() {
     amka: "",
   });
 
-  const [hasFullDayException, setHasFullDayException] = useState(false);
-  const [loadingSlots, setLoadingSlots] = useState(false);
-  const [nextAvailableDate, setNextAvailableDate] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   const [formData, setFormData] = useState({
     appointment_date: null,
     appointment_time: null,
-    duration_minutes: 30,
+    duration_minutes: 30, // number OR string
     customDuration: "",
     reason: "",
     customReason: "",
@@ -114,24 +164,23 @@ export default function NewAppointmentPage() {
     visitorCompany: "",
   });
 
+  const [hasFullDayException, setHasFullDayException] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [nextAvailableDate, setNextAvailableDate] = useState(null);
+
   const [availableSlots, setAvailableSlots] = useState([]);
   const [allScheduleSlots, setAllScheduleSlots] = useState([]);
-  const [visitorCount, setVisitorCount] = useState(null);
-  const [showVisitorMessage, setShowVisitorMessage] = useState(false);
 
-  // null = δεν έχουμε ακόμη απάντηση από το API
-  const [acceptNewAppointments, setAcceptNewAppointments] = useState(null);
-  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [visitorCount, setVisitorCount] = useState(0);
+  const [visitorMonthFull, setVisitorMonthFull] = useState(false);
 
-  const [submitError, setSubmitError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [slotWarning, setSlotWarning] = useState("");
 
   const greekLocale = useMemo(
     () => ({
       ...el,
-      options: {
-        ...el.options,
-        weekStartsOn: 1,
-      },
+      options: { ...el.options, weekStartsOn: 1 },
     }),
     []
   );
@@ -146,9 +195,31 @@ export default function NewAppointmentPage() {
     }
   };
 
+  const getDuration = (fd) => {
+    const d =
+      fd.duration_minutes === "custom"
+        ? parseInt(fd.customDuration || "", 10)
+        : parseInt(String(fd.duration_minutes), 10);
+    return Number.isFinite(d) ? d : null;
+  };
+
+  const scrollToRef = (ref) => {
+    const el = ref?.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const focusFirstInvalid = () => {
+    requestAnimationFrame(() => {
+      const el = document.querySelector('[data-err="true"]');
+      if (el?.focus) el.focus({ preventScroll: true });
+      if (el?.scrollIntoView)
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  };
+
   const fetchClinicSettings = async () => {
     setSettingsLoading(true);
-
     try {
       const res = await fetch("/api/public/clinic-settings", {
         method: "GET",
@@ -159,16 +230,13 @@ export default function NewAppointmentPage() {
       const data = await safeJson(res);
 
       if (!res.ok) {
-        console.error("Clinic settings API error:", res.status, data);
         // fallback: allow booking if settings fail
         setAcceptNewAppointments(true);
         return;
       }
 
       setAcceptNewAppointments(Boolean(data?.accept_new_appointments));
-    } catch (e) {
-      console.error("Clinic settings fetch error:", e);
-      // fallback: allow booking if settings fail
+    } catch {
       setAcceptNewAppointments(true);
     } finally {
       setSettingsLoading(false);
@@ -179,65 +247,94 @@ export default function NewAppointmentPage() {
     fetchClinicSettings();
   }, []);
 
+  // Debounced + abortable availability fetch
   useEffect(() => {
-    const load = async () => {
-      if (!formData.appointment_date) return;
+    if (!formData.appointment_date || !formData.reason) return;
 
-      const duration = parseInt(
-        formData.duration_minutes === "custom"
-          ? formData.customDuration
-          : formData.duration_minutes,
-        10
-      );
+    const duration = getDuration(formData);
+    const dateISO = toDateISO(formData.appointment_date);
 
-      const dateISO = formData.appointment_date
-        ? `${formData.appointment_date.getFullYear()}-${String(
-            formData.appointment_date.getMonth() + 1
-          ).padStart(2, "0")}-${String(
-            formData.appointment_date.getDate()
-          ).padStart(2, "0")}`
-        : null;
+    if (!duration || !dateISO) return;
 
-      setLoadingSlots(true);
-      const res = await fetch("/api/check-availability", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          dateISO,
-          duration,
-          reason: formData.reason || "",
-          includeNext: true,
-        }),
-      });
-      const data = await res.json();
+    const controller = new AbortController();
+    let alive = true;
 
-      if (data.error) {
-        setAvailableSlots([]);
-        setAllScheduleSlots([]);
-        setHasFullDayException(false);
-        setNextAvailableDate(null);
-        setVisitorCount(0);
-        setVisitorMonthFull(false);
-      } else {
-        setAvailableSlots(data.availableSlots || []);
-        setAllScheduleSlots(data.allSlots || []);
-        setHasFullDayException(!!data.fullDayException);
+    setLoadingSlots(true);
+    setSlotWarning("");
+
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/check-availability", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            dateISO,
+            duration,
+            reason: formData.reason || "",
+            includeNext: true,
+          }),
+        });
+
+        const data = await safeJson(res);
+
+        if (!alive) return;
+
+        if (!res.ok || data?.error) {
+          setAvailableSlots([]);
+          setAllScheduleSlots([]);
+          setHasFullDayException(false);
+          setNextAvailableDate(null);
+          setVisitorCount(0);
+          setVisitorMonthFull(false);
+          return;
+        }
+
+        setAvailableSlots(data?.availableSlots || []);
+        setAllScheduleSlots(data?.allSlots || []);
+        setHasFullDayException(!!data?.fullDayException);
         setNextAvailableDate(
-          data.nextAvailable ? new Date(data.nextAvailable.dateISO) : null
+          data?.nextAvailable?.dateISO
+            ? new Date(data.nextAvailable.dateISO)
+            : null
         );
-
-        setVisitorCount(data.visitorCount ?? 0);
-        setVisitorMonthFull(!!data.visitorMonthFull);
+        setVisitorCount(data?.visitorCount ?? 0);
+        setVisitorMonthFull(!!data?.visitorMonthFull);
+      } catch (e) {
+        if (!alive) return;
+        // ignore abort
+      } finally {
+        if (alive) setLoadingSlots(false);
       }
-      setLoadingSlots(false);
+    }, 250);
+
+    return () => {
+      alive = false;
+      clearTimeout(t);
+      controller.abort();
     };
-    load();
   }, [
     formData.appointment_date,
     formData.duration_minutes,
     formData.customDuration,
     formData.reason,
   ]);
+
+  // If selected time becomes unavailable after a refresh, clear it
+  useEffect(() => {
+    if (!formData.appointment_time) return;
+    if (!allScheduleSlots?.length) return;
+
+    const hit = allScheduleSlots.find(
+      (s) => s.time === formData.appointment_time
+    );
+    if (!hit || !hit.available) {
+      setFormData((prev) => ({ ...prev, appointment_time: null }));
+      setSlotWarning(
+        "Η ώρα που είχατε επιλέξει δεν είναι πλέον διαθέσιμη. Παρακαλώ επιλέξτε ξανά."
+      );
+    }
+  }, [allScheduleSlots]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCancel = () => {
     setFormData({
@@ -258,77 +355,157 @@ export default function NewAppointmentPage() {
       email: "",
       amka: "",
     });
-    // υποθέτουμε ότι υπάρχουν αυτά τα states στο πλήρες αρχείο
-    // eslint-disable-next-line no-undef
-    setSelectedPatient(null);
-    // eslint-disable-next-line no-undef
-    setNewPatientMode(false);
+    setFormErrors({});
+    setSubmitError("");
     router.push("/");
   };
 
-  function birthDateFromAmka(amka) {
-    const dd = parseInt(amka.slice(0, 2), 10);
-    const mm = parseInt(amka.slice(2, 4), 10);
-    const yy = parseInt(amka.slice(4, 6), 10);
-    const currYY = new Date().getFullYear() % 100;
-    const fullYear = yy <= currYY ? 2000 + yy : 1900 + yy;
+  const isBookingDisabled = acceptNewAppointments === false;
 
-    const d = new Date(fullYear, mm - 1, dd);
-    if (
-      d.getFullYear() !== fullYear ||
-      d.getMonth() !== mm - 1 ||
-      d.getDate() !== dd
-    ) {
-      return null;
+  const selectedDateLabel = formData.appointment_date
+    ? format(formData.appointment_date, "dd/MM/yyyy")
+    : null;
+
+  const step1Done =
+    (newPatientData.first_name || "").trim().length >= 1 &&
+    (newPatientData.last_name || "").trim().length >= 1 &&
+    (newPatientData.phone || "").trim().length >= 1 &&
+    (newPatientData.email || "").trim().length >= 1;
+
+  const step2Done =
+    step1Done && !!formData.reason && !!formData.appointment_date;
+  const step3Done =
+    step2Done && !!formData.appointment_time && !!formData.acceptTerms;
+
+  const steps = [
+    { id: 1, label: "Στοιχεία", done: !!step1Done, ref: contactRef },
+    { id: 2, label: "Λόγος & Ημερομηνία", done: !!step2Done, ref: detailsRef },
+    { id: 3, label: "Ώρα & Επιβεβαίωση", done: !!step3Done, ref: confirmRef },
+  ];
+
+  const currentStepIndex = steps.findIndex((s) => !s.done);
+  const currentStep =
+    currentStepIndex === -1 ? steps.length - 1 : currentStepIndex;
+  const progressPercentage = ((currentStep + 1) / steps.length) * 100;
+
+  const isFormValid =
+    !!formData.reason &&
+    !!formData.appointment_date &&
+    !!formData.appointment_time &&
+    (formData.reason === "Ιατρικός Επισκέπτης"
+      ? !!formData.visitorCompany?.trim()
+      : true);
+
+  const activeVisitMeta =
+    formData.reason && VISIT_TYPES[formData.reason]
+      ? VISIT_TYPES[formData.reason]
+      : null;
+
+  const visibleSlotsGrouped = useMemo(() => {
+    if (!formData.appointment_date || !allScheduleSlots.length) {
+      return { morning: [], afternoon: [], evening: [] };
     }
-    const isoDate = `${fullYear}-${String(mm).padStart(2, "0")}-${String(
-      dd
-    ).padStart(2, "0")}`;
-    return isoDate;
-  }
 
-  function titleCaseGreek(str) {
-    if (!str) return "";
-    const cleaned = str
-      .trim()
-      .replace(/\s+/g, " ")
-      .replace(/\s*-\s*/g, "-")
-      .toLowerCase();
+    const now = new Date();
+    const isToday =
+      formData.appointment_date.toDateString() === now.toDateString();
+    const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
 
-    return cleaned
-      .split(" ")
-      .map((part) =>
-        part
-          .split("-")
-          .map((seg) =>
-            seg ? seg[0].toLocaleUpperCase("el-GR") + seg.slice(1) : seg
-          )
-          .join("-")
-      )
-      .join(" ");
-  }
+    const groups = { morning: [], afternoon: [], evening: [] };
 
-  function normalizeGreekName(name) {
-    return titleCaseGreek(name || "");
-  }
+    allScheduleSlots.forEach(({ time, available }) => {
+      const [hour, minute] = time.split(":").map(Number);
+      const slotDate = new Date(formData.appointment_date);
+      slotDate.setHours(hour, minute, 0, 0);
+
+      // για σήμερα: κρύβουμε ώρες πολύ κοντά (1 ώρα buffer)
+      if (isToday && slotDate < oneHourLater) return;
+
+      const slot = { time, available };
+      if (hour < 12) groups.morning.push(slot);
+      else if (hour < 17) groups.afternoon.push(slot);
+      else groups.evening.push(slot);
+    });
+
+    return groups;
+  }, [allScheduleSlots, formData.appointment_date]);
+
+  const totalVisibleSlots =
+    visibleSlotsGrouped.morning.length +
+    visibleSlotsGrouped.afternoon.length +
+    visibleSlotsGrouped.evening.length;
+
+  const renderSlotGroup = (label, slots) => {
+    if (!slots.length) return null;
+
+    return (
+      <div className="space-y-2">
+        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#9b968c]">
+          {label}
+        </p>
+
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {slots.map(({ time, available }) => {
+            const isSelected = formData.appointment_time === time && available;
+
+            return (
+              <button
+                key={time}
+                type="button"
+                onClick={() => {
+                  if (!available) return;
+                  setSlotWarning("");
+                  setFormData((prev) => ({ ...prev, appointment_time: time }));
+                }}
+                disabled={!available}
+                aria-pressed={isSelected}
+                className={
+                  "relative flex items-center justify-center rounded-2xl border px-3 py-2 text-xs sm:text-sm tabular-nums transition " +
+                  "focus:outline-none focus:ring-4 focus:ring-[#d7cfc2]/50 " +
+                  (isSelected
+                    ? "border-[#2f2e2b] bg-[#2f2e2b] text-white shadow"
+                    : available
+                    ? "border-[#e5e1d8] bg-white text-[#2f2e2b] shadow-sm hover:-translate-y-0.5 hover:bg-[#fbf8f1] hover:shadow"
+                    : "cursor-not-allowed border-[#e8e4db] bg-[#f1eee7] text-[#a7a39a]")
+                }
+                title={available ? "" : "Κλεισμένο ή μη διαθέσιμο"}
+              >
+                {time}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const durationOptionsByReason = (reason) => {
+    if (reason === "Εξέταση") return [30, 45];
+    if (reason === "Αξιολόγηση Αποτελεσμάτων") return [15, 20];
+    if (reason === "Ιατρικός Επισκέπτης") return [15, 30];
+    return [30];
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitError("");
     setFormErrors({});
+    setSlotWarning("");
+
+    // Quick client gate using already-fetched settings
+    if (acceptNewAppointments === false) {
+      setSubmitError("Προς το παρόν δεν δεχόμαστε νέα ηλεκτρονικά ραντεβού.");
+      scrollToRef(contactRef);
+      return;
+    }
 
     const greekRegex = /^[\u0370-\u03FF\u1F00-\u1FFF\s]+$/;
+
     const amkaTrim = (newPatientData.amka || "").trim();
     const emailTrim = (newPatientData.email || "").trim();
     const phoneTrim = (newPatientData.phone || "").trim();
     const firstNameRaw = (newPatientData.first_name || "").trim();
     const lastNameRaw = (newPatientData.last_name || "").trim();
-
-    // Quick client gate using already-fetched settings
-    if (acceptNewAppointments === false) {
-      setSubmitError("Προς το παρόν δεν δεχόμαστε νέα ηλεκτρονικά ραντεβού.");
-      return;
-    }
 
     const errors = {};
 
@@ -363,10 +540,10 @@ export default function NewAppointmentPage() {
       }
     }
 
-    if (!formData.appointment_date || !formData.appointment_time) {
-      setSubmitError("Πρέπει να επιλέξετε ημερομηνία και ώρα.");
-      errors.appointment = "missing";
-    }
+    if (!formData.reason) errors.reason = "Επιλέξτε λόγο επίσκεψης.";
+    if (!formData.appointment_date)
+      errors.appointment_date = "Επιλέξτε ημερομηνία.";
+    if (!formData.appointment_time) errors.appointment_time = "Επιλέξτε ώρα.";
 
     if (
       formData.reason === "Ιατρικός Επισκέπτης" &&
@@ -376,19 +553,19 @@ export default function NewAppointmentPage() {
         "Παρακαλώ συμπληρώστε την εταιρεία ή τον οργανισμό.";
     }
 
-    if (Object.keys(errors).length > 0) {
-      const { appointment, ...fieldErrors } = errors;
-      setFormErrors(fieldErrors);
-      return;
+    const duration = getDuration(formData);
+    if (!duration || duration <= 0) {
+      errors.duration = "Η διάρκεια του ραντεβού δεν είναι έγκυρη.";
     }
 
-    const duration =
-      formData.duration_minutes === "custom"
-        ? parseInt(formData.customDuration || "", 10)
-        : parseInt(formData.duration_minutes, 10);
+    if (!formData.acceptTerms) {
+      errors.acceptTerms = "Πρέπει να αποδεχθείτε τους όρους.";
+    }
 
-    if (!duration || duration <= 0) {
-      setSubmitError("Η διάρκεια του ραντεβού δεν είναι έγκυρη.");
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      setSubmitError("Ελέγξτε τα πεδία με σφάλμα και δοκιμάστε ξανά.");
+      focusFirstInvalid();
       return;
     }
 
@@ -396,19 +573,17 @@ export default function NewAppointmentPage() {
     const combinedDate = new Date(formData.appointment_date);
     combinedDate.setHours(hour, minute, 0, 0);
 
-    const firstName = normalizeGreekName(firstNameRaw);
-    const lastName = normalizeGreekName(lastNameRaw);
+    const firstName = titleCaseGreek(firstNameRaw);
+    const lastName = titleCaseGreek(lastNameRaw);
 
     const effectiveReason =
       formData.reason === "Προσαρμογή"
         ? formData.customReason
         : formData.reason;
-
     const isVisitor = formData.reason === "Ιατρικός Επισκέπτης";
 
     // Build final notes: include visitor info if it's a medical rep
     let finalNotes = formData.notes?.trim() || "";
-
     if (isVisitor) {
       const visitorInfoLines = [
         "Ιατρικός επισκέπτης",
@@ -420,7 +595,6 @@ export default function NewAppointmentPage() {
       ].filter(Boolean);
 
       const visitorBlock = visitorInfoLines.join("\n");
-
       finalNotes = finalNotes
         ? `${visitorBlock}\n\n${finalNotes}`
         : visitorBlock;
@@ -446,7 +620,7 @@ export default function NewAppointmentPage() {
         }),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = await safeJson(res);
 
       if (!res.ok) {
         setSubmitError(data?.message || "Προέκυψε σφάλμα κατά την καταχώρηση.");
@@ -468,158 +642,10 @@ export default function NewAppointmentPage() {
     }
   };
 
-  const isFormValid =
-    !!formData.appointment_date &&
-    !!formData.appointment_time &&
-    (formData.reason !== "Προσαρμογή"
-      ? !!formData.reason
-      : !!formData.customReason?.trim()) &&
-    (formData.reason === "Ιατρικός Επισκέπτης"
-      ? !!formData.visitorCompany?.trim()
-      : true);
-
-  const activeVisitMeta =
-    formData.reason && VISIT_TYPES[formData.reason]
-      ? VISIT_TYPES[formData.reason]
-      : null;
-
-  const selectedDateLabel = formData.appointment_date
-    ? format(formData.appointment_date, "dd/MM/yyyy")
-    : null;
-
-  const step1Done =
-    newPatientData.first_name &&
-    newPatientData.last_name &&
-    newPatientData.phone &&
-    newPatientData.email;
-  const step2Done = step1Done && formData.reason && formData.appointment_date;
-  const step3Done =
-    step2Done && formData.appointment_time && formData.acceptTerms;
-
-  const steps = [
-    { id: 1, label: "Στοιχεία", done: !!step1Done },
-    { id: 2, label: "Λόγος & Ημερομηνία", done: !!step2Done },
-    { id: 3, label: "Ώρα & Επιβεβαίωση", done: !!step3Done },
-  ];
-
-  const currentStepIndex = steps.findIndex((s) => !s.done);
-  const currentStep = currentStepIndex === -1 ? 2 : currentStepIndex;
-
-  const progressPercentage = ((currentStep + 1) / steps.length) * 100;
-
-  const isBookingDisabled = acceptNewAppointments === false;
-
-  const visibleSlotsGrouped = useMemo(() => {
-    if (!formData.appointment_date || !allScheduleSlots.length) {
-      return { morning: [], afternoon: [], evening: [] };
-    }
-
-    const now = new Date();
-    const isToday =
-      formData.appointment_date &&
-      new Date(formData.appointment_date).toDateString() === now.toDateString();
-    const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
-
-    const groups = {
-      morning: [],
-      afternoon: [],
-      evening: [],
-    };
-
-    allScheduleSlots.forEach(({ time, available }) => {
-      const [hour, minute] = time.split(":").map(Number);
-      const slotDate = new Date(formData.appointment_date);
-      slotDate.setHours(hour, minute, 0, 0);
-
-      if (isToday && slotDate < oneHourLater) return;
-
-      const slot = { time, available };
-
-      if (hour < 12) {
-        groups.morning.push(slot);
-      } else if (hour < 17) {
-        groups.afternoon.push(slot);
-      } else {
-        groups.evening.push(slot);
-      }
-    });
-
-    return groups;
-  }, [allScheduleSlots, formData.appointment_date]);
-
-  const totalVisibleSlots =
-    visibleSlotsGrouped.morning.length +
-    visibleSlotsGrouped.afternoon.length +
-    visibleSlotsGrouped.evening.length;
-
-  const renderSlotGroup = (label, slots) => {
-    if (!slots.length) return null;
-
-    return (
-      <div className="space-y-2">
-        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#9b968c]">
-          {label}
-        </p>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-          {slots.map(({ time, available }) => {
-            const isSelected = formData.appointment_time === time && available;
-
-            return (
-              <button
-                key={time}
-                type="button"
-                onClick={() =>
-                  available &&
-                  setFormData({
-                    ...formData,
-                    appointment_time: time,
-                  })
-                }
-                disabled={!available}
-                aria-pressed={isSelected}
-                className={
-                  "group relative flex items-center justify-center rounded-xl border px-3 py-2 text-xs sm:text-sm tabular-nums transition " +
-                  "focus:outline-none focus:ring-4 focus:ring-[#d7cfc2]/50 " +
-                  (isSelected
-                    ? "border-[#2f2e2b] bg-[#2f2e2b] text-white shadow"
-                    : available
-                    ? "border-[#e5e1d8] bg-white text-[#2f2e2b] shadow-sm hover:-translate-y-0.5 hover:bg-[#fbf8f1] hover:shadow"
-                    : "cursor-not-allowed border-[#e8e4db] bg-[#f1eee7] text-[#a7a39a]")
-                }
-                title={available ? "" : "Κλεισμένο ή μη διαθέσιμο"}
-              >
-                {time}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-  const reasonButtons = [
-    {
-      value: "Εξέταση",
-      label: "Εξέταση",
-      description: "Πλήρης ενδοκρινολογικός έλεγχος.",
-    },
-    {
-      value: "Αξιολόγηση Αποτελεσμάτων",
-      label: "Αξιολόγηση Αποτελεσμάτων",
-      description: "Συζήτηση εργαστηριακών αποτελεσμάτων.",
-    },
-    {
-      value: "Ιατρικός Επισκέπτης",
-      label: "Ιατρικός Επισκέπτης",
-      description: "Συνάντηση για επιστημονική ενημέρωση.",
-    },
-  ];
-
-  //  Loading screen while we determine if online appointments are accepted
+  // Loading screen while we determine if online appointments are accepted
   if (settingsLoading || acceptNewAppointments === null) {
     return (
       <main className="relative min-h-screen overflow-hidden bg-[#f5f0e8]">
-        {/* Soft ambient video background */}
         <video
           autoPlay
           loop
@@ -630,7 +656,6 @@ export default function NewAppointmentPage() {
           <source src="/background.mp4" type="video/mp4" />
         </video>
 
-        {/* Blurry overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#f6f0e7]/85 via-[#f6f0e7]/90 to-[#f3ece3]/92 backdrop-blur-md" />
 
         <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12 md:px-8">
@@ -697,7 +722,6 @@ export default function NewAppointmentPage() {
   if (isBookingDisabled) {
     return (
       <main className="relative min-h-screen overflow-hidden bg-[#f5f0e8]">
-        {/* Soft ambient video background */}
         <video
           autoPlay
           loop
@@ -708,12 +732,10 @@ export default function NewAppointmentPage() {
           <source src="/background.mp4" type="video/mp4" />
         </video>
 
-        {/* Blurry overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#f6f0e7]/85 via-[#f6f0e7]/90 to-[#f3ece3]/92 backdrop-blur-md" />
 
         <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12 md:px-8">
           <div className="mx-auto w-full max-w-xl rounded-[30px] border border-white/70 bg-white/65 p-6 shadow-2xl backdrop-blur-2xl md:max-w-2xl md:p-8">
-            {/* Top row: back + eyebrow */}
             <div className="mb-4 flex items-center justify-between gap-3">
               <button
                 type="button"
@@ -728,7 +750,6 @@ export default function NewAppointmentPage() {
               </p>
             </div>
 
-            {/* Main content */}
             <div className="flex flex-col gap-6 md:flex-row md:items-start">
               <div className="md:flex-1">
                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#fdf4e6] text-[#b86330]">
@@ -740,16 +761,14 @@ export default function NewAppointmentPage() {
                 <p className="mt-3 text-sm leading-relaxed text-[#6b675f]">
                   Προς το παρόν τα ραντεβού{" "}
                   <span className="font-medium">κλείνονται αποκλειστικά</span>{" "}
-                  τηλεφωνικά μέσω της γραμματείας του ιατρείου.
+                  τηλεφωνικά.
                 </p>
                 <p className="mt-2 text-xs leading-relaxed text-[#8b8579]">
-                  Αν επιθυμείτε να κλείσετε νέο ραντεβού ή να αλλάξετε ένα ήδη
-                  προγραμματισμένο, μπορείτε να επικοινωνήσετε μαζί μας
-                  τηλεφωνικά κατά τις ώρες λειτουργίας του ιατρείου.
+                  Για νέο ραντεβού ή αλλαγή υπάρχοντος, επικοινωνήστε με τη
+                  γραμματεία κατά τις ώρες λειτουργίας.
                 </p>
               </div>
 
-              {/* Call card */}
               <div className="mt-5 w-full rounded-2xl border border-[#efe1cf] bg-[#fdf6ed]/90 px-4 py-4 text-xs text-[#4a453c] shadow-sm md:mt-0 md:w-64">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a5b2e]">
                   Τηλεφωνικό Ραντεβού
@@ -757,19 +776,19 @@ export default function NewAppointmentPage() {
                 <p className="mt-2">
                   Τηλέφωνο ιατρείου:{" "}
                   <a
-                    href="tel:2109934316"
+                    href={`tel:${CLINIC_PHONE}`}
                     className="font-semibold underline underline-offset-2 hover:text-[#2f2e2b]"
                   >
                     210 9934316
                   </a>
                 </p>
                 <p className="mt-1 text-[11px] text-[#8a8274]">
-                  Παρακαλούμε έχετε διαθέσιμο τον αριθμό κινητού σας τηλεφώνου
-                  και τον ΑΜΚΑ σας.
+                  Παρακαλούμε έχετε διαθέσιμο τον αριθμό κινητού σας και (αν
+                  υπάρχει) το ΑΜΚΑ.
                 </p>
 
                 <a
-                  href="tel:2109934316"
+                  href={`tel:${CLINIC_PHONE}`}
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#2f2e2b] px-4 py-2.5 text-sm font-medium text-white shadow-md transition hover:-translate-y-0.5 hover:bg-black"
                 >
                   <PhoneCall className="h-4 w-4" />
@@ -777,8 +796,8 @@ export default function NewAppointmentPage() {
                 </a>
 
                 <p className="mt-3 text-[10px] text-[#8a8274]">
-                  Για επείγοντα περιστατικά, παρακαλούμε απευθυνθείτε στα
-                  εφημερεύοντα νοσοκομεία.
+                  Για επείγοντα περιστατικά, απευθυνθείτε στα εφημερεύοντα
+                  νοσοκομεία.
                 </p>
               </div>
             </div>
@@ -790,8 +809,7 @@ export default function NewAppointmentPage() {
 
   // 🔹 Normal booking screen when online appointments ARE accepted
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f5f0e8] px-4 py-16 md:px-8">
-      {/* Background video */}
+    <main className="relative min-h-screen overflow-hidden bg-[#f5f0e8] px-4 py-14 md:px-8">
       <video
         autoPlay
         loop
@@ -802,14 +820,12 @@ export default function NewAppointmentPage() {
         <source src="/background.mp4" type="video/mp4" />
       </video>
 
-      {/* Soft overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#f6f0e7]/95 via-[#fdfaf6]/96 to-[#fdfaf6]/98 backdrop-blur-sm" />
 
       <form
         onSubmit={handleSubmit}
         className="relative z-20 mx-auto w-full max-w-6xl"
       >
-        {/* Outer shell */}
         <div className="rounded-[28px] border border-[#e4dfd4] bg-white/88 p-5 shadow-2xl backdrop-blur-xl md:p-8">
           {/* Header */}
           <header className="flex flex-col gap-4 border-b border-[#eee7db] pb-5 md:flex-row md:items-start md:justify-between">
@@ -823,79 +839,87 @@ export default function NewAppointmentPage() {
                 >
                   <ArrowLeft size={18} />
                 </button>
-                <div>
+
+                <div className="flex-1">
                   <p className="text-[10px] uppercase tracking-[0.25em] text-[#9b968c]">
                     Online Ραντεβού
                   </p>
                   <h1 className="mt-1 text-2xl font-serif font-semibold tracking-tight text-[#2f2e2b] md:text-3xl">
                     Κλείστε το ραντεβού σας
                   </h1>
-
                   <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[#8b8579] md:text-sm">
-                    Συμπληρώστε τα στοιχεία σας και επιλέξτε την ημέρα και ώρα
-                    που σας εξυπηρετεί. Η πληρωμή γίνεται αποκλειστικά στο
-                    ιατρείο, την ημέρα της επίσκεψης.
+                    Συμπληρώστε τα στοιχεία σας και επιλέξτε ημέρα/ώρα. Η
+                    πληρωμή γίνεται στο ιατρείο, την ημέρα της επίσκεψης.
                   </p>
+
+                  {submitError && (
+                    <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="mt-0.5 h-4 w-4" />
+                        <p>{submitError}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Stepper */}
-              <div className="mt-4">
-                {/* Γραμμή + μικροί κύκλοι */}
-                <div className="relative flex items-center justify-between">
-                  {/* λεπτή γραμμή φόντου */}
-                  <div className="absolute left-4 right-4 top-1/2 h-px -translate-y-1/2 bg-[#e3dacb]" />
-
-                  {steps.map((step, index) => {
-                    const isDone = step.done;
-                    const isCurrent = index === currentStep;
-
-                    return (
-                      <div
-                        key={step.id}
-                        className="relative flex flex-1 items-center justify-center"
-                      >
-                        <div
-                          className={
-                            "flex h-7 w-7 items-center justify-center rounded-full border text-[11px] transition-all " +
-                            (isDone
-                              ? "border-[#2f2e2b] bg-[#2f2e2b] text-white shadow-sm"
-                              : isCurrent
-                              ? "border-[#2f2e2b] bg-white text-[#2f2e2b] shadow-sm"
-                              : "border-[#dfd4c5] bg-[#f9f5ee] text-[#b0a89a]")
-                          }
-                        >
-                          {isDone ? (
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                          ) : (
-                            step.id
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+              {/* Stepper + progress */}
+              <div className="mt-1">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[11px] text-[#8b8579]">
+                    Βήμα{" "}
+                    <span className="font-semibold text-[#3b3a36]">
+                      {currentStep + 1}
+                    </span>{" "}
+                    / {steps.length}
+                  </p>
+                  <p className="text-[11px] text-[#8b8579]">
+                    {selectedDateLabel ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#f4eee4] px-3 py-1 text-[10px] font-medium text-[#5b554b]">
+                        <CalendarIcon className="h-3 w-3" />
+                        {selectedDateLabel}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] uppercase tracking-[0.18em] text-[#9b968c]">
+                        Συμπληρώστε διαδοχικά
+                      </span>
+                    )}
+                  </p>
                 </div>
 
-                {/* Labels κάτω από τα βήματα */}
-                <div className="mt-2 flex justify-between gap-2 text-[11px] text-[#8c8578]">
-                  {steps.map((step, index) => {
-                    const isCurrent = index === currentStep;
-                    const isDone = step.done;
+                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[#efe7da]">
+                  <div
+                    className="h-full rounded-full bg-[#2f2e2b] transition-all"
+                    style={{ width: `${progressPercentage}%` }}
+                  />
+                </div>
 
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {steps.map((s, idx) => {
+                    const isCurrent = idx === currentStep;
                     return (
-                      <span
-                        key={step.id}
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => scrollToRef(s.ref)}
                         className={
-                          "flex-1 text-center truncate " +
+                          "group rounded-2xl border px-3 py-2 text-left text-xs transition " +
                           (isCurrent
-                            ? "font-semibold text-[#3b3a36]"
-                            : isDone
-                            ? "text-[#5c554a]"
-                            : "text-[#b0a89a]")
+                            ? "border-[#2f2e2b] bg-[#2f2e2b] text-white"
+                            : s.done
+                            ? "border-[#d8cfbf] bg-[#fbf8f1] text-[#3b3a36] hover:-translate-y-0.5 hover:shadow-sm"
+                            : "border-[#e7e2d8] bg-white/70 text-[#8b8579] hover:bg-white")
                         }
                       >
-                        {step.label}
-                      </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">{s.label}</span>
+                          {s.done ? (
+                            <CheckCircle2 className="h-4 w-4 opacity-90" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 opacity-60" />
+                          )}
+                        </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -904,433 +928,781 @@ export default function NewAppointmentPage() {
           </header>
 
           {/* Main layout */}
-          <div className="mt-6">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)]">
-              {/* LEFT COLUMN — Contact */}
-              <section className={`${CARD_BASE} p-4 md:p-6`}>
+          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)]">
+            {/* LEFT — Contact */}
+            <section ref={contactRef} className={`${CARD_BASE} p-4 md:p-6`}>
+              <SectionHeader
+                eyebrow="Βήμα 1"
+                title="Στοιχεία Επικοινωνίας"
+                subtitle="Χρησιμοποιούνται για επιβεβαίωση, υπενθύμιση και τυχόν αλλαγές."
+                right={
+                  step1Done ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#f0f6ee] px-3 py-1 text-[10px] font-medium text-[#2b5a34]">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Έτοιμο
+                    </span>
+                  ) : null
+                }
+              />
+
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* Όνομα */}
+                <div>
+                  <label
+                    htmlFor="first_name"
+                    className="mb-1 block text-xs font-medium text-[#6b675f]"
+                  >
+                    Όνομα *
+                  </label>
+                  <input
+                    id="first_name"
+                    type="text"
+                    placeholder="π.χ. Μαρία"
+                    value={newPatientData.first_name}
+                    onChange={(e) =>
+                      setNewPatientData((p) => ({
+                        ...p,
+                        first_name: e.target.value,
+                      }))
+                    }
+                    aria-invalid={!!formErrors?.first_name}
+                    data-err={!!formErrors?.first_name}
+                    className={`${INPUT_BASE} ${
+                      formErrors?.first_name
+                        ? "border-red-400"
+                        : "border-[#e5e1d8]"
+                    }`}
+                    required
+                  />
+                  {formErrors?.first_name && (
+                    <p className="mt-1 text-xs text-red-600">
+                      {formErrors.first_name}
+                    </p>
+                  )}
+                </div>
+
+                {/* Επώνυμο */}
+                <div>
+                  <label
+                    htmlFor="last_name"
+                    className="mb-1 block text-xs font-medium text-[#6b675f]"
+                  >
+                    Επώνυμο *
+                  </label>
+                  <input
+                    id="last_name"
+                    type="text"
+                    placeholder="π.χ. Καλογεροπούλου"
+                    value={newPatientData.last_name}
+                    onChange={(e) =>
+                      setNewPatientData((p) => ({
+                        ...p,
+                        last_name: e.target.value,
+                      }))
+                    }
+                    aria-invalid={!!formErrors?.last_name}
+                    data-err={!!formErrors?.last_name}
+                    className={`${INPUT_BASE} ${
+                      formErrors?.last_name
+                        ? "border-red-400"
+                        : "border-[#e5e1d8]"
+                    }`}
+                    required
+                  />
+                  {formErrors?.last_name && (
+                    <p className="mt-1 text-xs text-red-600">
+                      {formErrors.last_name}
+                    </p>
+                  )}
+                </div>
+
+                {/* Τηλέφωνο */}
+                <div>
+                  <label
+                    htmlFor="phone"
+                    className="mb-1 block text-xs font-medium text-[#6b675f]"
+                  >
+                    Τηλέφωνο *
+                  </label>
+                  <input
+                    id="phone"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="69XXXXXXXX"
+                    value={newPatientData.phone}
+                    onChange={(e) => {
+                      const onlyDigits = e.target.value.replace(/\D/g, "");
+                      setNewPatientData((p) => ({ ...p, phone: onlyDigits }));
+                    }}
+                    aria-invalid={!!formErrors?.phone}
+                    data-err={!!formErrors?.phone}
+                    className={`${INPUT_BASE} ${
+                      formErrors?.phone ? "border-red-400" : "border-[#e5e1d8]"
+                    }`}
+                    required
+                  />
+                  <p className="mt-1 text-[10px] text-[#9b968c]">
+                    Μόνο αριθμοί, χωρίς κενά ή σύμβολα.
+                  </p>
+                  {formErrors?.phone && (
+                    <p className="mt-1 text-xs text-red-600">
+                      {formErrors.phone}
+                    </p>
+                  )}
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label
+                    htmlFor="email"
+                    className="mb-1 block text-xs font-medium text-[#6b675f]"
+                  >
+                    Email *
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    placeholder="name@example.com"
+                    value={newPatientData.email}
+                    onChange={(e) =>
+                      setNewPatientData((p) => ({
+                        ...p,
+                        email: e.target.value,
+                      }))
+                    }
+                    aria-invalid={!!formErrors?.email}
+                    data-err={!!formErrors?.email}
+                    className={`${INPUT_BASE} ${
+                      formErrors?.email ? "border-red-400" : "border-[#e5e1d8]"
+                    }`}
+                    required
+                  />
+                  {formErrors?.email && (
+                    <p className="mt-1 text-xs text-red-600">
+                      {formErrors.email}
+                    </p>
+                  )}
+                </div>
+
+                {/* ΑΜΚΑ */}
+                <div className="sm:col-span-2">
+                  <label
+                    htmlFor="amka"
+                    className="mb-1 block text-xs font-medium text-[#6b675f]"
+                  >
+                    ΑΜΚΑ (11 ψηφία – προαιρετικό)
+                  </label>
+                  <input
+                    id="amka"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="\d*"
+                    placeholder="π.χ. 21079812345"
+                    value={newPatientData.amka || ""}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, "");
+                      setNewPatientData((p) => ({ ...p, amka: v }));
+                      setFormErrors((prev) => ({ ...prev, amka: undefined }));
+                    }}
+                    aria-invalid={!!formErrors?.amka}
+                    data-err={!!formErrors?.amka}
+                    className={`${INPUT_BASE} ${
+                      formErrors?.amka ? "border-red-400" : "border-[#e5e1d8]"
+                    }`}
+                  />
+                  {formErrors?.amka && (
+                    <p className="mt-1 text-xs text-red-600">
+                      {formErrors.amka}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-start gap-2 rounded-2xl border border-[#efe7da] bg-[#fbf6ed] px-3 py-2">
+                <Lock className="mt-[2px] h-3.5 w-3.5 text-[#91897b]" />
+                <p className="text-[10px] text-[#7d766a]">
+                  Τα στοιχεία σας χρησιμοποιούνται για την ορθή οργάνωση και
+                  επιβεβαίωση του ραντεβού και δεν κοινοποιούνται σε τρίτους.
+                </p>
+              </div>
+            </section>
+
+            {/* MIDDLE — Appointment */}
+            <section ref={detailsRef} className="space-y-6">
+              <div className={`${CARD_BASE} p-4 md:p-6`}>
                 <SectionHeader
-                  eyebrow="Βήμα 1"
-                  title="Στοιχεία Επικοινωνίας"
-                  subtitle="Χρησιμοποιούνται για επιβεβαίωση, υπενθύμιση και τυχόν αλλαγές."
+                  eyebrow="Βήμα 2"
+                  title="Λεπτομέρειες Ραντεβού"
+                  subtitle="Επιλέξτε λόγο επίσκεψης, διάρκεια και ημερομηνία."
+                  right={
+                    step2Done ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#f0f6ee] px-3 py-1 text-[10px] font-medium text-[#2b5a34]">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Έτοιμο
+                      </span>
+                    ) : null
+                  }
                 />
 
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {/* Όνομα */}
-                  <div>
-                    <label
-                      htmlFor="first_name"
-                      className="mb-1 block text-xs font-medium text-[#6b675f]"
-                    >
-                      Όνομα *
-                    </label>
-                    <input
-                      id="first_name"
-                      type="text"
-                      placeholder="π.χ. Μαρία"
-                      value={newPatientData.first_name}
-                      onChange={(e) =>
-                        setNewPatientData({
-                          ...newPatientData,
-                          first_name: e.target.value,
-                        })
-                      }
-                      aria-invalid={!!formErrors?.first_name}
-                      className={`${INPUT_BASE} ${
-                        formErrors?.first_name
-                          ? "border-red-400"
-                          : "border-[#e5e1d8]"
-                      }`}
-                      required
-                    />
-                    {formErrors?.first_name && (
-                      <p className="mt-1 text-xs text-red-600">
-                        {formErrors.first_name}
-                      </p>
-                    )}
-                  </div>
+                {/* Reason */}
+                <div className="mt-4">
+                  <label className="mb-1 block text-xs font-medium text-[#6b675f]">
+                    Λόγος Επίσκεψης
+                  </label>
 
-                  {/* Επώνυμο */}
-                  <div>
-                    <label
-                      htmlFor="last_name"
-                      className="mb-1 block text-xs font-medium text-[#6b675f]"
-                    >
-                      Επώνυμο *
-                    </label>
-                    <input
-                      id="last_name"
-                      type="text"
-                      placeholder="π.χ. Καλογεροπούλου"
-                      value={newPatientData.last_name}
-                      onChange={(e) =>
-                        setNewPatientData({
-                          ...newPatientData,
-                          last_name: e.target.value,
-                        })
-                      }
-                      aria-invalid={!!formErrors?.last_name}
-                      className={`${INPUT_BASE} ${
-                        formErrors?.last_name
-                          ? "border-red-400"
-                          : "border-[#e5e1d8]"
-                      }`}
-                      required
-                    />
-                    {formErrors?.last_name && (
-                      <p className="mt-1 text-xs text-red-600">
-                        {formErrors.last_name}
-                      </p>
-                    )}
-                  </div>
+                  <div className="flex flex-col gap-2">
+                    {[
+                      "Εξέταση",
+                      "Αξιολόγηση Αποτελεσμάτων",
+                      "Ιατρικός Επισκέπτης",
+                    ].map((value) => {
+                      const isActive = formData.reason === value;
+                      const desc =
+                        value === "Εξέταση"
+                          ? "Πλήρης ενδοκρινολογικός έλεγχος."
+                          : value === "Αξιολόγηση Αποτελεσμάτων"
+                          ? "Συζήτηση εργαστηριακών αποτελεσμάτων."
+                          : "Συνάντηση για επιστημονική ενημέρωση.";
 
-                  {/* Τηλέφωνο */}
-                  <div>
-                    <label
-                      htmlFor="phone"
-                      className="mb-1 block text-xs font-medium text-[#6b675f]"
-                    >
-                      Τηλέφωνο *
-                    </label>
-                    <input
-                      id="phone"
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="69XXXXXXXX"
-                      value={newPatientData.phone}
-                      onChange={(e) => {
-                        const onlyDigits = e.target.value.replace(/\D/g, "");
-                        setNewPatientData({
-                          ...newPatientData,
-                          phone: onlyDigits,
-                        });
-                      }}
-                      onKeyDown={(e) => {
-                        const allowedKeys = [
-                          "Backspace",
-                          "ArrowLeft",
-                          "ArrowRight",
-                          "Delete",
-                          "Tab",
-                        ];
-                        if (
-                          !/[0-9]/.test(e.key) &&
-                          !allowedKeys.includes(e.key)
-                        ) {
-                          e.preventDefault();
-                        }
-                      }}
-                      aria-invalid={!!formErrors?.phone}
-                      className={`${INPUT_BASE} ${
-                        formErrors?.phone
-                          ? "border-red-400"
-                          : "border-[#e5e1d8]"
-                      }`}
-                      required
-                    />
-                    <p className="mt-1 text-[10px] text-[#9b968c]">
-                      Μόνο αριθμοί, χωρίς κενά ή σύμβολα.
-                    </p>
-                    {formErrors?.phone && (
-                      <p className="mt-1 text-xs text-red-600">
-                        {formErrors.phone}
-                      </p>
-                    )}
-                  </div>
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            const opts = durationOptionsByReason(value);
+                            setFormData((prev) => ({
+                              ...prev,
+                              reason: value,
+                              duration_minutes: opts[0],
+                              customDuration: "",
+                              appointment_time: null,
+                              // αν αλλάξει μήνυμα/ώρες, καθαρίζουμε
+                            }));
+                            setFormErrors((p) => ({ ...p, reason: undefined }));
+                          }}
+                          aria-invalid={!!formErrors?.reason}
+                          data-err={!!formErrors?.reason}
+                          className={
+                            "w-full flex items-start justify-between gap-3 rounded-3xl border px-4 py-3 text-left text-xs shadow-sm transition-all " +
+                            (isActive
+                              ? "border-[#2f2e2b] bg-gradient-to-br from-[#fdf7ef] via-[#f6ede1] to-[#efe3d4] text-[#262521] shadow-md ring-1 ring-[#d4c4ac]/80"
+                              : "border-[#e5e1d8] bg-white/95 text-[#3b3a36] hover:-translate-y-0.5 hover:border-[#d2c7b7] hover:bg-[#fbf8f1] hover:shadow")
+                          }
+                        >
+                          <div className="flex-1 space-y-1">
+                            <span className="text-[11px] font-semibold tracking-[0.06em] uppercase text-[#7f786d]">
+                              {value}
+                            </span>
+                            <p className="text-[11px] leading-relaxed text-[#8b8579]">
+                              {desc}
+                            </p>
+                          </div>
 
-                  {/* Email */}
-                  <div>
-                    <label
-                      htmlFor="email"
-                      className="mb-1 block text-xs font-medium text-[#6b675f]"
-                    >
-                      Email *
-                    </label>
-                    <input
-                      id="email"
-                      type="email"
-                      placeholder="name@example.com"
-                      value={newPatientData.email}
-                      onChange={(e) =>
-                        setNewPatientData({
-                          ...newPatientData,
-                          email: e.target.value,
-                        })
-                      }
-                      aria-invalid={!!formErrors?.email}
-                      className={`${INPUT_BASE} ${
-                        formErrors?.email
-                          ? "border-red-400"
-                          : "border-[#e5e1d8]"
-                      }`}
-                      required
-                    />
-                    {formErrors?.email && (
-                      <p className="mt-1 text-xs text-red-600">
-                        {formErrors.email}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* ΑΜΚΑ */}
-                  <div className="sm:col-span-2">
-                    <label
-                      htmlFor="amka"
-                      className="mb-1 block text-xs font-medium text-[#6b675f]"
-                    >
-                      ΑΜΚΑ (11 ψηφία – προαιρετικό)
-                    </label>
-                    <input
-                      id="amka"
-                      type="text"
-                      inputMode="numeric"
-                      pattern="\d*"
-                      placeholder="π.χ. 21079812345"
-                      value={newPatientData.amka || ""}
-                      onChange={(e) => {
-                        const v = e.target.value.replace(/\D/g, "");
-                        setNewPatientData({ ...newPatientData, amka: v });
-                        setFormErrors((prev) => ({ ...prev, amka: undefined }));
-                      }}
-                      aria-invalid={!!formErrors?.amka}
-                      className={`${INPUT_BASE} ${
-                        formErrors?.amka ? "border-red-400" : "border-[#e5e1d8]"
-                      }`}
-                    />
-                    {formErrors?.amka && (
-                      <p className="mt-1 text-xs text-red-600">
-                        {formErrors.amka}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Soft reassurance footer */}
-                <div className="mt-5 flex items-start gap-2 rounded-xl border border-[#efe7da] bg-[#fbf6ed] px-3 py-2">
-                  <Lock className="mt-[2px] h-3.5 w-3.5 text-[#91897b]" />
-                  <p className="text-[10px] text-[#7d766a]">
-                    Τα στοιχεία σας χρησιμοποιούνται για την ορθή οργάνωση και
-                    επιβεβαίωση του ραντεβού και δεν κοινοποιούνται σε τρίτους.
-                  </p>
-                </div>
-              </section>
-
-              {/* MIDDLE COLUMN — Appointment selection */}
-              <section className="space-y-6">
-                {/* Reason + date */}
-                <div className={`${CARD_BASE} p-4 md:p-6`}>
-                  <SectionHeader
-                    eyebrow="Βήμα 2"
-                    title="Λεπτομέρειες Ραντεβού"
-                    subtitle="Επιλέξτε λόγο επίσκεψης και ημερομηνία."
-                    right={
-                      selectedDateLabel ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[#f4eee4] px-3 py-1 text-[10px] font-medium text-[#5b554b]">
-                          <CalendarIcon className="h-3 w-3" />
-                          {selectedDateLabel}
-                        </span>
-                      ) : null
-                    }
-                  />
-
-                  {/* Λόγος Επίσκεψης */}
-                  <div className="mt-4">
-                    <label className="mb-1 block text-xs font-medium text-[#6b675f]">
-                      Λόγος Επίσκεψης
-                    </label>
-
-                    {/* Κάθε επιλογή σε δική της γραμμή */}
-                    <div className="flex flex-col gap-2">
-                      {reasonButtons.map((btn) => {
-                        const isActive = formData.reason === btn.value;
-
-                        return (
-                          <button
-                            key={btn.value}
-                            type="button"
-                            onClick={() =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                reason: btn.value,
-                                duration_minutes:
-                                  btn.value === "Αξιολόγηση Αποτελεσμάτων" ||
-                                  btn.value === "Ιατρικός Επισκέπτης"
-                                    ? "15"
-                                    : btn.value === "Εξέταση"
-                                    ? "30"
-                                    : "custom",
-                                customDuration:
-                                  btn.value === "Προσαρμογή"
-                                    ? prev.customDuration
-                                    : "",
-                                appointment_time: null,
-                              }))
-                            }
+                          <div
                             className={
-                              "w-full flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-xs shadow-sm transition-all " +
+                              "mt-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border transition-all " +
                               (isActive
-                                ? "border-[#2f2e2b] bg-gradient-to-br from-[#fdf7ef] via-[#f6ede1] to-[#efe3d4] text-[#262521] shadow-md ring-1 ring-[#d4c4ac]/80"
-                                : "border-[#e5e1d8] bg-white/95 text-[#3b3a36] hover:-translate-y-0.5 hover:border-[#d2c7b7] hover:bg-[#fbf8f1] hover:shadow")
+                                ? "border-[#2f2e2b] bg-[#2f2e2b]"
+                                : "border-[#d2c7b7] bg-white")
                             }
                           >
-                            {/* Κείμενο αριστερά */}
-                            <div className="flex-1 space-y-1">
-                              <span className="text-[11px] font-semibold tracking-[0.06em] uppercase text-[#7f786d]">
-                                {btn.label}
-                              </span>
-                              <p className="text-[11px] leading-relaxed text-[#8b8579]">
-                                {btn.description}
-                              </p>
-                            </div>
-
-                            {/* Radio indicator δεξιά */}
-                            <div
+                            <span
                               className={
-                                "mt-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border transition-all " +
-                                (isActive
-                                  ? "border-[#2f2e2b] bg-[#2f2e2b]"
-                                  : "border-[#d2c7b7] bg-white")
+                                "h-2.5 w-2.5 rounded-full " +
+                                (isActive ? "bg-white" : "bg-transparent")
                               }
-                            >
-                              <span
-                                className={
-                                  "h-2.5 w-2.5 rounded-full transition-all " +
-                                  (isActive
-                                    ? "scale-100 bg-white"
-                                    : "scale-75 bg-transparent")
-                                }
-                              />
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {formData.reason === "Ιατρικός Επισκέπτης" && (
-                      <p className="mt-2 flex items-start gap-2 text-[11px] text-amber-800">
-                        <AlertTriangle className="mt-[1px] h-4 w-4 flex-shrink-0" />
-                        <span>
-                          Ραντεβού αποκλειστικά για
-                          <span className="font-semibold">
-                            {" "}
-                            ιατρικούς επισκέπτες και συνεργάτες.
-                          </span>{" "}
-                          Δεν αφορά εξέταση ασθενών.
-                        </span>
-                      </p>
-                    )}
-                    {formData.reason === "Ιατρικός Επισκέπτης" && (
-                      <div className="mt-3">
-                        <label
-                          htmlFor="visitorCompany"
-                          className="mb-1 block text-xs font-medium text-[#6b675f]"
-                        >
-                          Εταιρεία / Οργανισμός *
-                        </label>
-                        <input
-                          id="visitorCompany"
-                          type="text"
-                          placeholder="π.χ. Φαρμακευτική Εταιρεία Χ"
-                          value={formData.visitorCompany}
-                          onChange={(e) => {
-                            setFormData({
-                              ...formData,
-                              visitorCompany: e.target.value,
-                            });
-                            setFormErrors((prev) => ({
-                              ...prev,
-                              visitorCompany: undefined,
-                            }));
-                          }}
-                          aria-invalid={!!formErrors?.visitorCompany}
-                          className={`${INPUT_BASE} ${
-                            formErrors?.visitorCompany
-                              ? "border-red-400"
-                              : "border-[#e5e1d8]"
-                          }`}
-                          required
-                        />
-                        {formErrors?.visitorCompany && (
-                          <p className="mt-1 text-xs text-red-600">
-                            {formErrors.visitorCompany}
-                          </p>
-                        )}
-                        <p className="mt-1 text-[10px] text-[#9b968c]">
-                          Συμπληρώστε την εταιρεία ή τον οργανισμό που
-                          εκπροσωπείτε.
-                        </p>
-                      </div>
-                    )}
+                            />
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
 
-                  {/* Ημερομηνία */}
-                  <div className="mt-4">
-                    <label className="mb-1 block text-xs font-medium text-[#6b675f]">
-                      Ημερομηνία
-                    </label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="w-full justify-start rounded-xl border border-[#e5e1d8] bg-white/85 px-3 py-2.5 text-left text-sm font-normal text-[#3b3a36] shadow-sm hover:bg-white focus-visible:ring-[#d7cfc2]"
-                          disabled={!formData.reason}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.appointment_date
-                            ? format(formData.appointment_date, "dd/MM/yyyy")
-                            : "Επιλέξτε ημερομηνία"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto rounded-2xl border border-[#e5e1d8] bg-white p-3 shadow-lg">
-                        <Calendar
-                          mode="single"
-                          locale={greekLocale}
-                          selected={formData.appointment_date}
-                          onSelect={(date) => {
-                            setFormData({
-                              ...formData,
-                              appointment_date: date,
-                              appointment_time: null,
-                            });
-                          }}
-                          disabled={{
-                            before: new Date(),
-                            after: new Date(
-                              new Date().setMonth(new Date().getMonth() + 2)
-                            ),
-                          }}
-                          modifiers={{
-                            weekend: (date) => [0, 6].includes(date.getDay()),
-                            friday: (date) => date.getDay() === 5,
-                          }}
-                          modifiersClassNames={{
-                            weekend: "text-gray-400 opacity-60",
-                            friday: "text-gray-400 opacity-60",
-                          }}
-                          showOutsideDays
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <p className="mt-1 text-[10px] text-[#9b968c]">
-                      Διαθέσιμες ημερομηνίες έως και 2 μήνες από σήμερα.
+                  {formErrors?.reason && (
+                    <p className="mt-2 text-xs text-red-600">
+                      {formErrors.reason}
                     </p>
-                  </div>
+                  )}
+
+                  {formData.reason === "Ιατρικός Επισκέπτης" && (
+                    <p className="mt-2 flex items-start gap-2 text-[11px] text-amber-800">
+                      <AlertTriangle className="mt-[1px] h-4 w-4 flex-shrink-0" />
+                      <span>
+                        Ραντεβού αποκλειστικά για{" "}
+                        <span className="font-semibold">
+                          ιατρικούς επισκέπτες και συνεργάτες
+                        </span>
+                        . Δεν αφορά εξέταση ασθενών.
+                      </span>
+                    </p>
+                  )}
                 </div>
 
-                {/* Time */}
-                {formData.appointment_date && (
-                  <div className={`${CARD_BASE} p-4 md:p-6`}>
-                    <SectionHeader
-                      eyebrow="Βήμα 3"
-                      title="Επιλογή Ώρας"
-                      subtitle="Εμφανίζονται μόνο τα διαθέσιμα ραντεβού για την ημέρα που επιλέξατε."
+                {/* Visitor company */}
+                {formData.reason === "Ιατρικός Επισκέπτης" && (
+                  <div className="mt-4">
+                    <label
+                      htmlFor="visitorCompany"
+                      className="mb-1 block text-xs font-medium text-[#6b675f]"
+                    >
+                      Εταιρεία / Οργανισμός *
+                    </label>
+                    <input
+                      id="visitorCompany"
+                      type="text"
+                      placeholder="π.χ. Φαρμακευτική Εταιρεία Χ"
+                      value={formData.visitorCompany}
+                      onChange={(e) => {
+                        setFormData((p) => ({
+                          ...p,
+                          visitorCompany: e.target.value,
+                        }));
+                        setFormErrors((prev) => ({
+                          ...prev,
+                          visitorCompany: undefined,
+                        }));
+                      }}
+                      aria-invalid={!!formErrors?.visitorCompany}
+                      data-err={!!formErrors?.visitorCompany}
+                      className={`${INPUT_BASE} ${
+                        formErrors?.visitorCompany
+                          ? "border-red-400"
+                          : "border-[#e5e1d8]"
+                      }`}
+                      required
                     />
+                    {formErrors?.visitorCompany && (
+                      <p className="mt-1 text-xs text-red-600">
+                        {formErrors.visitorCompany}
+                      </p>
+                    )}
+                    <p className="mt-1 text-[10px] text-[#9b968c]">
+                      Συμπληρώστε την εταιρεία ή τον οργανισμό που εκπροσωπείτε.
+                    </p>
+                  </div>
+                )}
 
-                    {loadingSlots ? (
-                      <div className="flex items-center justify-center py-6 text-sm text-gray-600">
+                {/* Date */}
+                <div className="mt-4">
+                  <label className="mb-1 block text-xs font-medium text-[#6b675f]">
+                    Ημερομηνία
+                  </label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={
+                          "w-full justify-start rounded-2xl border bg-white/85 px-3 py-2.5 text-left text-sm font-normal shadow-sm " +
+                          (formErrors?.appointment_date
+                            ? "border-red-400"
+                            : "border-[#e5e1d8]")
+                        }
+                        disabled={!formData.reason}
+                        aria-invalid={!!formErrors?.appointment_date}
+                        data-err={!!formErrors?.appointment_date}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {formData.appointment_date
+                          ? format(formData.appointment_date, "dd/MM/yyyy")
+                          : "Επιλέξτε ημερομηνία"}
+                      </Button>
+                    </PopoverTrigger>
+
+                    <PopoverContent className="w-auto rounded-3xl border border-[#e5e1d8] bg-white p-3 shadow-lg">
+                      <Calendar
+                        mode="single"
+                        locale={greekLocale}
+                        selected={formData.appointment_date}
+                        onSelect={(date) => {
+                          setFormData((p) => ({
+                            ...p,
+                            appointment_date: date,
+                            appointment_time: null,
+                          }));
+                          setFormErrors((prev) => ({
+                            ...prev,
+                            appointment_date: undefined,
+                          }));
+                        }}
+                        disabled={{
+                          before: startOfToday(),
+                          after: addMonths(new Date(), 2),
+                        }}
+                        showOutsideDays
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  <p className="mt-1 text-[10px] text-[#9b968c]">
+                    Διαθέσιμες ημερομηνίες έως και 2 μήνες από σήμερα.
+                  </p>
+
+                  {formErrors?.appointment_date && (
+                    <p className="mt-2 text-xs text-red-600">
+                      {formErrors.appointment_date}
+                    </p>
+                  )}
+                </div>
+
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    onClick={() => scrollToRef(timeRef)}
+                    disabled={!step2Done}
+                    className={
+                      "w-full rounded-2xl text-white " +
+                      (!step2Done
+                        ? "bg-[#8e8a82]"
+                        : "bg-[#2f2e2b] hover:bg-black")
+                    }
+                  >
+                    Επιλογή ώρας
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Time */}
+              {formData.appointment_date && (
+                <div ref={timeRef} className={`${CARD_BASE} p-4 md:p-6`}>
+                  <SectionHeader
+                    eyebrow="Βήμα 3"
+                    title="Επιλογή Ώρας"
+                    subtitle="Εμφανίζονται μόνο τα διαθέσιμα ραντεβού για την ημέρα που επιλέξατε."
+                  />
+
+                  {slotWarning && (
+                    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="mt-0.5 h-4 w-4" />
+                        <p>{slotWarning}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* {formData.reason === "Ιατρικός Επισκέπτης" && (
+                    <div className="mt-3 rounded-2xl border border-[#efe7da] bg-[#fbf8f1] px-4 py-3 text-xs text-[#6b675f]">
+                      <p className="font-medium text-[#3b3a36]">
+                        Ιατρικός επισκέπτης
+                      </p>
+                      <p className="mt-1">
+                        Έχουν ήδη προγραμματιστεί:{" "}
+                        <span className="font-semibold">{visitorCount}/2</span>{" "}
+                        για τον τρέχοντα μήνα.
+                      </p>
+                    </div>
+                  )} */}
+
+                  {loadingSlots ? (
+                    <div className="flex items-center justify-center py-7 text-sm text-gray-600">
+                      <svg
+                        className="h-5 w-5 animate-spin"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v8H4z"
+                        />
+                      </svg>
+                      <span className="ml-2">Φόρτωση διαθέσιμων ωρών...</span>
+                    </div>
+                  ) : formData.reason === "Ιατρικός Επισκέπτης" &&
+                    visitorMonthFull ? (
+                    <div className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                      Δεν είναι εφικτός ο προγραμματισμός επίσκεψης Ιατρικού
+                      Επισκέπτη για τον συγκεκριμένο μήνα. Παρακαλούμε επιλέξτε
+                      άλλη ημερομηνία.
+                    </div>
+                  ) : hasFullDayException ? (
+                    <div className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                      Το ιατρείο είναι κλειστό για όλη την ημέρα (εξαίρεση).
+                    </div>
+                  ) : allScheduleSlots.length === 0 ? (
+                    <div className="mt-3 rounded-2xl bg-yellow-50 px-4 py-3 text-sm text-[#8b6b28]">
+                      Το ιατρείο είναι κλειστό για την επιλεγμένη μέρα.
+                    </div>
+                  ) : availableSlots.length === 0 || totalVisibleSlots === 0 ? (
+                    <div className="mt-3 rounded-2xl bg-yellow-50 px-4 py-3 text-sm text-[#8b6b28]">
+                      Δεν υπάρχει διαθέσιμο ραντεβού για τη διάρκεια που
+                      επιλέξατε ή για την τρέχουσα ημέρα.{" "}
+                      {nextAvailableDate ? (
+                        <>
+                          Πρώτο διαθέσιμο:{" "}
+                          <strong>
+                            {format(nextAvailableDate, "dd/MM/yyyy")}
+                          </strong>
+                          <div className="mt-3">
+                            <Button
+                              type="button"
+                              className="rounded-2xl bg-[#2f2e2b] text-white hover:bg-black"
+                              onClick={() => {
+                                setFormData((p) => ({
+                                  ...p,
+                                  appointment_date: nextAvailableDate,
+                                  appointment_time: null,
+                                }));
+                                setTimeout(() => scrollToRef(timeRef), 50);
+                              }}
+                            >
+                              Μετάβαση στο πρώτο διαθέσιμο
+                              <ChevronRight className="ml-2 h-4 w-4" />
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <>Δοκιμάστε άλλη ημερομηνία.</>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-4 space-y-4">
+                      {renderSlotGroup("Πρωί", visibleSlotsGrouped.morning)}
+                      {renderSlotGroup(
+                        "Μεσημέρι / Απόγευμα",
+                        visibleSlotsGrouped.afternoon
+                      )}
+                      {renderSlotGroup("Βράδυ", visibleSlotsGrouped.evening)}
+
+                      {formErrors?.appointment_time && (
+                        <p
+                          className="mt-2 text-xs text-red-600"
+                          data-err={true}
+                        >
+                          {formErrors.appointment_time}
+                        </p>
+                      )}
+
+                      <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-[#eee7db] pt-2">
+                        <div className="flex items-center gap-1.5 text-[10px] text-[#8d877c]">
+                          <span className="inline-block h-3 w-3 rounded-full border border-[#2f2e2b] bg-[#2f2e2b]" />
+                          <span>Επιλεγμένη ώρα</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-[#8d877c]">
+                          <span className="inline-block h-3 w-3 rounded-full border border-[#e5e1d8] bg-white" />
+                          <span>Διαθέσιμη ώρα</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-[#8d877c]">
+                          <span className="inline-block h-3 w-3 rounded-full border border-[#e8e4db] bg-[#f1eee7]" />
+                          <span>Μη διαθέσιμη ώρα</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Notes */}
+              <div className={`${CARD_BASE} p-4 md:p-6`}>
+                <SectionHeader
+                  eyebrow="Προαιρετικό"
+                  title="Σημειώσεις"
+                  subtitle="Γράψτε κάτι που θεωρείτε χρήσιμο για το ραντεβού σας."
+                />
+                <textarea
+                  rows={3}
+                  value={formData.notes}
+                  onChange={(e) =>
+                    setFormData((p) => ({ ...p, notes: e.target.value }))
+                  }
+                  className="mt-3 w-full resize-none rounded-2xl border border-[#e5e1d8] bg-white/85 px-3 py-2.5 text-sm outline-none shadow-sm transition focus:ring-4 focus:ring-[#d7cfc2]/60"
+                  placeholder="Σημειώσεις για το ραντεβού σας..."
+                />
+              </div>
+            </section>
+
+            {/* RIGHT — Summary + Confirm */}
+            <aside className="h-fit space-y-4 lg:sticky lg:top-6">
+              {/* Summary */}
+              <div className={`${CARD_BASE} p-4 md:p-6`}>
+                <SectionHeader
+                  eyebrow="Σύνοψη"
+                  title="Το ραντεβού σας"
+                  subtitle="Ελέγξτε τα στοιχεία πριν την καταχώρηση."
+                />
+
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-2xl border border-[#efe7da] bg-[#fbf6ed] px-3 py-3">
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-[#7c745f]" />
+                      <div className="text-[11px] text-[#4a453c]">
+                        <p className="font-medium text-[12px]">
+                          Επιλογές ραντεβού
+                        </p>
+                        <p className="mt-1">
+                          Ασθενής:{" "}
+                          <strong>
+                            {newPatientData.first_name ||
+                            newPatientData.last_name
+                              ? `${titleCaseGreek(
+                                  newPatientData.first_name
+                                )} ${titleCaseGreek(newPatientData.last_name)}`
+                              : "—"}
+                          </strong>
+                        </p>
+                        <p>
+                          Τηλέφωνο:{" "}
+                          <strong>{newPatientData.phone || "—"}</strong>
+                        </p>
+                        <p>
+                          Email: <strong>{newPatientData.email || "—"}</strong>
+                        </p>
+                        <p>
+                          Ημερομηνία:{" "}
+                          <strong>
+                            {formData.appointment_date
+                              ? format(formData.appointment_date, "dd/MM/yyyy")
+                              : "—"}
+                          </strong>
+                        </p>
+                        <p>
+                          Ώρα:{" "}
+                          <strong>{formData.appointment_time || "—"}</strong>
+                        </p>
+                        <p>
+                          Λόγος: <strong>{formData.reason || "—"}</strong>
+                        </p>
+                        <p>
+                          Διάρκεια:{" "}
+                          <strong>
+                            {getDuration(formData)
+                              ? `${getDuration(formData)}′`
+                              : "—"}
+                          </strong>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {activeVisitMeta ? (
+                    <div className="rounded-2xl border border-[#dccfb9] bg-gradient-to-r from-[#fdf7ed] to-[#f7efe2] px-3 py-3">
+                      <div className="flex items-start gap-3">
+                        <ShieldCheck className="mt-0.5 h-6 w-6 flex-shrink-0 text-[#c7b89c]" />
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7b7467]">
+                            Ενδεικτικό κόστος
+                          </p>
+                          <p className="mt-1 text-sm font-medium text-[#2f2e2b]">
+                            {activeVisitMeta.priceLabel}
+                          </p>
+                          {activeVisitMeta.durationLabel && (
+                            <p className="text-[11px] text-[#7d766a]">
+                              {activeVisitMeta.durationLabel}
+                            </p>
+                          )}
+                          {activeVisitMeta.description && (
+                            <p className="mt-2 text-[11px] text-[#7d766a]">
+                              {activeVisitMeta.description}
+                            </p>
+                          )}
+                          <p className="mt-2 text-[10px] text-[#8a8274]">
+                            Η πληρωμή γίνεται στο ιατρείο (χωρίς online χρέωση).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-[#eee7db] bg-white/60 px-3 py-3">
+                      <p className="text-[11px] text-[#8b8579]">
+                        Επιλέξτε λόγο επίσκεψης για να εμφανιστούν πληροφορίες
+                        διάρκειας και κόστους.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Confirm */}
+              <div ref={confirmRef} className={`${CARD_BASE} p-4 md:p-6`}>
+                <SectionHeader
+                  eyebrow="Βήμα 3"
+                  title="Επιβεβαίωση"
+                  subtitle="Η καταχώρηση γίνεται με ασφαλή τρόπο."
+                />
+
+                <label
+                  htmlFor="acceptTerms"
+                  className="mt-4 flex items-start gap-2 select-none text-xs text-gray-600"
+                >
+                  <input
+                    id="acceptTerms"
+                    type="checkbox"
+                    required
+                    checked={!!formData.acceptTerms}
+                    onChange={(e) => {
+                      setFormData((p) => ({
+                        ...p,
+                        acceptTerms: e.target.checked,
+                      }));
+                      setFormErrors((prev) => ({
+                        ...prev,
+                        acceptTerms: undefined,
+                      }));
+                    }}
+                    aria-invalid={!!formErrors?.acceptTerms}
+                    data-err={!!formErrors?.acceptTerms}
+                    className="mt-[2px] h-4 w-4 rounded border-gray-300 text-[#2f2e2b] focus:ring-0"
+                  />
+                  <span className="flex flex-col gap-1">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#4c4740]">
+                      <Lock className="h-3.5 w-3.5 text-[#91897b]" />
+                      Ασφαλής καταχώρηση ραντεβού
+                    </span>
+                    <span>
+                      Αποδέχομαι τους{" "}
+                      <a
+                        href="/terms"
+                        className="underline underline-offset-2 hover:text-gray-800"
+                      >
+                        Όρους Χρήσης
+                      </a>{" "}
+                      και την{" "}
+                      <a
+                        href="/privacy-policy"
+                        className="underline underline-offset-2 hover:text-gray-800"
+                      >
+                        Πολιτική Απορρήτου
+                      </a>
+                      .
+                    </span>
+                  </span>
+                </label>
+
+                {formErrors?.acceptTerms && (
+                  <p className="mt-2 text-xs text-red-600">
+                    {formErrors.acceptTerms}
+                  </p>
+                )}
+
+                <div className="mt-4">
+                  <button
+                    type="submit"
+                    disabled={
+                      isSubmitting || !isFormValid || !formData.acceptTerms
+                    }
+                    className={
+                      "w-full rounded-2xl px-4 py-3 text-sm font-medium tracking-tight text-white shadow-md transition " +
+                      "focus:outline-none focus:ring-4 focus:ring-[#d7cfc2]/60 " +
+                      (isSubmitting || !isFormValid || !formData.acceptTerms
+                        ? "cursor-not-allowed bg-[#8e8a82]"
+                        : "bg-[#2f2e2b] hover:-translate-y-0.5 hover:bg-black")
+                    }
+                  >
+                    {isSubmitting ? (
+                      <span className="inline-flex items-center justify-center">
                         <svg
-                          className="h-5 w-5 animate-spin"
+                          className="mr-2 h-5 w-5 animate-spin"
                           xmlns="http://www.w3.org/2000/svg"
                           fill="none"
                           viewBox="0 0 24 24"
@@ -1349,293 +1721,30 @@ export default function NewAppointmentPage() {
                             d="M4 12a8 8 0 018-8v8H4z"
                           />
                         </svg>
-                        <span className="ml-2">Φόρτωση διαθέσιμων ωρών...</span>
-                      </div>
-                    ) : formData.reason === "Ιατρικός Επισκέπτης" &&
-                      visitorCount >= 2 ? (
-                      <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
-                        Δεν είναι εφικτός ο προγραμματισμός επίσκεψης Ιατρικού
-                        Επισκέπτη για τον συγκεκριμένο μήνα. Παρακαλούμε
-                        επιλέξτε άλλον μήνα.
-                      </p>
-                    ) : hasFullDayException ? (
-                      <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
-                        Το ιατρείο είναι κλειστό για όλη την ημέρα λόγω
-                        εξαίρεσης.
-                      </p>
-                    ) : allScheduleSlots.length === 0 ? (
-                      <p className="mt-3 rounded-xl bg-yellow-50 px-3 py-2 text-sm text-[#8b6b28]">
-                        Το ιατρείο είναι κλειστό για την επιλεγμένη μέρα.
-                      </p>
-                    ) : availableSlots.length === 0 ||
-                      totalVisibleSlots === 0 ? (
-                      <p className="mt-3 rounded-xl bg-yellow-50 px-3 py-2 text-sm text-[#8b6b28]">
-                        Δεν υπάρχει διαθέσιμο ραντεβού για τη διάρκεια που
-                        επιλέξατε ή για την τρέχουσα ημέρα.{" "}
-                        {nextAvailableDate ? (
-                          <>
-                            Πρώτο διαθέσιμο:{" "}
-                            <strong>
-                              {format(nextAvailableDate, "dd/MM/yyyy")}
-                            </strong>
-                          </>
-                        ) : (
-                          <>Δοκιμάστε άλλη ημερομηνία.</>
-                        )}
-                      </p>
-                    ) : (
-                      <div className="mt-4 space-y-4">
-                        {renderSlotGroup("Πρωί", visibleSlotsGrouped.morning)}
-                        {renderSlotGroup(
-                          "Μεσημέρι / Απόγευμα",
-                          visibleSlotsGrouped.afternoon
-                        )}
-                        {renderSlotGroup("Βράδυ", visibleSlotsGrouped.evening)}
-
-                        <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-[#eee7db] pt-2">
-                          <div className="flex items-center gap-1.5 text-[10px] text-[#8d877c]">
-                            <span className="inline-block h-3 w-3 rounded-full border border-[#2f2e2b] bg-[#2f2e2b]" />
-                            <span>Επιλεγμένη ώρα</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-[10px] text-[#8d877c]">
-                            <span className="inline-block h-3 w-3 rounded-full border border-[#e5e1d8] bg-white" />
-                            <span>Διαθέσιμη ώρα</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-[10px] text-[#8d877c]">
-                            <span className="inline-block h-3 w-3 rounded-full border border-[#e8e4db] bg-[#f1eee7]" />
-                            <span>Μη διαθέσιμη ώρα</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Notes */}
-                <div className={`${CARD_BASE} p-4 md:p-6`}>
-                  <SectionHeader
-                    eyebrow="Προαιρετικό"
-                    title="Σημειώσεις"
-                    subtitle="Γράψτε κάτι που θεωρείτε χρήσιμο για το ραντεβού σας."
-                  />
-                  <textarea
-                    rows="3"
-                    value={formData.notes}
-                    onChange={(e) =>
-                      setFormData({ ...formData, notes: e.target.value })
-                    }
-                    className="mt-3 w-full resize-none rounded-xl border border-[#e5e1d8] bg-white/85 px-3 py-2.5 text-sm outline-none shadow-sm transition focus:ring-4 focus:ring-[#d7cfc2]/60"
-                    placeholder="Σημειώσεις για το ραντεβού σας..."
-                  />
-                </div>
-              </section>
-
-              {/* RIGHT COLUMN — Sticky summary + submit */}
-              <aside className="h-fit space-y-4 lg:sticky lg:top-6">
-                {/* Summary card */}
-                <div className={`${CARD_BASE} p-4 md:p-6`}>
-                  <SectionHeader
-                    eyebrow="Σύνοψη"
-                    title="Το ραντεβού σας"
-                    subtitle="Ελέγξτε τα στοιχεία πριν την καταχώρηση."
-                  />
-
-                  <div className="mt-4 space-y-3">
-                    <div className="rounded-xl border border-[#efe7da] bg-[#fbf6ed] px-3 py-2">
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 text-[#7c745f]" />
-                        <div className="text-[11px] text-[#4a453c]">
-                          <p className="font-medium text-[12px]">
-                            Επιλογές ραντεβού
-                          </p>
-                          <p className="mt-1">
-                            Ασθενής:{" "}
-                            <strong>
-                              {(newPatientData.first_name ||
-                                newPatientData.last_name) &&
-                                `${normalizeGreekName(
-                                  newPatientData.first_name
-                                )} ${normalizeGreekName(
-                                  newPatientData.last_name
-                                )}`}
-                              {!newPatientData.first_name &&
-                                !newPatientData.last_name &&
-                                "—"}
-                            </strong>
-                          </p>
-                          <p>
-                            Τηλέφωνο:{" "}
-                            <strong>{newPatientData.phone || "—"}</strong>
-                          </p>
-                          <p>
-                            Ημερομηνία:{" "}
-                            <strong>
-                              {formData.appointment_date
-                                ? format(
-                                    formData.appointment_date,
-                                    "dd/MM/yyyy"
-                                  )
-                                : "—"}
-                            </strong>
-                          </p>
-                          <p>
-                            Ώρα:{" "}
-                            <strong>{formData.appointment_time || "—"}</strong>
-                          </p>
-                          <p>
-                            Λόγος: <strong>{formData.reason || "—"}</strong>
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Visit meta */}
-                    {activeVisitMeta ? (
-                      <div className="rounded-xl border border-[#dccfb9] bg-gradient-to-r from-[#fdf7ed] to-[#f7efe2] px-3 py-3">
-                        <div className="flex items-start gap-3">
-                          <ShieldCheck className="mt-0.5 h-6 w-6 flex-shrink-0 text-[#c7b89c]" />
-                          <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7b7467]">
-                              Ενδεικτικό κόστος
-                            </p>
-                            <p className="mt-1 text-sm font-medium text-[#2f2e2b]">
-                              {activeVisitMeta.priceLabel}
-                            </p>
-                            {activeVisitMeta.durationLabel && (
-                              <p className="text-[11px] text-[#7d766a]">
-                                {activeVisitMeta.durationLabel}
-                              </p>
-                            )}
-                            {activeVisitMeta.description && (
-                              <p className="mt-2 text-[11px] text-[#7d766a]">
-                                {activeVisitMeta.description}
-                              </p>
-                            )}
-                            <p className="mt-2 text-[10px] text-[#8a8274]">
-                              Η πληρωμή γίνεται στο ιατρείο, χωρίς online
-                              χρέωση.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-xl border border-[#eee7db] bg-white/60 px-3 py-3">
-                        <p className="text-[11px] text-[#8b8579]">
-                          Επιλέξτε λόγο επίσκεψης για να εμφανιστούν πληροφορίες
-                          διάρκειας και κόστους.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Terms + Submit card */}
-                <div className={`${CARD_BASE} p-4 md:p-6`}>
-                  <SectionHeader
-                    eyebrow="Βήμα 3"
-                    title="Επιβεβαίωση"
-                    subtitle="Η καταχώρηση γίνεται με ασφαλή τρόπο."
-                  />
-
-                  <label
-                    htmlFor="acceptTerms"
-                    className="mt-4 flex items-start gap-2 select-none text-xs text-gray-600"
-                  >
-                    <input
-                      id="acceptTerms"
-                      type="checkbox"
-                      required
-                      checked={!!formData.acceptTerms}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          acceptTerms: e.target.checked,
-                        })
-                      }
-                      className="mt-[2px] h-4 w-4 rounded border-gray-300 text-[#2f2e2b] focus:ring-0"
-                      aria-required="true"
-                    />
-                    <span className="flex flex-col gap-1">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#4c4740]">
-                        <Lock className="h-3.5 w-3.5 text-[#91897b]" />
-                        Ασφαλής καταχώρηση ραντεβού
+                        Καταχώρηση...
                       </span>
-                      <span>
-                        Αποδέχομαι τους{" "}
-                        <a
-                          href="/terms"
-                          className="underline underline-offset-2 hover:text-gray-800"
-                        >
-                          Όρους Χρήσης
-                        </a>{" "}
-                        και την{" "}
-                        <a
-                          href="/privacy-policy"
-                          className="underline underline-offset-2 hover:text-gray-800"
-                        >
-                          Πολιτική Απορρήτου
-                        </a>
-                        .
-                      </span>
-                    </span>
-                  </label>
+                    ) : (
+                      "Κλείστε Ραντεβού"
+                    )}
+                  </button>
 
-                  <div className="mt-4">
-                    <button
-                      type="submit"
-                      disabled={
-                        isSubmitting || !isFormValid || !formData.acceptTerms
-                      }
-                      className={
-                        "w-full rounded-2xl px-4 py-3 text-sm font-medium tracking-tight text-white shadow-md transition " +
-                        "focus:outline-none focus:ring-4 focus:ring-[#d7cfc2]/60 " +
-                        (isSubmitting || !isFormValid || !formData.acceptTerms
-                          ? "cursor-not-allowed bg-[#8e8a82]"
-                          : "bg-[#2f2e2b] hover:-translate-y-0.5 hover:bg-black")
-                      }
+                  <p className="mt-3 text-center text-[10px] text-[#8a8274]">
+                    Θα λάβετε επιβεβαίωση στο email που δηλώσατε.
+                  </p>
+
+                  <div className="mt-3 text-center text-[10px] text-[#9b968c]">
+                    Θέλετε άμεση βοήθεια;{" "}
+                    <a
+                      className="underline underline-offset-2 hover:text-[#2f2e2b]"
+                      href={`tel:${CLINIC_PHONE}`}
                     >
-                      {isSubmitting ? (
-                        <span className="inline-flex items-center justify-center">
-                          <svg
-                            className="mr-2 h-5 w-5 animate-spin"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            />
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8v8H4z"
-                            />
-                          </svg>
-                          Καταχώρηση...
-                        </span>
-                      ) : (
-                        "Κλείστε Ραντεβού"
-                      )}
-                    </button>
-
-                    {submitError && (
-                      <p className="mt-2 text-center text-xs text-red-600">
-                        {submitError}
-                      </p>
-                    )}
-
-                    <p className="mt-3 text-center text-[10px] text-[#8a8274]">
-                      Θα λάβετε επιβεβαίωση στο email που δηλώσατε.
-                    </p>
+                      καλέστε 210 9934316
+                    </a>
+                    .
                   </div>
                 </div>
-              </aside>
-            </div>
+              </div>
+            </aside>
           </div>
         </div>
       </form>

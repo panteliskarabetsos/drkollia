@@ -8,10 +8,28 @@ import clsx from "clsx";
 import { Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/app/lib/supabaseClient";
-import { offlineAuth } from "../../lib/offlineAuth";
+import { offlineAuth } from "@/lib/offlineAuth";
 
-import AuthGate from "./_components/AuthGate";
-import { CalendarDays, Users, Clock, Plus } from "lucide-react";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+
+import {
+  CalendarDays,
+  Users,
+  Clock,
+  Plus,
+  Lock,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react";
 import "../globals.css";
 import { syncPatients } from "../../lib/offlinePatients";
 import { syncAppointments } from "../../lib/offlineAppointments";
@@ -23,53 +41,228 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+/** ---------------- Offline PIN Gate (inline, no extra file) ---------------- */
+function OfflinePinGate({ onUnlocked, onLogout }) {
+  const router = useRouter();
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+
+  const remaining = offlineAuth.getLockRemainingSeconds?.() ?? 0;
+  const disabled = busy || remaining > 0;
+
+  // countdown refresh
+  useEffect(() => {
+    const t = setInterval(() => setNote((x) => x), 500);
+    return () => clearInterval(t);
+  }, []);
+
+  const unlock = async () => {
+    setBusy(true);
+    setNote("");
+    try {
+      const res = await offlineAuth.verifyPinDetailed(pin);
+
+      if (res.ok) {
+        setPin("");
+        onUnlocked?.();
+        router.refresh();
+        return;
+      }
+
+      if (res.reason === "cooldown" || res.reason === "locked_out") {
+        setNote(
+          `Πολλές προσπάθειες. Δοκίμασε ξανά σε ${res.remainingSeconds}s.`
+        );
+        return;
+      }
+
+      if (res.reason === "wrong_pin") {
+        setNote(`Λάθος PIN. Απομένουν ${res.attemptsLeft} προσπάθειες.`);
+        return;
+      }
+
+      setNote(
+        "Δεν υπάρχει offline PIN στη συσκευή. Πήγαινε Ρυθμίσεις → Offline/PIN."
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen w-screen flex items-center justify-center p-6 bg-[#fdfaf6] text-[#3b3a36]">
+      <Card className="w-full max-w-md rounded-2xl shadow-sm bg-white/70 backdrop-blur">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Lock className="h-5 w-5" /> Offline πρόσβαση
+          </CardTitle>
+          <CardDescription>
+            Βάλτε PIN για πρόσβαση στο admin όταν δεν υπάρχει σύνδεση.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {remaining > 0 ? (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Cooldown</AlertTitle>
+              <AlertDescription>
+                Προσπάθησε ξανά σε <b>{remaining}s</b>.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          {note ? (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Μήνυμα</AlertTitle>
+              <AlertDescription>{note}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <Input
+            value={pin}
+            onChange={(e) =>
+              setPin(e.target.value.replace(/\D/g, "").slice(0, 12))
+            }
+            placeholder="PIN"
+            inputMode="numeric"
+            type="password"
+            disabled={disabled}
+            className="tracking-widest text-center"
+          />
+
+          <Button
+            className="w-full rounded-xl"
+            onClick={unlock}
+            disabled={disabled || pin.length < 6}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Ξεκλείδωμα
+          </Button>
+
+          <Button
+            variant="outline"
+            className="w-full rounded-xl"
+            onClick={onLogout}
+            disabled={busy}
+          >
+            Έξοδος
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function AdminLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
+
+  const [ready, setReady] = useState(false);
+  const [online, setOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
+
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
   const [me, setMe] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [syncing, setSyncing] = useState(false);
-  const [online, setOnline] = useState(true);
 
+  const [offlineUnlocked, setOfflineUnlocked] = useState(() => {
+    try {
+      return (
+        offlineAuth.hasActiveSession?.() && !(offlineAuth.isLocked?.() ?? true)
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  // network status
   useEffect(() => {
-    let authSub;
+    const update = () => setOnline(navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
+  // banner follows connection status
+  useEffect(() => setShowOfflineBanner(!online), [online]);
+
+  // Core auth/offline routing logic
+  useEffect(() => {
     let alive = true;
 
     const run = async () => {
-      const isOnline =
-        typeof navigator === "undefined" ? true : navigator.onLine;
+      try {
+        setReady(false);
 
-      if (isOnline) {
-        const { data } = await supabase.auth.getUser();
-        const user = data?.user || null;
+        if (online) {
+          const { data } = await supabase.auth.getSession();
+          const session = data?.session;
 
-        if (!alive) return;
-        setMe(user);
+          if (!alive) return;
 
-        if (user?.id) {
-          const { data: prof } = await supabase
-            .from("profiles")
-            .select("name, email, phone, role")
-            .eq("id", user.id)
-            .single();
-          if (alive) setProfile(prof || null);
+          if (!session?.user) {
+            setMe(null);
+            setProfile(null);
+            setOfflineUnlocked(false);
+            router.replace("/login?redirect=/admin");
+            setReady(true);
+            return;
+          }
+
+          const user = session.user;
+          setMe(user);
+
+          // ✅ save cached user for offline enable/unlock
+          try {
+            await offlineAuth.saveUser({
+              id: user.id,
+              email: user.email,
+              name:
+                user.user_metadata?.full_name ?? user.user_metadata?.name ?? "",
+              role: "admin",
+            });
+          } catch {}
+
+          // load profile (optional)
+          try {
+            const { data: prof } = await supabase
+              .from("profiles")
+              .select("name, email, phone, role")
+              .eq("id", user.id)
+              .single();
+            if (alive) setProfile(prof || null);
+          } catch {
+            if (alive) setProfile(null);
+          }
+
+          setReady(true);
+          return;
         }
 
-        const sub = supabase.auth.onAuthStateChange((_event, session) => {
-          if (!alive) return;
-          setMe(session?.user || null);
-        });
-        authSub = sub?.data?.subscription || sub?.subscription;
-      } else {
-        const offlineFlag =
-          typeof window !== "undefined"
-            ? sessionStorage.getItem("offline_mode")
-            : null;
-        const cached = await offlineAuth.getUser();
+        // OFFLINE
+        const provisioned = offlineAuth.isEnabled?.();
+        if (!provisioned) {
+          setMe(null);
+          setProfile(null);
+          setOfflineUnlocked(false);
+          router.replace("/login?redirect=/admin");
+          setReady(true);
+          return;
+        }
 
+        const cached = await offlineAuth.getUser();
         if (!alive) return;
-        if (offlineFlag && cached) {
+
+        // show cached identity in header (even offline)
+        if (cached) {
           setMe({ id: cached.id, email: cached.email });
           setProfile({
             name: cached.name || cached.email,
@@ -81,21 +274,37 @@ export default function AdminLayout({ children }) {
           setMe(null);
           setProfile(null);
         }
+
+        // unlocked?
+        const unlockedNow =
+          !!offlineAuth.hasActiveSession?.() &&
+          !(offlineAuth.isLocked?.() ?? true);
+        setOfflineUnlocked(unlockedNow);
+
+        setReady(true);
+      } catch {
+        if (!alive) return;
+        setReady(true);
       }
     };
 
     run();
-
     return () => {
       alive = false;
-      authSub?.unsubscribe?.();
     };
-  }, [online]);
+  }, [online, router]);
 
-  // offline banner follows connection status
+  // Start auto-lock timer when offline & unlocked
   useEffect(() => {
-    setShowOfflineBanner(!online);
-  }, [online]);
+    if (online) return;
+    if (!offlineUnlocked) return;
+
+    const stop = offlineAuth.startAutoLockTimer?.(() => {
+      setOfflineUnlocked(false);
+    });
+
+    return () => stop?.();
+  }, [online, offlineUnlocked]);
 
   // sync offline data (patients + appointments) when online
   useEffect(() => {
@@ -119,22 +328,10 @@ export default function AdminLayout({ children }) {
       }
     };
 
-    syncAll();
+    if (online) syncAll();
     window.addEventListener("online", syncAll);
     return () => window.removeEventListener("online", syncAll);
-  }, [router]);
-
-  // network status
-  useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
-    update();
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-    };
-  }, []);
+  }, [router, online]);
 
   useEffect(() => {
     router.prefetch("/admin");
@@ -171,7 +368,6 @@ export default function AdminLayout({ children }) {
         href: "/admin/schedule",
         label: "Πρόγραμμα",
         Icon: Clock,
-
         requiresOnline: true,
       },
     ],
@@ -190,15 +386,10 @@ export default function AdminLayout({ children }) {
             reg.active?.scriptURL ||
             reg.installing?.scriptURL ||
             reg.waiting?.scriptURL;
-
-          if (url && url.includes("/admin/sw.js")) {
-            reg.unregister();
-          }
+          if (url && url.includes("/admin/sw.js")) reg.unregister();
         });
       })
-      .catch((err) => {
-        console.debug("SW cleanup error", err);
-      });
+      .catch((err) => console.debug("SW cleanup error", err));
   }, []);
 
   const isActive = (href) => pathname?.startsWith(href);
@@ -214,116 +405,114 @@ export default function AdminLayout({ children }) {
     router.replace("/login");
   };
 
-  const handleSync = async () => {
-    try {
-      setSyncing(true);
-      window.dispatchEvent(new CustomEvent("admin:refresh"));
-      router.refresh();
-    } finally {
-      setSyncing(false);
-    }
-  };
+  // ---------- render ----------
+  if (!ready) return null;
+
+  // OFFLINE + provisioned + locked => show PIN gate full-screen (no admin UI)
+  if (!online && offlineAuth.isEnabled?.() && !offlineUnlocked) {
+    return (
+      <OfflinePinGate
+        onUnlocked={() => setOfflineUnlocked(true)}
+        onLogout={() => {
+          try {
+            offlineAuth.lock?.();
+          } catch {}
+          router.replace("/login?redirect=/admin");
+        }}
+      />
+    );
+  }
 
   return (
-    <AuthGate>
-      <div
-        className={clsx(
-          inter.variable,
-          "font-sans bg-[#fdfaf6] text-[#3b3a36] antialiased selection:bg-[#fcefc0] min-h-screen w-screen overflow-x-hidden"
-        )}
+    <div
+      className={clsx(
+        inter.variable,
+        "font-sans bg-[#fdfaf6] text-[#3b3a36] antialiased selection:bg-[#fcefc0] min-h-screen w-screen overflow-x-hidden"
+      )}
+    >
+      <a
+        href="#admin-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-[60] rounded-md bg-white px-3 py-2 text-sm shadow"
       >
-        <a
-          href="#admin-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-[60] rounded-md bg-white px-3 py-2 text-sm shadow"
-        >
-          Μετάβαση στο περιεχόμενο
-        </a>
+        Μετάβαση στο περιεχόμενο
+      </a>
 
-        <Toaster position="top-right" richColors expand offset={80} />
+      <Toaster position="top-right" richColors expand offset={80} />
 
-        {/* Header component */}
-        <AdminHeader
-          online={online}
-          showOfflineBanner={showOfflineBanner}
-          setShowOfflineBanner={setShowOfflineBanner}
-          nav={nav}
-          initials={initials}
-          profile={profile}
-          me={me}
-          isActive={isActive}
-          onLogout={handleLogout}
-        />
+      <AdminHeader
+        online={online}
+        showOfflineBanner={showOfflineBanner}
+        setShowOfflineBanner={setShowOfflineBanner}
+        nav={nav}
+        initials={initials}
+        profile={profile}
+        me={me}
+        isActive={isActive}
+        onLogout={handleLogout}
+      />
 
-        {/* MAIN CONTENT – leave space for header + bottom nav */}
-        <main
-          id="admin-content"
-          className="w-full pt-20 md:pb-8"
-          style={{
-            paddingBottom: "max(env(safe-area-inset-bottom), 6rem)",
-          }}
-        >
-          {children}
-        </main>
+      <main
+        id="admin-content"
+        className="w-full pt-20 md:pb-8"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 6rem)" }}
+      >
+        {children}
+      </main>
 
-        {/* Bottom tab bar – mobile only */}
-        <nav
-          className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-[#e5e1d8] bg-white/90 supports-[backdrop-filter]:backdrop-blur-md shadow-[0_-4px_12px_rgba(15,23,42,0.08)]"
-          style={{
-            paddingBottom: "max(env(safe-area-inset-bottom), 0.35rem)",
-          }}
-        >
-          <div className="relative mx-auto max-w-6xl px-4 pt-2 pb-1.5">
-            {/* Floating action button: νέο ραντεβού */}
-            <div className="pointer-events-none absolute inset-x-0 -top-6 flex justify-center">
-              <Link
-                href="/admin/appointments/new"
-                className="pointer-events-auto inline-flex h-12 w-12 items-center justify-center rounded-full border border-[#e5e1d8] bg-[#fdfaf6] text-[#2f2e2b] shadow-lg shadow-emerald-600/20 hover:scale-105 hover:bg-white transition"
-                aria-label="Νέο ραντεβού"
-              >
-                <Plus className="h-6 w-6 text-emerald-600" />
-              </Link>
-            </div>
+      {/* Bottom tab bar – mobile only */}
+      <nav
+        className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-[#e5e1d8] bg-white/90 supports-[backdrop-filter]:backdrop-blur-md shadow-[0_-4px_12px_rgba(15,23,42,0.08)]"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.35rem)" }}
+      >
+        <div className="relative mx-auto max-w-6xl px-4 pt-2 pb-1.5">
+          <div className="pointer-events-none absolute inset-x-0 -top-6 flex justify-center">
+            <Link
+              href="/admin/appointments/new"
+              className="pointer-events-auto inline-flex h-12 w-12 items-center justify-center rounded-full border border-[#e5e1d8] bg-[#fdfaf6] text-[#2f2e2b] shadow-lg shadow-emerald-600/20 hover:scale-105 hover:bg-white transition"
+              aria-label="Νέο ραντεβού"
+            >
+              <Plus className="h-6 w-6 text-emerald-600" />
+            </Link>
+          </div>
 
-            {/* Tabs */}
-            <ul className="grid grid-cols-3 gap-1 pt-4">
-              {primaryNav.map(({ href, label, Icon }) => {
-                const active = isActive(href);
-                return (
-                  <li key={"tab-" + href}>
-                    <Link
-                      href={href}
-                      aria-current={active ? "page" : undefined}
+          <ul className="grid grid-cols-3 gap-1 pt-4">
+            {primaryNav.map(({ href, label, Icon }) => {
+              const active = isActive(href);
+              return (
+                <li key={"tab-" + href}>
+                  <Link
+                    href={href}
+                    aria-current={active ? "page" : undefined}
+                    className={clsx(
+                      "flex flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] transition",
+                      active ? "text-[#2f2e2b]" : "text-[#7b776e]"
+                    )}
+                  >
+                    <span
                       className={clsx(
-                        "flex flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] transition",
-                        active ? "text-[#2f2e2b]" : "text-[#7b776e]"
+                        "mb-0.5 flex h-8 w-8 items-center justify-center rounded-full border text-[0px] transition",
+                        active
+                          ? "border-[#d0c4b3] bg-[#f6f1e7]"
+                          : "border-transparent bg-transparent"
                       )}
                     >
-                      <span
+                      <Icon
                         className={clsx(
-                          "mb-0.5 flex h-8 w-8 items-center justify-center rounded-full border text-[0px] transition",
-                          active
-                            ? "border-[#d0c4b3] bg-[#f6f1e7]"
-                            : "border-transparent bg-transparent"
+                          "h-4 w-4",
+                          active ? "text-[#8c7c68]" : "text-[#9a8f7d]"
                         )}
-                      >
-                        <Icon
-                          className={clsx(
-                            "h-4 w-4",
-                            active ? "text-[#8c7c68]" : "text-[#9a8f7d]"
-                          )}
-                        />
-                      </span>
-                      <span className="truncate max-w-[80px] leading-tight">
-                        {label}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        </nav>
-      </div>
-    </AuthGate>
+                      />
+                    </span>
+                    <span className="truncate max-w-[80px] leading-tight">
+                      {label}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </nav>
+    </div>
   );
 }
