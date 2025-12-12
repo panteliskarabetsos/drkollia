@@ -25,11 +25,12 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
-// our reusable card
+// reusable card
 import PatientFormCard from "../../../components/PatientFormCard";
 
-// icons (lucide)
+// icons
 import {
   ArrowLeft,
   IdCard,
@@ -44,12 +45,15 @@ import {
   Trash2,
   Phone as PhoneIcon,
   IdCard as IdCardIcon,
+  RefreshCw,
+  ShieldAlert,
 } from "lucide-react";
 
 /* ---------- helpers ---------- */
 const onlyDigits = (s) => (s || "").replace(/\D+/g, "");
 const normalizeAMKA = (s) => onlyDigits(s).slice(0, 11);
 const normalizePhone = (s) => onlyDigits(s).slice(0, 10);
+
 const calcAge = (iso) => {
   if (!iso) return null;
   const d = new Date(iso);
@@ -83,55 +87,166 @@ function validate(p) {
   return errs;
 }
 
+// Only update allowed columns (avoid id/created_at etc.)
+const UPDATABLE_FIELDS = [
+  "first_name",
+  "last_name",
+  "amka",
+  "email",
+  "phone",
+  "birth_date",
+  "gender",
+  "occupation",
+  "first_visit_date",
+  "notes",
+  "marital_status",
+  "children",
+  "smoking",
+  "alcohol",
+  "medications",
+  "gynecological_history",
+  "hereditary_history",
+  "current_disease",
+  "physical_exam",
+  "preclinical_screening",
+];
+
+function pickUpdatable(patient) {
+  const out = {};
+  for (const k of UPDATABLE_FIELDS) out[k] = patient?.[k] ?? null;
+  // normalize empties
+  out.birth_date = out.birth_date ? out.birth_date : null;
+  out.first_visit_date = out.first_visit_date ? out.first_visit_date : null;
+  out.amka = out.amka ? normalizeAMKA(out.amka) : null;
+  out.phone = out.phone ? normalizePhone(out.phone) : null;
+  return out;
+}
+
+function shallowEqual(a, b) {
+  const ak = Object.keys(a || {});
+  const bk = Object.keys(b || {});
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) if (a[k] !== b[k]) return false;
+  return true;
+}
+
 export default function EditPatientPage() {
   const { id } = useParams();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [patient, setPatient] = useState(null);
   const [original, setOriginal] = useState(null);
+
   const [errors, setErrors] = useState({});
-  const [message, setMessage] = useState(null);
+  const [message, setMessage] = useState(null); // {type:'error'|'success', text:string}
   const [dirty, setDirty] = useState(false);
 
+  // duplicates
+  const [checkingAmka, setCheckingAmka] = useState(false);
+  const [checkingPhone, setCheckingPhone] = useState(false);
   const [amkaExists, setAmkaExists] = useState(false);
   const [phoneExists, setPhoneExists] = useState(false);
   const [amkaMatches, setAmkaMatches] = useState([]);
 
   const [copied, setCopied] = useState(""); // 'amka' | 'phone' | ''
   const [showDelete, setShowDelete] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+
+  // debounce timers
+  const amkaTimerRef = useRef(null);
+  const phoneTimerRef = useRef(null);
+
+  // race safety
+  const amkaReqRef = useRef(0);
+  const phoneReqRef = useRef(0);
+
+  // store original compare snapshot
+  const originalComparableRef = useRef(null);
+
+  const setDirtyFrom = useCallback((nextPatient) => {
+    const nextComparable = pickUpdatable(nextPatient || {});
+    const origComparable = originalComparableRef.current || {};
+    setDirty(!shallowEqual(nextComparable, origComparable));
+  }, []);
+
+  const showError = useCallback(
+    (text) => setMessage({ type: "error", text }),
+    []
+  );
+  const showSuccess = useCallback(
+    (text) => setMessage({ type: "success", text }),
+    []
+  );
+
+  const confirmIfDirty = useCallback(
+    (action) => {
+      if (!dirty) return action();
+      const ok = window.confirm("Υπάρχουν μη αποθηκευμένες αλλαγές. Συνέχεια;");
+      if (ok) action();
+    },
+    [dirty]
+  );
 
   // -------- Auth + fetch once --------
-  useEffect(() => {
-    (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
-        router.replace("/login");
-        return;
-      }
+  const fetchPatient = useCallback(async () => {
+    setMessage(null);
+    setErrors({});
+    setLoading(true);
 
-      const { data, error } = await supabase
-        .from("patients")
-        .select("*")
-        .eq("id", id)
-        .single();
-      if (!error && data) {
-        const normalized = {
-          ...data,
-          amka: normalizeAMKA(data.amka),
-          phone: normalizePhone(data.phone),
-        };
-        setPatient(normalized);
-        setOriginal(normalized);
-      }
+    const {
+      data: { session },
+      error: sessionErr,
+    } = await supabase.auth.getSession();
+
+    if (sessionErr) {
+      showError("Σφάλμα αυθεντικοποίησης.");
       setLoading(false);
-    })();
-  }, [id, router]);
+      return;
+    }
 
-  // -------- unsaved changes guard --------
+    if (!session) {
+      router.replace("/login");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("patients")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error || !data) {
+      showError("Δεν βρέθηκε ασθενής ή δεν έχετε δικαιώματα πρόσβασης.");
+      setPatient(null);
+      setOriginal(null);
+      originalComparableRef.current = null;
+      setLoading(false);
+      return;
+    }
+
+    const normalized = {
+      ...data,
+      amka: normalizeAMKA(data.amka),
+      phone: normalizePhone(data.phone),
+    };
+
+    setPatient(normalized);
+    setOriginal(normalized);
+
+    originalComparableRef.current = pickUpdatable(normalized);
+    setDirty(false);
+
+    setLoading(false);
+  }, [id, router, showError]);
+
+  useEffect(() => {
+    fetchPatient();
+  }, [fetchPatient]);
+
+  // -------- unsaved changes guard (tab close / refresh) --------
   useEffect(() => {
     const onBeforeUnload = (e) => {
       if (!dirty) return;
@@ -143,15 +258,20 @@ export default function EditPatientPage() {
   }, [dirty]);
 
   // -------- shortcuts --------
+  const saveRef = useRef(null);
+  saveRef.current = async () => {
+    await handleSave();
+  };
+
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        handleSave();
+        saveRef.current?.();
       }
       if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Escape") {
         e.preventDefault();
-        router.back();
+        confirmIfDirty(() => router.back());
       }
       if (
         !e.ctrlKey &&
@@ -160,104 +280,157 @@ export default function EditPatientPage() {
         (e.key === "?" || (e.key === "/" && e.shiftKey))
       ) {
         e.preventDefault();
-        router.push("/admin/help");
+        confirmIfDirty(() => router.push("/admin/help"));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, patient, dirty]);
+  }, [router, confirmIfDirty]);
+
+  // -------- debounced duplicate checks --------
+  const checkDuplicate = useCallback(
+    async (field, value) => {
+      if (!value) return;
+
+      if (field === "amka") {
+        const reqId = ++amkaReqRef.current;
+        setCheckingAmka(true);
+        const { data, error } = await supabase
+          .from("patients")
+          .select("id, first_name, last_name, amka")
+          .eq("amka", value)
+          .neq("id", id)
+          .limit(5);
+
+        if (reqId !== amkaReqRef.current) return; // ignore stale
+        setCheckingAmka(false);
+
+        if (!error) {
+          setAmkaExists((data?.length ?? 0) > 0);
+          setAmkaMatches(data || []);
+        }
+        return;
+      }
+
+      if (field === "phone") {
+        const reqId = ++phoneReqRef.current;
+        setCheckingPhone(true);
+        const { data, error } = await supabase
+          .from("patients")
+          .select("id")
+          .eq("phone", value)
+          .neq("id", id)
+          .limit(1);
+
+        if (reqId !== phoneReqRef.current) return; // ignore stale
+        setCheckingPhone(false);
+
+        if (!error) setPhoneExists((data?.length ?? 0) > 0);
+      }
+    },
+    [id]
+  );
 
   // robust setter
   const setField = useCallback(
     (field, value) => {
       if (field === "amka") value = normalizeAMKA(value);
       if (field === "phone") value = normalizePhone(value);
+
       setPatient((prev) => {
         const next = { ...(prev ?? {}), [field]: value };
-        setDirty(JSON.stringify(next) !== JSON.stringify(original));
         setMessage(null);
+
+        // update dirty
+        setDirtyFrom(next);
+
+        // clear field error as user edits
+        setErrors((p) => {
+          if (!p?.[field]) return p;
+          const clone = { ...p };
+          delete clone[field];
+          return clone;
+        });
+
+        // debounce duplicates
         if (field === "amka") {
-          if (value?.length === 11) checkDuplicate("amka", value);
-          else {
+          if (amkaTimerRef.current) clearTimeout(amkaTimerRef.current);
+
+          if (value?.length === 11) {
+            amkaTimerRef.current = setTimeout(
+              () => checkDuplicate("amka", value),
+              350
+            );
+          } else {
             setAmkaExists(false);
             setAmkaMatches([]);
+            setCheckingAmka(false);
           }
         }
+
         if (field === "phone") {
-          if (value?.length === 10) checkDuplicate("phone", value);
-          else setPhoneExists(false);
+          if (phoneTimerRef.current) clearTimeout(phoneTimerRef.current);
+
+          if (value?.length === 10) {
+            phoneTimerRef.current = setTimeout(
+              () => checkDuplicate("phone", value),
+              350
+            );
+          } else {
+            setPhoneExists(false);
+            setCheckingPhone(false);
+          }
         }
+
         return next;
       });
     },
-    [original]
+    [checkDuplicate, setDirtyFrom]
   );
 
-  const checkDuplicate = async (field, value) => {
-    if (!value) return;
-    if (field === "amka") {
-      const { data, error } = await supabase
-        .from("patients")
-        .select("id, first_name, last_name, amka")
-        .eq("amka", value)
-        .neq("id", id)
-        .limit(5);
-      if (!error) {
-        setAmkaExists((data?.length ?? 0) > 0);
-        setAmkaMatches(data || []);
-      }
-      return;
+  const scrollToFirstError = useCallback((v) => {
+    const firstKey = Object.keys(v || {})[0];
+    if (!firstKey) return;
+    const el = document.getElementById(firstKey);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => el.focus?.(), 150);
     }
-    if (field === "phone") {
-      const { data, error } = await supabase
-        .from("patients")
-        .select("id")
-        .eq("phone", value)
-        .neq("id", id);
-      if (!error) setPhoneExists((data?.length ?? 0) > 0);
-    }
-  };
+  }, []);
 
-  const handleSave = async () => {
-    if (!patient) return;
+  const handleSave = useCallback(async () => {
+    if (!patient || saving) return;
 
     const v = validate(patient);
     setErrors(v);
+
     if (Object.keys(v).length) {
-      setMessage({ type: "error", text: "Ελέγξτε τα πεδία της φόρμας." });
-      const firstKey = Object.keys(v)[0];
-      const el = document.getElementById(firstKey);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        setTimeout(() => el.focus(), 150);
-      }
+      showError("Ελέγξτε τα πεδία της φόρμας.");
+      scrollToFirstError(v);
       return;
     }
+
+    if (checkingAmka || checkingPhone) {
+      showError("Περιμένετε να ολοκληρωθεί ο έλεγχος διπλοτύπων…");
+      return;
+    }
+
     if (amkaExists) {
-      setMessage({
-        type: "error",
-        text: "Υπάρχει ήδη ασθενής με αυτόν τον ΑΜΚΑ.",
-      });
+      showError("Υπάρχει ήδη ασθενής με αυτόν τον ΑΜΚΑ.");
       return;
     }
+
     if (phoneExists) {
-      setMessage({
-        type: "error",
-        text: "Υπάρχει ήδη ασθενής με αυτό το τηλέφωνο.",
-      });
+      showError("Υπάρχει ήδη ασθενής με αυτό το τηλέφωνο.");
       return;
     }
 
     setSaving(true);
+    setMessage(null);
 
     const payload = {
-      ...patient,
+      ...pickUpdatable(patient),
       updated_at: new Date().toISOString(),
-      birth_date: patient.birth_date ? patient.birth_date : null,
-      first_visit_date: patient.first_visit_date
-        ? patient.first_visit_date
-        : null,
     };
 
     const { error } = await supabase
@@ -267,52 +440,80 @@ export default function EditPatientPage() {
 
     if (error) {
       console.error("Supabase update error:", error);
-      setMessage({ type: "error", text: "Σφάλμα κατά την αποθήκευση." });
+      showError(
+        error?.message ||
+          "Σφάλμα κατά την αποθήκευση. Ελέγξτε δικαιώματα (RLS) ή constraints."
+      );
       setSaving(false);
       return;
     }
 
-    setMessage({ type: "success", text: "Οι αλλαγές αποθηκεύτηκαν." });
-    setOriginal(payload);
+    // Update originals & dirty
+    const nextOriginal = { ...patient, ...payload };
+    setOriginal(nextOriginal);
+    originalComparableRef.current = pickUpdatable(nextOriginal);
     setDirty(false);
+
+    showSuccess("Οι αλλαγές αποθηκεύτηκαν.");
     setSaving(false);
-    router.push("/admin/patients");
-  };
+  }, [
+    patient,
+    saving,
+    id,
+    amkaExists,
+    phoneExists,
+    checkingAmka,
+    checkingPhone,
+    showError,
+    showSuccess,
+    scrollToFirstError,
+  ]);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     if (!original) return;
-    setPatient(original);
-    setErrors({});
-    setDirty(false);
-    setMessage(null);
-  };
+    confirmIfDirty(() => {
+      setPatient(original);
+      setErrors({});
+      setMessage(null);
+      setAmkaExists(false);
+      setPhoneExists(false);
+      setAmkaMatches([]);
+      setCheckingAmka(false);
+      setCheckingPhone(false);
+      setDirty(false);
+    });
+  }, [original, confirmIfDirty]);
 
-  const handleCopy = async (key, value) => {
+  const handleCopy = useCallback(async (key, value) => {
     try {
       await navigator.clipboard.writeText(value || "");
       setCopied(key);
       setTimeout(() => setCopied(""), 1200);
-    } catch (_) {}
-  };
+    } catch {
+      // ignore
+    }
+  }, []);
 
-  const handleDelete = async () => {
-    // Simple delete with error surfacing; FKs may block if not cascaded
+  const handleDelete = useCallback(async () => {
+    if (deleteText !== "DELETE") return;
+
     const { error } = await supabase.from("patients").delete().eq("id", id);
+
     if (error) {
-      setMessage({
-        type: "error",
-        text: "Αποτυχία διαγραφής. Υπάρχουν συνδεδεμένα ραντεβού ή ελλιπή δικαιώματα.",
-      });
+      showError(
+        "Αποτυχία διαγραφής. Υπάρχουν συνδεδεμένα ραντεβού/σημειώσεις ή δεν έχετε δικαιώματα."
+      );
       return;
     }
+
     router.push("/admin/patients");
-  };
+  }, [deleteText, id, router, showError]);
 
   /* ---------- UI ---------- */
 
   if (loading) {
     return (
-      <main className="min-h-[60vh] grid place-items-center bg-gradient-to-b from-stone-50/70 via-white to-white">
+      <main className="min-h-[60vh] grid place-items-center bg-[#fbfaf7]">
         <div className="inline-flex items-center gap-2 text-stone-700">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span>Φόρτωση…</span>
@@ -328,12 +529,16 @@ export default function EditPatientPage() {
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>Δεν βρέθηκε ασθενής.</AlertDescription>
         </Alert>
-        <div className="mt-4">
+
+        <div className="mt-4 flex gap-2">
           <Button
             variant="outline"
             onClick={() => router.push("/admin/patients")}
           >
             <ArrowLeft className="h-4 w-4 mr-2" /> Επιστροφή
+          </Button>
+          <Button variant="outline" onClick={fetchPatient} className="gap-2">
+            <RefreshCw className="h-4 w-4" /> Επανάληψη
           </Button>
         </div>
       </main>
@@ -346,31 +551,40 @@ export default function EditPatientPage() {
 
   return (
     <main className="relative max-w-7xl mx-auto px-4 py-10">
-      {/* soft background accents */}
-      <div className="pointer-events-none absolute inset-0 -z-10 [mask-image:radial-gradient(55%_60%_at_50%_-5%,#000_0%,transparent_70%)] bg-[radial-gradient(1100px_450px_at_10%_-10%,#f1efe8_25%,transparent),radial-gradient(1000px_400px_at_90%_-20%,#ece9e0_20%,transparent)]" />
+      {/* ambient background */}
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-[#e9e2d7] blur-3xl opacity-70" />
+        <div className="absolute top-1/3 -right-24 h-72 w-72 rounded-full bg-[#efe8dd] blur-3xl opacity-70" />
+        <div className="absolute -bottom-28 left-1/3 h-80 w-80 rounded-full bg-[#f2eee6] blur-3xl opacity-70" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(0,0,0,0.04),transparent_55%)]" />
+      </div>
 
       {/* top bar */}
       <div className="flex items-center justify-between gap-4">
         <Button
           variant="outline"
-          onClick={() => router.back()}
+          onClick={() => confirmIfDirty(() => router.back())}
           className="gap-2"
         >
           <ArrowLeft className="h-4 w-4" />
           Επιστροφή
         </Button>
 
-        <div className="flex items-center gap-2">
+        {/* desktop actions */}
+        <div className="hidden md:flex items-center gap-2">
           <Button
             variant="outline"
             onClick={() =>
-              router.push(`/admin/appointments/new?patient_id=${id}`)
+              confirmIfDirty(() =>
+                router.push(`/admin/appointments/new?patient_id=${id}`)
+              )
             }
             className="gap-2"
           >
             <Plus className="h-4 w-4" />
             Νέο Ραντεβού
           </Button>
+
           <Button
             onClick={handleSave}
             disabled={saving || !dirty}
@@ -391,11 +605,11 @@ export default function EditPatientPage() {
       {/* header hero */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl border border-stone-200 bg-white shadow-sm">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl border border-stone-200 bg-white/80 backdrop-blur shadow-sm">
             <IdCard className="h-6 w-6 text-stone-700" />
           </div>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-semibold leading-tight">
+            <h1 className="text-2xl sm:text-3xl font-semibold leading-tight text-[#2f2e2b]">
               Επεξεργασία Καρτέλας Ασθενούς
             </h1>
             <p className="text-sm text-stone-600">
@@ -405,16 +619,22 @@ export default function EditPatientPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Dirty status chip */}
           <Badge
             variant={dirty ? "secondary" : "outline"}
             className={
               dirty ? "bg-amber-50 text-amber-700 border-amber-200" : ""
             }
-            title="Κατάσταση φόρμας"
           >
             {dirty ? "Μη αποθηκευμένες αλλαγές" : "Όλα αποθηκευμένα"}
           </Badge>
+
+          {(checkingAmka || checkingPhone) && (
+            <Badge variant="outline" className="gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Έλεγχος…
+            </Badge>
+          )}
+
           {createdAt && (
             <div className="text-xs text-stone-500 flex items-center gap-1">
               <CalendarDays className="h-4 w-4" />
@@ -457,25 +677,37 @@ export default function EditPatientPage() {
       </div>
 
       {message && (
-        <div
+        <Alert
           className={`mt-6 ${
-            message.type === "error" ? "text-red-600" : "text-green-700"
-          } text-sm`}
+            message.type === "error"
+              ? "border-rose-200 bg-rose-50/60"
+              : "border-emerald-200 bg-emerald-50/60"
+          }`}
         >
-          {message.text}
-        </div>
+          <AlertDescription
+            className={`text-sm ${
+              message.type === "error" ? "text-rose-800" : "text-emerald-800"
+            }`}
+          >
+            {message.text}
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* content grid */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* form (2 cols on desktop) */}
-        <Card className="lg:col-span-2">
+        {/* form */}
+        <Card className="lg:col-span-2 bg-white/70 backdrop-blur border-stone-200">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Στοιχεία ασθενούς</CardTitle>
             <CardDescription>
-              Ενημερώστε τα στοιχεία και αποθηκεύστε.
+              Ενημερώστε τα στοιχεία και αποθηκεύστε.{" "}
+              <span className="text-stone-500">
+                (Ctrl/⌘ + S για αποθήκευση)
+              </span>
             </CardDescription>
           </CardHeader>
+
           <CardContent>
             <PatientFormCard
               patient={patient || {}}
@@ -489,14 +721,34 @@ export default function EditPatientPage() {
               childrenOptions={CHILDREN_OPTIONS}
             />
 
-            {/* form footer actions */}
-            <div className="mt-6 flex items-center justify-between">
+            <div className="mt-6 flex items-center justify-between gap-3">
               <Button variant="outline" onClick={handleReset}>
                 Επαναφορά αλλαγών
               </Button>
-              <div className="text-xs text-stone-500">
-                Συντόμευση:{" "}
-                <kbd className="px-1.5 py-0.5 rounded border">Ctrl/⌘ + S</kbd>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={fetchPatient}
+                  className="gap-2"
+                  title="Ανανέωση από βάση"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Ανανέωση
+                </Button>
+
+                <Button
+                  onClick={handleSave}
+                  disabled={saving || !dirty}
+                  className="gap-2"
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Αποθήκευση
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -504,29 +756,63 @@ export default function EditPatientPage() {
 
         {/* side panels */}
         <div className="space-y-6">
-          <Card>
+          <Card className="bg-white/70 backdrop-blur border-stone-200">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Κατάσταση</CardTitle>
-              <CardDescription>Σύνοψη ενεργειών</CardDescription>
+              <CardTitle className="text-base">Έλεγχοι</CardTitle>
+              <CardDescription>Διπλότυπα & κατάσταση</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm space-y-2">
+
+            <CardContent className="text-sm space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-stone-600">Αποθηκευμένες αλλαγές</span>
+                <span className="text-stone-600">Μη αποθηκευμένες αλλαγές</span>
                 <span
                   className={`font-medium ${
-                    dirty ? "text-amber-700" : "text-green-700"
+                    dirty ? "text-amber-700" : "text-emerald-700"
                   }`}
                 >
-                  {dirty ? "Εκκρεμούν" : "ΟΚ"}
+                  {dirty ? "Ναι" : "Όχι"}
                 </span>
               </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-stone-600">Έλεγχος ΑΜΚΑ</span>
+                <span className="text-stone-700">
+                  {checkingAmka ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Έλεγχος…
+                    </span>
+                  ) : amkaExists ? (
+                    <span className="text-rose-700 font-medium">
+                      Διπλότυπος
+                    </span>
+                  ) : (
+                    <span className="text-emerald-700 font-medium">ΟΚ</span>
+                  )}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-stone-600">Έλεγχος τηλεφώνου</span>
+                <span className="text-stone-700">
+                  {checkingPhone ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Έλεγχος…
+                    </span>
+                  ) : phoneExists ? (
+                    <span className="text-rose-700 font-medium">Διπλότυπο</span>
+                  ) : (
+                    <span className="text-emerald-700 font-medium">ΟΚ</span>
+                  )}
+                </span>
+              </div>
+
               {amkaExists && (
-                <div className="rounded-md border border-rose-200 bg-rose-50/70 p-2">
+                <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3">
                   <div className="flex items-center gap-2 font-medium text-rose-800">
                     <Users className="h-4 w-4" />
                     Διπλότυπος ΑΜΚΑ
                   </div>
-                  <ul className="mt-1 text-rose-800">
+                  <ul className="mt-2 space-y-1 text-rose-800">
                     {amkaMatches.map((p) => (
                       <li key={p.id}>
                         <Link
@@ -540,8 +826,9 @@ export default function EditPatientPage() {
                   </ul>
                 </div>
               )}
+
               {phoneExists && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-800">
+                <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-amber-800">
                   <AlertCircle className="h-4 w-4 inline mr-1" />
                   Το τηλέφωνο υπάρχει ήδη σε άλλο προφίλ.
                 </div>
@@ -549,54 +836,66 @@ export default function EditPatientPage() {
             </CardContent>
           </Card>
 
-          {/* Danger zone */}
-          <Card>
+          <Card className="bg-white/70 backdrop-blur border-stone-200">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base text-rose-700">Προσοχή</CardTitle>
+              <CardTitle className="text-base text-rose-700 flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4" />
+                Προσοχή
+              </CardTitle>
               <CardDescription>Οριστικές ενέργειες</CardDescription>
             </CardHeader>
+
             <CardContent>
-              <div className="flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50/60 p-3">
-                <div className="text-sm">
-                  <div className="font-medium text-rose-800">
-                    Διαγραφή ασθενούς
+              <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm">
+                    <div className="font-medium text-rose-800">
+                      Διαγραφή ασθενούς
+                    </div>
+                    <div className="text-rose-700/90">
+                      Η ενέργεια δεν μπορεί να αναιρεθεί.
+                    </div>
                   </div>
-                  <div className="text-rose-700/90">
-                    Η ενέργεια δεν μπορεί να αναιρεθεί.
-                  </div>
+                  <Button
+                    variant="destructive"
+                    className="gap-1.5"
+                    onClick={() => {
+                      setDeleteText("");
+                      setShowDelete(true);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Διαγραφή
+                  </Button>
                 </div>
-                <Button
-                  variant="destructive"
-                  className="gap-1.5"
-                  onClick={() => setShowDelete(true)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Διαγραφή
-                </Button>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* sticky actions */}
-      <div className="sticky bottom-0 inset-x-0 z-20 mt-8 border-t bg-white/80 backdrop-blur">
+      {/* sticky actions (mobile only) */}
+      <div className="md:hidden sticky bottom-0 inset-x-0 z-20 mt-8 border-t bg-white/80 backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <span className="text-xs text-stone-600">
             {dirty ? "Μη αποθηκευμένες αλλαγές" : "Όλα αποθηκευμένα"}
           </span>
           <div className="flex items-center gap-2">
             <Button
+              size="sm"
               variant="outline"
               onClick={() =>
-                router.push(`/admin/appointments/new?patient_id=${id}`)
+                confirmIfDirty(() =>
+                  router.push(`/admin/appointments/new?patient_id=${id}`)
+                )
               }
               className="gap-2"
             >
               <Plus className="h-4 w-4" />
-              Νέο Ραντεβού
+              Νέο
             </Button>
             <Button
+              size="sm"
               onClick={handleSave}
               disabled={saving || !dirty}
               className="gap-2"
@@ -606,7 +905,7 @@ export default function EditPatientPage() {
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              Αποθήκευση
+              Save
             </Button>
           </div>
         </div>
@@ -622,15 +921,31 @@ export default function EditPatientPage() {
               <strong>
                 {patient.last_name} {patient.first_name}
               </strong>
-              . Η ενέργεια δεν μπορεί να αναιρεθεί. Αν υπάρχουν συνδεδεμένα
-              ραντεβού, η διαγραφή θα αποτύχει.
+              . Αν υπάρχουν συνδεδεμένα ραντεβού/σημειώσεις, η διαγραφή θα
+              αποτύχει.
+              <span className="mt-3 block text-sm text-stone-600">
+                Πληκτρολογήστε <strong>DELETE</strong> για επιβεβαίωση.
+              </span>
             </DialogDescription>
           </DialogHeader>
+
+          <div className="mt-2">
+            <Input
+              value={deleteText}
+              onChange={(e) => setDeleteText(e.target.value)}
+              placeholder="DELETE"
+            />
+          </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDelete(false)}>
               Άκυρο
             </Button>
-            <Button variant="destructive" onClick={handleDelete}>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteText !== "DELETE"}
+            >
               <Trash2 className="h-4 w-4 mr-1" />
               Διαγραφή
             </Button>
@@ -644,7 +959,7 @@ export default function EditPatientPage() {
 /* --------- small UI helpers --------- */
 function KeyChip({ icon, label, value, onCopy, copied }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1 text-xs shadow-sm">
+    <div className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white/80 backdrop-blur px-3 py-1 text-xs shadow-sm">
       {icon ? <span className="text-stone-600">{icon}</span> : null}
       <span className="text-stone-500">{label}:</span>
       <span className="font-medium text-stone-800">{String(value ?? "—")}</span>
@@ -656,7 +971,7 @@ function KeyChip({ icon, label, value, onCopy, copied }) {
           title="Αντιγραφή"
         >
           {copied ? (
-            <Check className="h-3.5 w-3.5 text-green-600" />
+            <Check className="h-3.5 w-3.5 text-emerald-600" />
           ) : (
             <Copy className="h-3.5 w-3.5 text-stone-600" />
           )}

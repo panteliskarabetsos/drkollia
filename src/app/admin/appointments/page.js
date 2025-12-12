@@ -1785,22 +1785,34 @@ function StatusBadge({ appt }) {
       : appt?.status;
 
   const styles = {
-    scheduled: "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-    approved: "bg-green-100 text-green-800 ring-1 ring-green-200",
+    scheduled: "bg-amber-50 text-amber-800 ring-1 ring-amber-200",
+    approved: "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200",
     cancelled: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
-    rejected: "bg-red-100 text-red-800 ring-1 ring-red-200",
-    completed: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
+    rejected: "bg-red-50 text-red-800 ring-1 ring-red-200",
+    completed: "bg-blue-50 text-blue-800 ring-1 ring-blue-200",
+  };
+
+  const labels = {
+    scheduled: "Σε αναμονή",
+    approved: "Εγκεκριμένο",
+    cancelled: "Ακυρωμένο",
+    rejected: "Απορρίφθηκε",
+    completed: "Ολοκληρώθηκε",
   };
 
   return (
     <span
-      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${
-        styles[eff] || "bg-gray-100 text-gray-700 ring-1 ring-gray-200"
-      }`}
+      className={[
+        "inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium",
+        styles[eff] || "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
+      ].join(" ")}
     >
-      {eff || "—"}
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
+      {labels[eff] || "—"}
       {appt?.is_exception && (
-        <span className="ml-1 text-amber-700">(εξαίρεση)</span>
+        <span className="ml-1 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-amber-200">
+          εξαίρεση
+        </span>
       )}
     </span>
   );
